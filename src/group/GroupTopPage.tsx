@@ -23,7 +23,32 @@ const GroupTopPage: React.FC = () => {
     name: "北長瀬 / 岡本邸", 
     description: "Master Craft チームです",
     adminId: "admin_user",
-    members: ["admin_user", "user1", "user2"],
+    members: [
+  {
+    id: "admin_user",
+    role: 'admin',
+    isAdmin: true,
+    joinedAt: Date.now() - 1000000,
+    email: 'admin@example.com',
+    username: 'admin_user'
+  },
+  {
+    id: "user1",
+    role: 'user',
+    isAdmin: false,
+    joinedAt: Date.now() - 900000,
+    email: 'user1@example.com',
+    username: 'user1'
+  },
+  {
+    id: "user2",
+    role: 'user',
+    isAdmin: false,
+    joinedAt: Date.now() - 800000,
+    email: 'user2@example.com',
+    username: 'user2'
+  }
+],
     settings: {
       reportDeadline: "18:00",
       reportSettings: {
@@ -91,7 +116,14 @@ try {
         name: "グループが見つかりません",
         description: "データの読み込みに失敗しました",
         adminId: "admin_user",
-        members: ["admin_user"],
+        members: [{
+  id: "admin_user",
+  role: 'admin',
+  isAdmin: true,
+  joinedAt: Date.now() - 1000000,
+  email: 'admin@example.com',
+  username: 'admin_user'
+}],
         settings: {
           reportDeadline: "18:00",
           reportSettings: {
@@ -112,7 +144,14 @@ try {
     name: "エラーが発生しました",
     description: "グループデータの取得に失敗しました",
     adminId: "admin_user",
-    members: ["admin_user"],
+    members: [{
+  id: "admin_user",
+  role: 'admin',
+  isAdmin: true,
+  joinedAt: Date.now() - 1000000,
+  email: 'admin@example.com',
+  username: 'admin_user'
+}],
     settings: {
       reportDeadline: "18:00",
       reportSettings: {

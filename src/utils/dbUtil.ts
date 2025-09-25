@@ -289,8 +289,16 @@ export const addMemberToGroupWithFirestore = async (
     const group = await dbUtil.get<Group>(STORES.GROUPS, groupId);
     if (group) {
       const currentMembers = group.members || [];
-      if (!currentMembers.includes(userId)) {
-        group.members = [...currentMembers, userId];
+if (!currentMembers.find(member => member.id === userId)) {
+  const newMember = {
+    id: userId,
+    role: 'user' as const,
+    isAdmin: false,
+    joinedAt: Date.now(),
+    email: '',
+    username: userId
+  };
+  group.members = [...currentMembers, newMember];
         group.updatedAt = Date.now();
         await dbUtil.save(STORES.GROUPS, group);
         console.log('✅ IndexedDBメンバー追加完了');
@@ -350,7 +358,14 @@ const generateDummyGroups = async (adminId: string): Promise<Group[]> => {
       name: "北長瀬 / 岡本邸",
       description: "新築工事プロジェクト",
       adminId: adminId,
-      members: [adminId],
+      members: [{
+  id: adminId,
+  role: 'admin' as const,
+  isAdmin: true,
+  joinedAt: Date.now() - 86400000, // 1日前
+  email: '',
+  username: 'admin'
+}],
       inviteCode: `INV_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       settings: {
         reportDeadline: "18:00",
@@ -370,7 +385,14 @@ const generateDummyGroups = async (adminId: string): Promise<Group[]> => {
       name: "下石井 / 山下邸",
       description: "リノベーション工事",
       adminId: adminId,
-      members: [adminId],
+      members: [{
+  id: adminId,
+  role: 'admin' as const,
+  isAdmin: true,
+  joinedAt: Date.now() - 86400000, // 1日前
+  email: '',
+  username: 'admin'
+}],
       inviteCode: `INV_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       settings: {
         reportDeadline: "17:30",
@@ -453,8 +475,8 @@ export const getGroups = async (userId: string, userRole: string): Promise<Group
           groups = localGroups.filter((group: Group) => group.adminId === actualUserId);
         } else {
           groups = localGroups.filter((group: Group) => 
-            group.members && group.members.includes(actualUserId)
-          );
+  group.members && group.members.some(member => member.id === actualUserId)
+);
         }
       } catch (e) {
         console.error('localStorage解析エラー:', e);
@@ -547,8 +569,8 @@ export const getUserGroups = async (userId: string): Promise<Group[]> => {
   
   const allGroups = await dbUtil.getAll<Group>(STORES.GROUPS);
   const userGroups = allGroups.filter(group => 
-    group.adminId === userId || (group.members && group.members.includes(userId))
-  );
+  group.adminId === userId || (group.members && group.members.some(member => member.id === userId))
+);
   
   console.log('📱 IndexedDBからグループを取得:', userGroups.length, '件');
   return userGroups;
