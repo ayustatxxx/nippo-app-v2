@@ -1,0 +1,199 @@
+// utils/authUtil.ts - 最小限修正版（安全）
+import { User } from "../types";
+import { DBUtil, STORES } from "./dbUtil";
+// 既存のインポート文の後に追加
+import { 
+  createUserProfile, 
+  getUser as getFirestoreUser 
+} from '../firebase/firestore';
+
+import { getCurrentUser as getFirebaseUser } from '../firebase/auth';
+import { PermissionManager } from './permissionManager';
+
+// 現在のログインユーザー情報を取得
+// Firebase + Firestore対応版のgetCurrentUser関数
+// 現在のログインユーザー情報を取得（簡素化版）
+export const getCurrentUser = async (): Promise<User | null> => {
+  try {
+    console.log('getCurrentUser: 実行開始');
+    
+    // LocalStorageから直接取得（最も確実で高速）
+    const userDataStr = localStorage.getItem('daily-report-user-data');
+    const userId = localStorage.getItem('daily-report-user-id');
+    
+    if (userDataStr && userId) {
+      try {
+        const userData = JSON.parse(userDataStr);
+        
+        // ユーザーIDの整合性確認
+        if (userData.id === userId) {
+          console.log('ユーザーデータ取得成功:', userData.email || userData.username);
+          return userData;
+        } else {
+          console.warn('ユーザーIDの不一致を検出:', {
+            dataId: userData.id,
+            storageId: userId
+          });
+          // 不整合時はLocalStorageをクリア
+          localStorage.removeItem('daily-report-user-data');
+          localStorage.removeItem('daily-report-user-id');
+        }
+      } catch (parseError) {
+        console.error('ユーザーデータ解析エラー:', parseError);
+        // 破損データをクリア
+        localStorage.removeItem('daily-report-user-data');
+      }
+    }
+    
+    console.log('有効なユーザーデータが見つかりません');
+    return null;
+    
+  } catch (error) {
+    console.error('getCurrentUser エラー:', error);
+    return null;
+  }
+};
+
+// ユーザーのロールを確認（管理者かどうか）
+export const isAdmin = async (groupId?: string): Promise<boolean> => {
+  try {
+    // 新しい権限管理システムを使用
+    return await PermissionManager.isAdmin(groupId);
+  } catch (error) {
+    console.error('権限チェックエラー:', error);
+    
+    // フォールバック: 既存の実装を拡張
+    try {
+      // 複数の管理者メールアドレスに対応
+      const adminEmails = ['info@ayustat.co.jp', 'sharaku@ayustat.co.jp'];
+      
+      // 1. daily-report-user-dataから取得（最も確実）
+      const userDataStr = localStorage.getItem('daily-report-user-data');
+      if (userDataStr) {
+        const userData = JSON.parse(userDataStr);
+        if (userData.role === 'admin' || (userData as any).systemRole === 'system_admin') {
+          return true;
+        }
+        if (userData.email && adminEmails.includes(userData.email)) {
+          return true;
+        }
+      }
+      
+      // 2. フォールバック: daily-report-user-emailから取得
+      const userEmail = localStorage.getItem("daily-report-user-email");
+      const isAdminUser = userEmail && adminEmails.includes(userEmail);
+      
+      console.log('権限チェック:', { 
+        adminEmails, 
+        userEmail, 
+        isAdminUser 
+      });
+      
+      return isAdminUser || false;
+    } catch (fallbackError) {
+      console.error('フォールバック権限チェックエラー:', fallbackError);
+      return false;
+    }
+  }
+};
+
+// 【修正箇所】ダミーユーザーデータをセットアップ（実証実験用に無効化）
+export const setupDummyUsers = async (): Promise<void> => {
+  console.log('🚫 実証実験モード：ダミーユーザー機能は無効化されています');
+  console.log('💡 実際のユーザー登録・ログインをご利用ください');
+  
+  // 既存のダミーデータ作成処理は全てコメントアウト
+  /*
+  const dbUtil = DBUtil.getInstance();
+  await dbUtil.initDB();
+  
+  // 既存のユーザーを確認
+  const users = await dbUtil.getAll<User>(STORES.USERS);
+  if (users.length > 0) return; // すでにユーザーがいれば何もしない
+  
+  // 以下のダミーデータ作成は実証実験では使用しない
+  */
+  
+  return;
+};
+
+// 新しい関数を追加
+export const getUserRole = async (): Promise<'admin' | 'user'> => {
+  const adminStatus = await isAdmin();
+  return adminStatus ? 'admin' : 'user';
+};
+
+
+// 表示名を統一的に取得する関数
+export const getDisplayName = async (userId?: string): Promise<string> => {
+  try {
+    let targetUserId = userId;
+    
+    // userIdが指定されていない場合は現在のユーザー
+    if (!targetUserId) {
+      const currentUser = await getCurrentUser();
+      targetUserId = currentUser?.id;
+    }
+    
+    if (!targetUserId) {
+      return 'ユーザー';
+    }
+    
+    // 1. Firestoreから最新のユーザー情報を取得
+    const firestoreUser = await getFirestoreUser(targetUserId);
+    if (firestoreUser) {
+      // 優先順位: displayName > username > id
+      return firestoreUser.displayName || firestoreUser.username || firestoreUser.id;
+    }
+    
+    // 2. ローカルストレージからフォールバック
+    if (!userId) { // 現在のユーザーの場合のみローカルストレージを使用
+      const displayName = localStorage.getItem("daily-report-displayname");
+      const username = localStorage.getItem("daily-report-username");
+      if (displayName) return displayName;
+      if (username) return username;
+    }
+    
+    return 'ユーザー';
+    
+  } catch (error) {
+    console.error('表示名取得エラー:', error);
+    return 'ユーザー';
+  }
+};
+
+// 複数ユーザーの表示名を一括取得（メンバーリスト用）
+export const getDisplayNames = async (userIds: string[]): Promise<{[key: string]: string}> => {
+  const result: {[key: string]: string} = {};
+  
+  for (const userId of userIds) {
+    result[userId] = await getDisplayName(userId);
+  }
+  
+  return result;
+};
+
+
+// 新しい権限管理関数
+export const canCreateGroup = async (): Promise<boolean> => {
+  try {
+    return await PermissionManager.canCreateGroup();
+  } catch (error) {
+    console.error('グループ作成権限チェックエラー:', error);
+    // フォールバック: ログイン済みユーザーなら作成可能
+    const currentUser = await getCurrentUser();
+    return !!currentUser;
+  }
+};
+
+export const isGroupAdmin = async (groupId: string, userId?: string): Promise<boolean> => {
+  try {
+    return await PermissionManager.isGroupAdmin(groupId, userId);
+  } catch (error) {
+    console.error('グループ管理者権限チェックエラー:', error);
+    // フォールバック: システム管理者権限チェック
+    return await isAdmin();
+  }
+};
+
+

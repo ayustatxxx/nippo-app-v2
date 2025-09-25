@@ -1,0 +1,1123 @@
+// src/firebase/firestore.ts
+import { 
+  collection, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  addDoc,
+  serverTimestamp,
+  onSnapshot,
+  Timestamp
+} from 'firebase/firestore';
+import { db } from './config';
+import { User, Group, Post } from '../types';
+
+// ===== コレクション名の定義 =====
+export const COLLECTIONS = {
+  USERS: 'users',
+  GROUPS: 'groups', 
+  POSTS: 'posts',
+  MEMOS: 'memos'
+} as const;
+
+// ===== ユーザー管理関数 =====
+
+// ユーザー情報を作成・更新
+export const saveUser = async (userId: string, userData: Partial<User>): Promise<void> => {
+  try {
+    const userRef = doc(db, COLLECTIONS.USERS, userId);
+    
+    // 更新日時を追加
+    const userDataWithTimestamp = {
+      ...userData,
+      updatedAt: serverTimestamp(),
+      // 新規作成の場合はcreatedAtも追加
+      ...(userData.id ? {} : { createdAt: serverTimestamp() })
+    };
+    
+    await setDoc(userRef, userDataWithTimestamp, { merge: true });
+    console.log('✅ ユーザー情報を保存しました:', userId);
+  } catch (error) {
+    console.error('❌ ユーザー保存エラー:', error);
+    throw error;
+  }
+};
+
+// 修正版getUser関数
+export const getUser = async (userId: string): Promise<User | null> => {
+  try {
+    const userRef = doc(db, COLLECTIONS.USERS, userId);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      console.log('🔍 Firestoreから取得した生データ:', userData);
+      
+      // ★ 安全なTimestamp変換 ★
+      const convertTimestamp = (timestamp: any): number => {
+        if (!timestamp) return Date.now();
+        
+        // Firestore Timestampの場合
+        if (timestamp && typeof timestamp.toMillis === 'function') {
+          return timestamp.toMillis();
+        }
+        
+        // 既に数値の場合
+        if (typeof timestamp === 'number') {
+          return timestamp;
+        }
+        
+        // 文字列やDateオブジェクトの場合
+        if (timestamp instanceof Date) {
+          return timestamp.getTime();
+        }
+        
+        // その他の場合はパースを試行
+        if (typeof timestamp === 'string') {
+          const parsed = new Date(timestamp).getTime();
+          return isNaN(parsed) ? Date.now() : parsed;
+        }
+        
+        // すべて失敗した場合は現在時刻
+        return Date.now();
+      };
+      
+      // ★ 確実にidを含むユーザーオブジェクトを作成 ★
+      const user: User = {
+        id: userId, // ★ 確実にドキュメントIDを設定 ★
+        email: userData.email || '',
+        username: userData.username || userData.displayName || 'ユーザー',
+        role: userData.role || 'user',
+        active: userData.active !== undefined ? userData.active : true,
+        profileImage: userData.profileImage || '',
+        company: userData.company || '',
+        position: userData.position || '',
+        phone: userData.phone || '',
+        createdAt: convertTimestamp(userData.createdAt),
+        updatedAt: convertTimestamp(userData.updatedAt),
+        settings: userData.settings || {
+          notifications: true,
+          reportFrequency: 'daily',
+          theme: 'light'
+        }
+      };
+      
+      console.log('✅ 構築したユーザーオブジェクト:', user);
+      console.log('🔍 user.id:', user.id);
+      console.log('🔍 user.username:', user.username);
+      
+      return user;
+    } else {
+      console.log('⚠️ ユーザーが見つかりません:', userId);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ ユーザー取得エラー:', error);
+    throw error;
+  }
+};
+
+
+// ユーザーのメールアドレスで検索
+// ユーザーのメールアドレスで検索（修正版）
+export const getUserByEmail = async (email: string): Promise<User | null> => {
+  try {
+    const usersRef = collection(db, COLLECTIONS.USERS);
+    const q = query(usersRef, where('email', '==', email));
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+      const userDoc = querySnapshot.docs[0];
+      const userData = userDoc.data();
+      console.log('✅ メールでユーザーを発見:', email);
+      
+      // ★ 安全なTimestamp変換を使用 ★
+      const convertTimestamp = (timestamp: any): number => {
+        if (!timestamp) return Date.now();
+        
+        if (timestamp && typeof timestamp.toMillis === 'function') {
+          return timestamp.toMillis();
+        }
+        
+        if (typeof timestamp === 'number') {
+          return timestamp;
+        }
+        
+        if (timestamp instanceof Date) {
+          return timestamp.getTime();
+        }
+        
+        if (typeof timestamp === 'string') {
+          const parsed = new Date(timestamp).getTime();
+          return isNaN(parsed) ? Date.now() : parsed;
+        }
+        
+        return Date.now();
+      };
+      
+      return {
+        ...userData,
+        createdAt: convertTimestamp(userData.createdAt),
+        updatedAt: convertTimestamp(userData.updatedAt)
+      } as User;
+    } else {
+      console.log('⚠️ メールでユーザーが見つかりません:', email);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ メール検索エラー:', error);
+    throw error;
+  }
+};
+
+// ユーザー情報を削除
+export const deleteUser = async (userId: string): Promise<void> => {
+  try {
+    const userRef = doc(db, COLLECTIONS.USERS, userId);
+    await deleteDoc(userRef);
+    console.log('✅ ユーザーを削除しました:', userId);
+  } catch (error) {
+    console.error('❌ ユーザー削除エラー:', error);
+    throw error;
+  }
+};
+
+// ===== 開発・テスト用関数 =====
+
+// Firestoreの接続をテスト
+export const testFirestoreConnection = async (): Promise<boolean> => {
+  try {
+    // テスト用ドキュメントを作成
+    const testRef = doc(db, 'test', 'connection-test');
+    await setDoc(testRef, {
+      message: 'Firestore接続テスト成功',
+      timestamp: serverTimestamp()
+    });
+    
+    // 作成したドキュメントを読み取り
+    const testSnap = await getDoc(testRef);
+    
+    if (testSnap.exists()) {
+      console.log('✅ Firestore接続テスト成功!');
+      
+      // テストドキュメントを削除
+      await deleteDoc(testRef);
+      return true;
+    } else {
+      console.log('❌ Firestore接続テスト失敗');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Firestore接続エラー:', error);
+    return false;
+  }
+};
+
+// ===== Firebase認証との連携関数 =====
+
+// Firebase認証ユーザーをFirestoreに保存
+export const createUserProfile = async (
+  firebaseUser: any, 
+  additionalData?: Partial<User>
+): Promise<User> => {
+  try {
+    const userId = firebaseUser.uid;
+    const email = firebaseUser.email;
+    const displayName = firebaseUser.displayName || additionalData?.username || 'ユーザー';
+    
+    // 既存ユーザーをチェック
+    const existingUser = await getUser(userId);
+    if (existingUser) {
+      console.log('✅ 既存ユーザーを返します:', userId);
+      return existingUser;
+    }
+    
+    // 新規ユーザープロフィールを作成
+    const newUser: User = {
+      id: userId,
+      email: email || '',
+      username: displayName,
+      role: 'user', // デフォルトはuser
+      active: true,
+      profileImage: firebaseUser.photoURL || '',
+      company: additionalData?.company || '',
+      position: additionalData?.position || '',
+      phone: additionalData?.phone || '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      settings: {
+        notifications: true,
+        reportFrequency: 'daily',
+        theme: 'light'
+      },
+      ...additionalData // 追加データがあれば上書き
+    };
+    
+    // Firestoreに保存
+    await saveUser(userId, newUser);
+    
+    console.log('✅ 新規ユーザープロフィールを作成しました:', userId);
+    return newUser;
+  } catch (error) {
+    console.error('❌ ユーザープロフィール作成エラー:', error);
+    throw error;
+  }
+};
+
+
+// 修正版syncCurrentUser関数
+export const syncCurrentUser = async (firebaseUser: any): Promise<User | null> => {
+  try {
+    console.log('🔍 syncCurrentUser開始:', firebaseUser?.uid, firebaseUser?.email);
+    
+    if (!firebaseUser) {
+      console.log('⚠️ Firebaseユーザーが存在しません');
+      return null;
+    }
+    
+    const userId = firebaseUser.uid;
+    console.log('🔍 処理するユーザーID:', userId);
+    
+    // Firestoreからユーザー情報を取得
+    let user = await getUser(userId);
+    console.log('🔍 getUser結果:', user);
+    
+    if (!user) {
+      // Firestoreにユーザー情報がない場合は作成
+      console.log('📄 ユーザー情報が見つからないため、新規作成します');
+      user = await createUserProfile(firebaseUser);
+      console.log('🔍 createUserProfile結果:', user);
+    } else {
+      // 既存ユーザーの場合、Firebase認証情報で更新
+      const updates: Partial<User> = {};
+      
+      if (user.email !== firebaseUser.email) {
+        updates.email = firebaseUser.email || user.email;
+      }
+      
+      if (firebaseUser.photoURL && user.profileImage !== firebaseUser.photoURL) {
+        updates.profileImage = firebaseUser.photoURL;
+      }
+      
+      // 更新が必要な場合のみ保存
+      if (Object.keys(updates).length > 0) {
+        console.log('🔍 ユーザー情報を更新します:', updates);
+        await saveUser(userId, updates);
+        user = { ...user, ...updates };
+        console.log('📄 ユーザー情報を更新しました:', userId);
+      }
+    }
+    
+    // ローカルストレージにも保存（既存システムとの互換性のため）
+    if (user) {
+      // ★ 確実にidが設定されているかチェック ★
+      if (!user.id) {
+        user.id = userId; // Firebaseユーザーのuidをidとして設定
+        console.log('🔧 user.idが空だったため設定しました:', userId);
+      }
+      
+      // ★ 確実にusernameが設定されているかチェック ★
+      if (!user.username) {
+        user.username = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'ユーザー';
+        console.log('🔧 user.usernameが空だったため設定しました:', user.username);
+      }
+      
+      
+
+     // 既存のプロフィールデータを保護
+const existingUserData = localStorage.getItem('daily-report-user-data');
+console.log('🔍 既存データチェック:', existingUserData ? 'あり' : 'なし');
+let mergedUser = user;
+
+if (existingUserData) {
+  try {
+    const existing = JSON.parse(existingUserData);
+    console.log('🔍 既存fullName:', existing.profileData?.fullName);
+    if (existing.profileData?.fullName && existing.profileData.fullName !== user.username) {
+      mergedUser = {
+        ...user,
+        profileData: {
+          ...user.profileData,
+          ...existing.profileData
+        }
+      };
+      console.log('🔧 既存プロフィールデータを保護:', existing.profileData.fullName);
+    }
+  } catch (error) {
+    console.log('既存データ統合エラー:', error);
+  }
+}
+localStorage.setItem('daily-report-user-data', JSON.stringify(mergedUser));
+console.log('✅ ユーザー同期完了:', mergedUser.username, mergedUser.id);
+console.log('🔍 最終ユーザーオブジェクト:', mergedUser);
+return mergedUser; 
+
+    } else {
+      console.error('❌ ユーザー情報の作成/取得に失敗しました');
+      return null;
+    }
+    
+  } catch (error) {
+    console.error('❌ ユーザー同期エラー:', error);
+    console.error('❌ エラー詳細:', error.message, error.stack);
+    
+    
+    
+    // エラーが発生した場合でも、基本的なユーザー情報を返す
+    if (firebaseUser?.uid) {
+      const fallbackUser: User = {
+        id: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        username: firebaseUser.displayName || 'ユーザー',
+        role: 'user',
+        active: true,
+        profileImage: firebaseUser.photoURL || '',
+        profileData: {
+          fullName: firebaseUser.displayName || 'ユーザー',
+          company: '',
+          position: '',
+          phone: ''
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        settings: {
+          notifications: true,
+          reportFrequency: 'daily',
+          theme: 'light'
+        }
+      };
+      
+      // ローカルストレージに保存
+      localStorage.setItem('daily-report-user-id', fallbackUser.id);
+      localStorage.setItem('daily-report-user-email', fallbackUser.email);
+
+      localStorage.setItem('daily-report-user-role', fallbackUser.role);
+      // ★ fallback時も既存の値を保持
+const existingUsername = localStorage.getItem('daily-report-username');
+if (!existingUsername || existingUsername === fallbackUser.username) {
+  localStorage.setItem('daily-report-username', fallbackUser.username);
+}
+
+// ★ fallback時も既存のprofileDataを保持
+const existingUserData = localStorage.getItem('daily-report-user-data');
+let mergedFallbackUser = fallbackUser;
+if (existingUserData) {
+  try {
+    const existing = JSON.parse(existingUserData);
+    if (existing.profileData?.fullName) {
+      mergedFallbackUser = {
+        ...fallbackUser,
+        profileData: {
+          ...fallbackUser.profileData,
+          ...existing.profileData
+        }
+      };
+    }
+  } catch (error) {
+    console.log('fallback既存データ統合エラー:', error);
+  }
+}
+localStorage.setItem('daily-report-user-data', JSON.stringify(mergedFallbackUser));
+      
+      console.log('⚠️ フォールバックユーザー情報を作成しました:', fallbackUser);
+      return fallbackUser;
+    }
+    
+    return null;
+  }
+};
+
+// ===== グループ管理関数 =====
+
+// グループを作成・更新
+export const saveGroup = async (groupId: string, groupData: Partial<Group>): Promise<void> => {
+  try {
+    const groupRef = doc(db, COLLECTIONS.GROUPS, groupId);
+    
+    // 更新日時を追加
+    const groupDataWithTimestamp = {
+      ...groupData,
+      updatedAt: serverTimestamp(),
+      // 新規作成の場合はcreatedAtも追加
+      ...(groupData.id ? {} : { createdAt: serverTimestamp() })
+    };
+    
+    await setDoc(groupRef, groupDataWithTimestamp, { merge: true });
+    console.log('✅ グループ情報を保存しました:', groupId);
+  } catch (error) {
+    console.error('❌ グループ保存エラー:', error);
+    throw error;
+  }
+};
+
+// グループ情報を取得
+export const getGroup = async (groupId: string): Promise<Group | null> => {
+  try {
+    const groupRef = doc(db, COLLECTIONS.GROUPS, groupId);
+    const groupSnap = await getDoc(groupRef);
+    
+    if (groupSnap.exists()) {
+      const groupData = groupSnap.data();
+      console.log('✅ グループ情報を取得しました:', groupId);
+      
+      // ★ 安全なTimestamp変換 ★
+      const convertTimestamp = (timestamp: any): number => {
+        if (!timestamp) return Date.now();
+        
+        if (timestamp && typeof timestamp.toMillis === 'function') {
+          return timestamp.toMillis();
+        }
+        
+        if (typeof timestamp === 'number') {
+          return timestamp;
+        }
+        
+        if (timestamp instanceof Date) {
+          return timestamp.getTime();
+        }
+        
+        if (typeof timestamp === 'string') {
+          const parsed = new Date(timestamp).getTime();
+          return isNaN(parsed) ? Date.now() : parsed;
+        }
+        
+        return Date.now();
+      };
+      
+      return {
+        ...groupData,
+        createdAt: convertTimestamp(groupData.createdAt),
+        updatedAt: convertTimestamp(groupData.updatedAt)
+      } as Group;
+    } else {
+      console.log('⚠️ グループが見つかりません:', groupId);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ グループ取得エラー:', error);
+    throw error;
+  }
+};
+
+// ユーザーが参加しているグループを取得（修正版）
+export const getUserGroups = async (userId: string, userRole: string): Promise<Group[]> => {
+  try {
+    console.log('🔍 getUserGroups開始:', { userId, userRole });
+    const groupsRef = collection(db, COLLECTIONS.GROUPS);
+    
+    if (userRole === 'admin') {
+      // 管理者の場合：自分が作成したグループを取得
+      const q = query(groupsRef, where('adminId', '==', userId));
+      const querySnapshot = await getDocs(q);
+      
+      const groups: Group[] = [];
+      querySnapshot.forEach((doc) => {
+        const groupData = doc.data();
+        
+        // Timestamp変換処理
+        const convertTimestamp = (timestamp: any): number => {
+          if (!timestamp) return Date.now();
+          if (timestamp && typeof timestamp.toMillis === 'function') {
+            return timestamp.toMillis();
+          }
+          if (typeof timestamp === 'number') {
+            return timestamp;
+          }
+          if (timestamp instanceof Date) {
+            return timestamp.getTime();
+          }
+          if (typeof timestamp === 'string') {
+            const parsed = new Date(timestamp).getTime();
+            return isNaN(parsed) ? Date.now() : parsed;
+          }
+          return Date.now();
+        };
+        
+        groups.push({
+          ...groupData,
+          createdAt: convertTimestamp(groupData.createdAt),
+          updatedAt: convertTimestamp(groupData.updatedAt)
+        } as Group);
+      });
+      
+      console.log('✅ 管理者のグループを取得しました:', groups.length, '件');
+      return groups;
+    } else {
+      // 一般ユーザーの場合：全グループを取得してフィルタリング
+      const querySnapshot = await getDocs(groupsRef);
+      const groups: Group[] = [];
+      
+      querySnapshot.forEach((doc) => {
+        const groupData = doc.data();
+        const members = groupData.members || [];
+        
+        console.log('🔍 グループチェック:', {
+          groupName: groupData.name,
+          groupId: doc.id,
+          memberCount: members.length,
+          targetUserId: userId
+        });
+        
+        // より厳密なメンバーチェック
+        let isMember = false;
+        
+        for (let i = 0; i < members.length; i++) {
+          const member = members[i];
+          console.log(`🔍 メンバー${i + 1}チェック:`, {
+            memberType: typeof member,
+            memberValue: member
+          });
+          
+          if (typeof member === 'string') {
+            // 文字列ID形式の場合
+            if (member === userId) {
+              isMember = true;
+              console.log('✅ 文字列IDでマッチ:', member);
+              break;
+            }
+          } else if (member && typeof member === 'object') {
+            // オブジェクト形式の場合
+            const memberId = member.id;
+            console.log('🔍 オブジェクトからID取得:', memberId);
+            
+            if (memberId === userId) {
+              isMember = true;
+              console.log('✅ オブジェクトIDでマッチ:', memberId);
+              break;
+            }
+          }
+        }
+        
+        console.log('🔍 最終メンバー判定:', {
+          groupName: groupData.name,
+          isMember,
+          userId
+        });
+        
+        if (isMember) {
+          const convertTimestamp = (timestamp: any): number => {
+            if (!timestamp) return Date.now();
+            if (timestamp && typeof timestamp.toMillis === 'function') {
+              return timestamp.toMillis();
+            }
+            if (typeof timestamp === 'number') {
+              return timestamp;
+            }
+            if (timestamp instanceof Date) {
+              return timestamp.getTime();
+            }
+            if (typeof timestamp === 'string') {
+              const parsed = new Date(timestamp).getTime();
+              return isNaN(parsed) ? Date.now() : parsed;
+            }
+            return Date.now();
+          };
+          
+          groups.push({
+            ...groupData,
+            createdAt: convertTimestamp(groupData.createdAt),
+            updatedAt: convertTimestamp(groupData.updatedAt)
+          } as Group);
+          
+          console.log('✅ グループを追加しました:', groupData.name);
+        }
+      });
+      
+      console.log('✅ ユーザーのグループを取得しました:', groups.length, '件');
+      return groups;
+    }
+  } catch (error) {
+    console.error('❌ ユーザーグループ取得エラー:', error);
+    throw error;
+  }
+};
+
+
+// 全グループを取得（管理者用）
+export const getAllGroups = async (): Promise<Group[]> => {
+  try {
+    const groupsRef = collection(db, COLLECTIONS.GROUPS);
+    const querySnapshot = await getDocs(groupsRef);
+    
+    const groups: Group[] = [];
+    querySnapshot.forEach((doc) => {
+      const groupData = doc.data();
+      
+      // 安全なTimestamp変換
+      const convertTimestamp = (timestamp: any): number => {
+        if (!timestamp) return Date.now();
+        
+        if (timestamp && typeof timestamp.toMillis === 'function') {
+          return timestamp.toMillis();
+        }
+        
+        if (typeof timestamp === 'number') {
+          return timestamp;
+        }
+        
+        if (timestamp instanceof Date) {
+          return timestamp.getTime();
+        }
+        
+        if (typeof timestamp === 'string') {
+          const parsed = new Date(timestamp).getTime();
+          return isNaN(parsed) ? Date.now() : parsed;
+        }
+        
+        return Date.now();
+      };
+      
+      groups.push({
+        ...groupData,
+        createdAt: convertTimestamp(groupData.createdAt),
+        updatedAt: convertTimestamp(groupData.updatedAt)
+      } as Group);
+    });
+    
+    console.log('✅ 全グループ情報を取得しました:', groups.length, '件');
+    return groups;
+  } catch (error) {
+    console.error('❌ 全グループ取得エラー:', error);
+    throw error;
+  }
+};
+
+// グループにメンバーを追加
+// グループにメンバーを追加（修正版）
+export const addMemberToGroup = async (groupId: string, memberInfo: any): Promise<boolean> => {
+  try {
+    // デバッグログを詳細化
+    console.log('🔍 受信したmemberInfo:', memberInfo);
+    console.log('🔍 memberInfo.id:', memberInfo.id);
+    console.log('🔍 memberInfo.userId:', memberInfo.userId);
+    console.log('🔍 memberInfo.uid:', memberInfo.uid);
+    console.log('🔍 利用可能なプロパティ:', Object.keys(memberInfo));
+    
+    const groupRef = doc(db, COLLECTIONS.GROUPS, groupId);
+    const groupSnap = await getDoc(groupRef);
+    
+    if (groupSnap.exists()) {
+      const groupData = groupSnap.data();
+      const currentMembers = groupData.members || [];
+      
+      // より柔軟なユーザーID取得
+      const userId = memberInfo.id || memberInfo.userId || memberInfo.uid || memberInfo.user_id;
+      console.log('🔍 最終的に取得したユーザーID:', userId);
+      
+      if (!userId) {
+        console.error('❌ すべてのIDフィールドが空です:', {
+          id: memberInfo.id,
+          userId: memberInfo.userId,
+          uid: memberInfo.uid,
+          user_id: memberInfo.user_id
+        });
+        return false;
+      }
+      
+      // 既にメンバーでない場合のみ追加
+      const isAlreadyMember = currentMembers.some((member: any) => 
+        typeof member === 'string' ? member === userId : member.id === userId
+      );
+
+      if (!isAlreadyMember) {
+        // 確実なメンバー情報を作成
+        const cleanMemberInfo = {
+          id: userId,  // 確実にIDを設定
+          username: memberInfo.username || 'ユーザー',
+          email: memberInfo.email || '',
+          profileData: {
+            fullName: memberInfo.profileData?.fullName || memberInfo.username || 'ユーザー',
+            company: memberInfo.profileData?.company || '',
+            position: memberInfo.profileData?.position || '',
+            phone: memberInfo.profileData?.phone || ''
+          },
+          role: memberInfo.role || 'user',
+          joinedAt: memberInfo.joinedAt || Date.now()
+        };
+
+        console.log('✅ 作成されたクリーンなメンバー情報:', cleanMemberInfo);
+
+        const cleanData = {
+          members: [...currentMembers, cleanMemberInfo],
+          updatedAt: Date.now()
+        };
+        
+        await updateDoc(groupRef, cleanData);
+        console.log('✅ グループにメンバーを追加しました:', groupId, userId);
+        return true;
+      } else {
+        console.log('⚠️ ユーザーは既にメンバーです:', groupId, userId);
+        return true;
+      }
+    } else {
+      console.error('❌ グループが存在しません:', groupId);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ メンバー追加エラー:', error);
+    return false;
+  }
+};
+
+// グループを削除
+export const deleteGroup = async (groupId: string): Promise<void> => {
+  try {
+    const groupRef = doc(db, COLLECTIONS.GROUPS, groupId);
+    await deleteDoc(groupRef);
+    console.log('✅ グループを削除しました:', groupId);
+  } catch (error) {
+    console.error('❌ グループ削除エラー:', error);
+    throw error;
+  }
+};
+
+// 新規グループを作成
+export const createGroup = async (
+  groupData: Omit<Group, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<string> => {
+  try {
+    // 新しいドキュメント参照を作成
+    const groupsRef = collection(db, COLLECTIONS.GROUPS);
+    const newGroupRef = doc(groupsRef);
+    
+    // グループデータを作成
+    const completeGroupData: Group = {
+      ...groupData,
+      id: newGroupRef.id,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    
+    // Firestoreに保存
+    await saveGroup(newGroupRef.id, completeGroupData);
+    
+    console.log('✅ 新しいグループを作成しました:', newGroupRef.id);
+    return newGroupRef.id;
+  } catch (error) {
+    console.error('❌ グループ作成エラー:', error);
+    throw error;
+  }
+};
+
+
+// 投稿関連の関数を追加
+export const createPost = async (post: Omit<Post, 'id' | 'createdAt'>) => {
+  try {
+    const postData = {
+      ...post,
+      createdAt: new Date(),
+    };
+    
+    const docRef = await addDoc(collection(db, 'posts'), postData);
+    console.log('投稿を作成しました:', docRef.id);
+    return docRef.id;
+  } catch (error) {
+    console.error('投稿の作成に失敗しました:', error);
+    throw error;
+  }
+};
+
+export const updatePost = async (postId: string, updates: Partial<Post>) => {
+  try {
+    const postRef = doc(db, 'posts', postId);
+    await updateDoc(postRef, {
+      ...updates,
+      updatedAt: new Date(),
+    });
+    console.log('投稿を更新しました:', postId);
+  } catch (error) {
+    console.error('投稿の更新に失敗しました:', error);
+    throw error;
+  }
+};
+
+export const deletePost = async (postId: string) => {
+  try {
+    const postRef = doc(db, 'posts', postId);
+    await deleteDoc(postRef);
+    console.log('投稿を削除しました:', postId);
+  } catch (error) {
+    console.error('投稿の削除に失敗しました:', error);
+    throw error;
+  }
+};
+
+export const getPostsByGroup = async (groupId: string): Promise<Post[]> => {
+  try {
+    const postsQuery = query(
+      collection(db, 'posts'),
+      where('groupId', '==', groupId),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const querySnapshot = await getDocs(postsQuery);
+    const posts: Post[] = [];
+    
+    querySnapshot.forEach((doc) => {
+      posts.push({
+        id: doc.id,
+        ...doc.data(),
+      } as Post);
+    });
+    
+    console.log(`グループ ${groupId} の投稿を取得しました:`, posts.length, '件');
+    return posts;
+  } catch (error) {
+    console.error('投稿の取得に失敗しました:', error);
+    return [];
+  }
+};
+
+
+// firestore.tsに追加すべき欠落している関数群
+
+// ===== 欠落している関数を追加 =====
+
+// グループからメンバーを削除
+export const removeMemberFromGroup = async (groupId: string, memberId: string): Promise<boolean> => {
+  try {
+    const groupRef = doc(db, COLLECTIONS.GROUPS, groupId);
+    const groupSnap = await getDoc(groupRef);
+    
+    if (groupSnap.exists()) {
+      const groupData = groupSnap.data();
+      const currentMembers = groupData.members || [];
+      
+      // メンバーを除外した新しい配列を作成
+      const updatedMembers = currentMembers.filter((member: any) => 
+        typeof member === 'string' ? member !== memberId : member.id !== memberId
+      );
+      
+      // グループを更新
+      await updateDoc(groupRef, {
+        members: updatedMembers,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log('✅ グループからメンバーを削除しました:', groupId, memberId);
+      return true;
+    } else {
+      console.error('❌ グループが存在しません:', groupId);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ メンバー削除エラー:', error);
+    return false;
+  }
+};
+
+// メンバーの権限を更新
+export const updateMemberRole = async (groupId: string, memberId: string, newRole: string): Promise<boolean> => {
+  try {
+    const groupRef = doc(db, COLLECTIONS.GROUPS, groupId);
+    const groupSnap = await getDoc(groupRef);
+    
+    if (groupSnap.exists()) {
+      const groupData = groupSnap.data();
+      const currentMembers = groupData.members || [];
+      
+      // メンバーの権限を更新
+      const updatedMembers = currentMembers.map((member: any) => {
+        if (typeof member === 'string') {
+          return member === memberId ? { id: member, role: newRole } : member;
+        } else if (member && member.id === memberId) {
+          return { ...member, role: newRole };
+        }
+        return member;
+      });
+      
+      await updateDoc(groupRef, {
+        members: updatedMembers,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log('✅ メンバー権限を更新しました:', groupId, memberId, newRole);
+      return true;
+    } else {
+      console.error('❌ グループが存在しません:', groupId);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ メンバー権限更新エラー:', error);
+    return false;
+  }
+};
+
+// メンバーのアクティブ状態を更新
+export const updateMemberStatus = async (groupId: string, memberId: string, active: boolean): Promise<boolean> => {
+  try {
+    const groupRef = doc(db, COLLECTIONS.GROUPS, groupId);
+    const groupSnap = await getDoc(groupRef);
+    
+    if (groupSnap.exists()) {
+      const groupData = groupSnap.data();
+      const currentMembers = groupData.members || [];
+      
+      // メンバーのアクティブ状態を更新
+      const updatedMembers = currentMembers.map((member: any) => {
+        if (typeof member === 'string') {
+          return member === memberId ? { id: member, active } : member;
+        } else if (member && member.id === memberId) {
+          return { ...member, active };
+        }
+        return member;
+      });
+      
+      await updateDoc(groupRef, {
+        members: updatedMembers,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log('✅ メンバー状態を更新しました:', groupId, memberId, active);
+      return true;
+    } else {
+      console.error('❌ グループが存在しません:', groupId);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ メンバー状態更新エラー:', error);
+    return false;
+  }
+};
+
+// 投稿の取得（特定ユーザー）
+export const getUserPosts = async (userId: string): Promise<Post[]> => {
+  try {
+    const postsQuery = query(
+      collection(db, COLLECTIONS.POSTS),
+      where('authorId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const querySnapshot = await getDocs(postsQuery);
+    const posts: Post[] = [];
+    
+    querySnapshot.forEach((doc) => {
+      const postData = doc.data();
+      
+      // 安全なTimestamp変換
+      const convertTimestamp = (timestamp: any): number => {
+        if (!timestamp) return Date.now();
+        if (timestamp && typeof timestamp.toMillis === 'function') {
+          return timestamp.toMillis();
+        }
+        if (typeof timestamp === 'number') {
+          return timestamp;
+        }
+        if (timestamp instanceof Date) {
+          return timestamp.getTime();
+        }
+        if (typeof timestamp === 'string') {
+          const parsed = new Date(timestamp).getTime();
+          return isNaN(parsed) ? Date.now() : parsed;
+        }
+        return Date.now();
+      };
+      
+      posts.push({
+        id: doc.id,
+        ...postData,
+        createdAt: convertTimestamp(postData.createdAt),
+        updatedAt: convertTimestamp(postData.updatedAt)
+      } as Post);
+    });
+    
+    console.log(`ユーザー ${userId} の投稿を取得しました:`, posts.length, '件');
+    return posts;
+  } catch (error) {
+    console.error('❌ ユーザー投稿取得エラー:', error);
+    return [];
+  }
+};
+
+// 投稿の詳細取得
+export const getPost = async (postId: string): Promise<Post | null> => {
+  try {
+    const postRef = doc(db, COLLECTIONS.POSTS, postId);
+    const postSnap = await getDoc(postRef);
+    
+    if (postSnap.exists()) {
+      const postData = postSnap.data();
+      
+      // 安全なTimestamp変換
+      const convertTimestamp = (timestamp: any): number => {
+        if (!timestamp) return Date.now();
+        if (timestamp && typeof timestamp.toMillis === 'function') {
+          return timestamp.toMillis();
+        }
+        if (typeof timestamp === 'number') {
+          return timestamp;
+        }
+        if (timestamp instanceof Date) {
+          return timestamp.getTime();
+        }
+        if (typeof timestamp === 'string') {
+          const parsed = new Date(timestamp).getTime();
+          return isNaN(parsed) ? Date.now() : parsed;
+        }
+        return Date.now();
+      };
+      
+      return {
+        id: postId,
+        ...postData,
+        createdAt: convertTimestamp(postData.createdAt),
+        updatedAt: convertTimestamp(postData.updatedAt)
+      } as Post;
+    } else {
+      console.log('⚠️ 投稿が見つかりません:', postId);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ 投稿取得エラー:', error);
+    throw error;
+  }
+};
+
+　
+// ユーザーのグループ取得機能（ProfilePage用）
+export const getGroupsByUser = async (userId: string): Promise<Group[]> => {
+  try {
+    console.log('🔍 ユーザーのグループ取得開始:', userId);
+    
+    // 既存のgetUserGroups関数を使用
+    const userRole = localStorage.getItem('daily-report-user-role') || 'user';
+    const groups = await getUserGroups(userId, userRole);
+    
+    console.log('✅ ユーザーグループ取得完了:', groups.length, '件');
+    return groups;
+  } catch (error) {
+    console.error('❌ ユーザーグループ取得エラー:', error);
+    return [];
+  }
+};
+
+// グループ更新機能
+export const updateGroup = async (groupId: string, updateData: Partial<Group>): Promise<boolean> => {
+  try {
+    console.log('🔍 グループ更新処理開始:', groupId);
+    
+    const groupRef = doc(db, COLLECTIONS.GROUPS, groupId);
+    
+    // 更新データに更新時刻を追加
+    const dataWithTimestamp = {
+      ...updateData,
+      updatedAt: serverTimestamp()
+    };
+    
+    // Firestoreを更新
+    await updateDoc(groupRef, dataWithTimestamp);
+    console.log('✅ Firestoreのグループを更新しました:', groupId);
+    
+    return true;
+  } catch (error) {
+    console.error('❌ グループ更新エラー:', error);
+    return false;
+  }
+};

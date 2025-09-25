@@ -1,0 +1,173 @@
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 横スクロール防止と幅の統一 */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh; /* モバイル最適化 */
+  min-height: -webkit-fill-available; /* iOS Safari対応 */
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.search-input::placeholder {
+  color: #ffffff;
+  opacity: 1;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* 明るい配色のときの設定 */
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+
+/* タブレット用のスタイル */
+@media (min-width: 768px) {
+  /* タブレット向けのスタイル定義 */
+}
+
+/* デスクトップ用のスタイル */
+@media (min-width: 1024px) {
+  /* デスクトップ向けのスタイル定義 */
+}
+
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+/* スクロールバーのスタイルをカスタマイズ（オプション） */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e1e2f;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #143844;
+  border-radius: 4px;
+}
+
+/* iOS Safari モバイル最適化 */
+@supports (-webkit-touch-callout: none) {
+  html, body, #root {
+    min-height: -webkit-fill-available;
+  }
+  
+  /* ヘッダーの高さ調整 */
+  .header {
+    height: 60px;
+    height: max(60px, env(safe-area-inset-top));
+  }
+  
+  /* フッターの高さ調整 */
+  .footer {
+    height: 80px;
+    height: max(80px, env(safe-area-inset-bottom) + 60px);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  /* iOS専用の入力フィールド設定 */
+  input, textarea, select {
+    font-size: 16px !important;
+    transform: translateZ(0); /* ハードウェアアクセラレーション */
+    -webkit-appearance: none; /* デフォルトスタイルを無効 */
+  }
+  
+  /* 特にフォーカス時の設定 */
+  input:focus, textarea:focus, select:focus {
+    font-size: 16px !important;
+    zoom: 1; /* ズームレベルを固定 */
+  }
+}
+
+/* Dynamic Viewport対応 */
+@supports (height: 100dvh) {
+  html, body, #root {
+    min-height: 100dvh;
+  }
+}
+
+/* iOS Safari 入力時ズーム防止 - 全ブラウザ対応 */
+input, textarea, select {
+  font-size: 16px !important; /* 16px以上でズーム防止 */
+  font-size: max(16px, 1rem) !important; /* より安全な設定 */
+}
+
+/* 特定の入力タイプにも適用 */
+input[type="text"],
+input[type="email"], 
+input[type="password"],
+input[type="tel"],
+input[type="time"],
+input[type="number"],
+textarea,
+select {
+  font-size: 16px !important;
+  font-size: max(16px, 1rem) !important;
+}
+
+/* より確実な防止策 */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
