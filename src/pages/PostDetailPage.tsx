@@ -72,8 +72,8 @@ const fetchMemos = async (postId: string) => {
 const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'createdBy' | 'createdByName' | 'postId'>) => {
   try {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "admin_user";
-    const currentUsername = localStorage.getItem("daily-report-username") || "ユーザー";
-    
+    const currentUsername = localStorage.getItem("daily-report-display-name") || localStorage.getItem("daily-report-username") || "ユーザー";
+
     const newMemo: Memo = {
       ...memoData,
       id: `memo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,

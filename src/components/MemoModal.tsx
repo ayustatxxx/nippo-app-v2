@@ -83,9 +83,13 @@ const MemoModal: React.FC<MemoModalProps> = ({ isOpen, onClose, onSave, postId }
 
   // 🔒 セキュリティ強化: タグ入力処理
   const handleTagInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const sanitized = sanitizeInput(e.target.value);
-    setTagInput(sanitized);
-  };
+  let sanitized = sanitizeInput(e.target.value);
+  // ハッシュタグの自動追加
+  if (sanitized && !sanitized.startsWith('#')) {
+    sanitized = '#' + sanitized;
+  }
+  setTagInput(sanitized);
+};
 
   // タグの処理
   const parseTags = (input: string): string[] => {
