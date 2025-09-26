@@ -51,7 +51,7 @@ export class MemoService {
 
   // メモ保存
   static saveMemo = withErrorHandling(
-  async (memo: Omit<Memo, 'id' | 'createdAt'>): Promise<void> => {
+  async (memo: Omit<Memo, 'id'>): Promise<void> => {
     const newMemo = {
       ...memo,
       createdAt: Date.now()

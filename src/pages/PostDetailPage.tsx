@@ -85,12 +85,7 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
 
     console.log('💾 [デバッグ] 保存するメモデータ:', newMemo);
 
-    await MemoService.saveMemo({
-  ...memoData,
-  postId: postId!,
-  createdBy: currentUserId,
-  createdByName: currentUsername
-});
+    await MemoService.saveMemo(newMemo);
     
     console.log('✅ [デバッグ] メモが正常に保存されました');
     
