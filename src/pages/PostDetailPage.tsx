@@ -162,7 +162,7 @@ const handleStatusUpdate = async (newStatus: string) => {
         setLoading(true);
         
        // 複数のグループから投稿を検索
-const groups = ['wIXThgBDhzi7VaRFCS0l', 'RoPn9JmPal4BNsr6sdIf'];
+const groups = ['wIXThgBDhzi7VaRFCS0l', 'RoPn9JmPal4BNsr6sdIf', 'Hi3bZlwT3qK66SVFMtT6'];
 let postData = null;
 
 try {
