@@ -12,6 +12,7 @@ import { UnifiedDataManager } from '../utils/unifiedDataManager';
 import { getDisplayNameSafe } from '../core/SafeUnifiedDataManager';
 import { getUser } from '../firebase/firestore';
 import MemoModal from '../components/MemoModal';
+import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 
 
 // ★自分の画像用の設定を追加★
@@ -1438,7 +1439,7 @@ if (isMounted) {
 }
 
 // セキュリティ修正: 参加権限チェック強化
-const allGroups = await getUserGroups(userId, 'user').catch(() => []);
+const allGroups = await UnifiedCoreSystem.getUserGroups(userId).catch(() => []);
 
 // 参加権限の二重チェック
 const userGroups = allGroups.filter(group => {
@@ -1534,7 +1535,7 @@ const refreshData = async () => {
     const userId = localStorage.getItem("daily-report-user-id");
     if (!userId) return;
     
-    const allGroups = await getUserGroups(userId, 'user').catch(() => []);
+    const allGroups = await UnifiedCoreSystem.getUserGroups(userId).catch(() => []);
 
     // セキュリティ修正: 参加権限チェック強化
     const userGroups = allGroups.filter(group => {

@@ -163,25 +163,34 @@ export class FileValidator {
     return { validFiles, errors, totalSize };
   }
   
-  // 画像のBase64変換（安全な処理）
-  public static async convertToBase64(file: File): Promise<string> {
+
+  // 画像のBase64変換（圧縮対応版に更新）
+public static async convertToBase64(file: File): Promise<string> {
+  try {
+    // 画像ファイルの場合は圧縮を実行
+    if (file.type.startsWith('image/')) {
+      return await this.compressImage(file, 1280, 0.5);
+    }
+    
+    // 画像以外はそのまま変換（将来的な拡張対応）
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
       reader.onload = () => {
         const result = reader.result as string;
-        // Base64データのヘッダーを検証
         if (result.startsWith('data:image/')) {
           resolve(result);
         } else {
           reject(new Error('不正な画像データです'));
         }
       };
-      
       reader.onerror = () => reject(new Error('ファイル読み込みエラー'));
       reader.readAsDataURL(file);
     });
+  } catch (error) {
+    console.error('Base64変換エラー:', error);
+    throw error;
   }
+}
   
   // セキュリティログ機能
   public static logSecurityEvent(event: string, details: any) {
@@ -199,6 +208,90 @@ export class FileValidator {
     // 将来的にはサーバーに送信
     // analytics.track('security_event', logEntry);
   }
+
+  // 画像圧縮機能（PostPageから移植）
+  public static async compressImage(file: File, maxWidth: number = 960, quality: number = 0.4): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        try {
+          // アスペクト比を保持してリサイズ計算
+          const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
+          const newWidth = Math.floor(img.width * ratio);
+          const newHeight = Math.floor(img.height * ratio);
+          
+          canvas.width = newWidth;
+          canvas.height = newHeight;
+          
+          // 高品質な描画設定
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          
+          // 背景を白に設定（透過PNG対応）
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, newWidth, newHeight);
+          
+          // 画像を描画
+          ctx.drawImage(img, 0, 0, newWidth, newHeight);
+          
+          // JPEG圧縮で出力
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          
+          // メモリクリーンアップ
+          URL.revokeObjectURL(img.src);
+          
+          console.log(`画像圧縮完了: ${file.name}`);
+          resolve(compressedDataUrl);
+        } catch (error) {
+          console.error('画像圧縮エラー:', error);
+          reject(new Error('画像の圧縮に失敗しました'));
+        }
+      };
+      
+      img.onerror = () => {
+        console.error('画像読み込みエラー:', file.name);
+        reject(new Error('画像の読み込みに失敗しました'));
+      };
+      
+      // 画像データを読み込み
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  // バッチ処理機能（PostPageから移植）
+  public static async processFilesInBatches(files: File[], batchSize: number = 2): Promise<string[]> {
+    const results: string[] = [];
+    
+    console.log(`画像処理開始: ${files.length}枚を${batchSize}枚ずつ処理`);
+    
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batch = files.slice(i, i + batchSize);
+      console.log(`バッチ ${Math.floor(i/batchSize) + 1}/${Math.ceil(files.length/batchSize)}: ${batch.length}枚処理中`);
+      
+      try {
+        const batchResults = await Promise.all(
+          batch.map(file => this.compressImage(file))
+        );
+        results.push(...batchResults);
+        
+        // バッチ間で短時間待機してメモリ解放を促進
+        if (i + batchSize < files.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch (error) {
+        console.error(`バッチ処理エラー (バッチ ${Math.floor(i/batchSize) + 1}):`, error);
+        throw error;
+      }
+    }
+    
+    console.log(`画像処理完了: ${results.length}枚すべて完了`);
+    return results;
+  }
+
+
 }
 
 // React Hook for file validation
@@ -247,4 +340,5 @@ export const useFileValidation = () => {
     validationErrors,
     clearErrors
   };
+  
 };
