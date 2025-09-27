@@ -5,6 +5,7 @@ import { Post, Group, User } from '../types';
 import { getCurrentUser } from '../utils/authUtil';
 import { createPost } from '../firebase/firestore';
 import { DBUtil, STORES } from '../utils/dbUtil';
+import { FileValidator } from '../utils/fileValidation';
 
 // 既存高品質コンポーネントのインポート
 import { UserGroupResolver } from '../utils/userGroupResolver';
@@ -19,8 +20,8 @@ export class UnifiedCoreSystem {
   // Tier 1: 基盤システム（100%再利用）
   static groupResolver = UserGroupResolver;
 
-  // PostPage.tsxのFileValidatorクラスは別途import予定
-  // PermissionManagerは別途import予定
+  static fileValidator = FileValidator;
+// PermissionManagerは別途import予定
 
   /**
    * シングルトンインスタンス取得
@@ -51,12 +52,21 @@ export class UnifiedCoreSystem {
         throw new Error('ユーザー認証が必要です');
       }
 
-      // Step 2: ファイル検証・処理（FileValidator統合予定）
-      let processedImages: string[] = [];
-      if (postData.files && postData.files.length > 0) {
-        // TODO: FileValidator.processFilesInBatches()を統合
-        console.log('📁 ファイル処理をスキップ（FileValidator統合待ち）');
-      }
+      // Step 2: ファイル検証・処理（FileValidator統合完了）
+let processedImages: string[] = [];
+if (postData.files && postData.files.length > 0) {
+  console.log('📁 ファイル検証・処理を開始');
+  
+  // ファイル検証
+  const validationResult = await this.fileValidator.validateFiles(postData.files);
+  if (validationResult.errors.length > 0) {
+    throw new Error(`ファイル検証エラー: ${validationResult.errors.join(', ')}`);
+  }
+  
+  // ファイル処理（圧縮・Base64変換）
+  processedImages = await this.fileValidator.processFilesInBatches(validationResult.validFiles);
+  console.log('✅ ファイル処理完了:', processedImages.length, '枚');
+}
 
       // Step 3: 投稿データ準備
       const sanitizedMessage = this.sanitizeInput(postData.message || '');

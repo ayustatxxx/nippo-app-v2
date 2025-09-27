@@ -4,7 +4,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import * as html2pdflib from 'html2pdf.js';
 import { Post } from '../types';
 import ImageGalleryModal from '../components/ImageGalleryModal';
-import { getGroups, getUserGroups, getGroupPosts, markPostAsRead, getPostReadStatus } from "../utils/firestoreService";
+import { getGroupPosts, markPostAsRead, getPostReadStatus } from "../utils/firestoreService";
+import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 
 
 // 投稿データにメモ情報を追加するための型拡張

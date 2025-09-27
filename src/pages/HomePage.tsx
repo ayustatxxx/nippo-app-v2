@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import MainFooterNav from '../components/MainFooterNav';
 import Header from '../components/Header';
 import { Group, User } from '../types';
-import { getGroups, getUserGroups, getGroupPosts, markPostAsRead, getPostReadStatus } from "../utils/firestoreService";
+import { getGroupPosts, markPostAsRead, getPostReadStatus } from "../utils/firestoreService";
 import { Post } from '../types';
 import ImageGalleryModal from '../components/ImageGalleryModal';
 import { getCurrentUser, isAdmin, getUserRole, getUserDisplayName } from '../utils/authUtil';
