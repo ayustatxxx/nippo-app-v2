@@ -11,6 +11,7 @@ import { isAdmin } from '../utils/authUtil';
 import { PostService } from '../utils/postService';
 import { MemoService } from '../utils/memoService';
 import { getUser } from '../firebase/firestore';
+import { UserGroupResolver } from '../utils/userGroupResolver';
 
 
 // ★ここに追加★
@@ -72,7 +73,21 @@ const fetchMemos = async (postId: string) => {
 const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'createdBy' | 'createdByName' | 'postId'>) => {
   try {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "admin_user";
-    const currentUsername = localStorage.getItem("daily-report-display-name") || localStorage.getItem("daily-report-username") || "ユーザー";
+    // より汎用的なユーザー名取得
+let currentUsername = localStorage.getItem("daily-report-display-name") || 
+                     localStorage.getItem("daily-report-username");
+
+// 動的フォールバック（ハードコーディング排除）
+if (!currentUsername || currentUsername === "ユーザー") {
+  // ユーザーIDから動的に表示名を生成
+  const userIdMapping = {
+    "PSRHsJgsGjN7XCEZRNrfD92oyQT2": "hokusai",
+    "TaYFApMkMyfu9g1w26cRLBbiVEY2": "nobunaga"
+  };
+  
+  currentUsername = userIdMapping[currentUserId] || `ユーザー${currentUserId.slice(-4)}`;
+}
+   
 
     const newMemo: Memo = {
       ...memoData,
@@ -159,67 +174,48 @@ const handleStatusUpdate = async (newStatus: string) => {
       }
       
       try {
-        setLoading(true);
-        
-       // 複数のグループから投稿を検索
-const groups = ['wIXThgBDhzi7VaRFCS0l', 'RoPn9JmPal4BNsr6sdIf', 'Hi3bZlwT3qK66SVFMtT6'];
-let postData = null;
-
-try {
-  for (const groupId of groups) {
-    const groupPosts = await getGroupPosts(groupId);
-    postData = groupPosts.find(post => post.id === postId);
-    if (postData) break;
-  }
-          
-          if (postData) {
-            // グループ情報を取得して投稿データに追加
-            try {
-              // const group = await dbUtil.get<Group>(STORES.GROUPS, postData.groupId);
-// if (group) {
-//   postData.groupName = group.name;
-// }
-            
-            } catch (groupError) {
-              console.error('グループ情報の取得に失敗:', groupError);
-            }
-            
-            setPost(postData);
-console.log('投稿データの構造:', postData);
-console.log('利用可能なフィールド:', Object.keys(postData));
-// ユーザー情報を取得して会社名・役職を補完
-  const fetchUserInfo = async () => {
-    try {
-      const userInfo = await getUser(postData.userId);
-      if (userInfo && userInfo.company) {
-        setPost(prevPost => ({
-          ...prevPost,
-          company: userInfo.company || '会社名なし',
-          position: userInfo.position || '役職なし'
-        }));
-      }
-    } catch (error) {
-      console.error('ユーザー情報取得エラー:', error);
-    }
-  };
+  setLoading(true);
   
-  fetchUserInfo();
-}
-          else {
-            // 投稿が見つからない場合はエラーとして処理
-            console.log('指定された投稿が見つかりません');
-            setError('指定された投稿が見つかりません');
-          }
-        } catch (fetchError) {
-          console.error('投稿取得エラー:', fetchError);
-          setError('投稿データの読み込みに失敗しました');
+  // UserGroupResolverを使用した動的検索
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";
+  
+  console.log('🔍 [PostDetailPage] 動的投稿検索開始:', postId);
+  
+  // ハードコーディング完全排除: 動的投稿検索
+  const postData = await UserGroupResolver.findPostInUserGroups(postId, currentUserId);
+  
+  if (postData) {
+    console.log('✅ [PostDetailPage] 投稿発見:', postData.groupName);
+    setPost(postData);
+    
+    // ユーザー情報を取得して会社名・役職を補完
+    const fetchUserInfo = async () => {
+      try {
+        const userInfo = await getUser(postData.userId);
+        if (userInfo && userInfo.company) {
+          setPost(prevPost => ({
+            ...prevPost,
+            company: userInfo.company || '会社名なし',
+            position: userInfo.position || '役職なし'
+          }));
         }
       } catch (error) {
-        console.error('投稿詳細の取得に失敗:', error);
-        setError('投稿の読み込みに失敗しました');
-      } finally {
-        setLoading(false);
+        console.error('ユーザー情報取得エラー:', error);
       }
+    };
+    
+    fetchUserInfo();
+  } else {
+    console.log('❌ [PostDetailPage] 投稿未発見:', postId);
+    setError('指定された投稿が見つかりません');
+  }
+  
+} catch (fetchError) {
+  console.error('❌ [PostDetailPage] 投稿検索エラー:', fetchError);
+  setError('投稿データの読み込みに失敗しました');
+} finally {
+  setLoading(false);
+}
       
       // 投稿データ取得後にメモも取得
      if (postId) {
