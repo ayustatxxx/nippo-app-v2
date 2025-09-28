@@ -1209,10 +1209,21 @@ const PostDetailModal: React.FC<{
                       cursor: 'pointer'
                     }}
                     onClick={() => {
-                      const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
-                      setGalleryIndex(imageIndex);
-                      setGalleryOpen(true);
-                    }}
+  if (!displayPost?.photoUrls || displayPost.photoUrls.length === 0) {
+    console.warn('⚠️ 画像データが不完全');
+    return;
+  }
+  
+  const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
+  setGalleryImages([...displayPost.photoUrls]); // ← この行が重要
+  setGalleryIndex(imageIndex);
+  setGalleryOpen(true);
+  
+  console.log('✅ モーダル画像設定完了:', {
+    imageIndex,
+    totalImages: displayPost.photoUrls.length
+  });
+}}
                   >
                     <img
                       src={url}
@@ -1287,28 +1298,12 @@ const PostDetailModal: React.FC<{
     setGalleryOpen(true);
   };
 
-  // 投稿の詳細ページへ移動する関数
+  // 投稿の詳細ページをモーダルに
 const handleViewPostDetails = (postId: string, groupId: string) => {
   const targetPost = posts.find(post => post.id === postId);
-  
-  // スクロール位置を保存
-  sessionStorage.setItem('homeScrollPosition', window.pageYOffset.toString());
-  console.log('📍 スクロール位置保存:', window.pageYOffset);
-  
-  // 投稿データを事前保存（高速化）
   if (targetPost) {
-    sessionStorage.setItem(`post-${postId}`, JSON.stringify(targetPost));
-    console.log('⚡ 投稿データ事前保存:', postId);
+    setSelectedPostForDetail(targetPost);
   }
-  
-  const params = new URLSearchParams();
-  params.set('from', 'home');
-  params.set('groupId', groupId);
-  params.set('postId', postId);
-  params.set('preloaded', 'true'); // 事前読み込みフラグ
-  
-  const paramString = params.toString() ? `?${params.toString()}` : '';
-  navigate(`/post/${postId}${paramString}`);
 };
 
 
