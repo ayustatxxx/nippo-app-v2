@@ -1033,7 +1033,9 @@ useEffect(() => {
     
       // APIが未実装のため空データで初期化
       console.log('🔍 [Archive] Firestoreから投稿を取得中...');
-      const fetchedPosts = await getGroupPosts(groupId);
+      console.log('🔄 [Archive] UnifiedCoreSystem統合開始');
+const fetchedPosts = await getGroupPosts(groupId);
+console.log('✅ [Archive] データ取得完了:', fetchedPosts.length, '件');
       console.log('✅ [Archive] 投稿取得完了:', fetchedPosts.length, '件');
 
 setPosts(fetchedPosts);

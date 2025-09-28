@@ -6,6 +6,8 @@ import MainFooterNav from '../components/MainFooterNav';
 import { DBUtil, STORES } from "../utils/dbUtil";
 import { Post } from '../types';
 import { FileValidator, useFileValidation } from '../utils/fileValidation'; // 新しく追加
+import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
+
 
 const EditPostPage: React.FC = () => {
   const { postId } = useParams<{ postId: string }>();
@@ -16,6 +18,7 @@ const EditPostPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'local' | 'online' | 'completed'>('idle');
   
   // 編集用の状態
   const [editedMessage, setEditedMessage] = useState('');
@@ -42,35 +45,45 @@ const EditPostPage: React.FC = () => {
       }
       
       try {
-        setLoading(true);
-        const dbUtil = DBUtil.getInstance();
-        await dbUtil.initDB();
-        
-        const postData = await dbUtil.get<Post>(STORES.POSTS, postId);
-        
-        if (postData) {
-          try {
-            const group = await dbUtil.get(STORES.GROUPS, postData.groupId) as any;
-            if (group) {
-              postData.groupName = group.name;
-            }
-          } catch (groupError) {
-            console.error('グループ情報の取得に失敗:', groupError);
-          }
-          
-          setPost(postData);
-          setEditedMessage(postData.message || '');
-          setEditedTags(postData.tags || []);
-        } else {
-          // 投稿が見つからない場合
-          setError('指定された投稿が見つかりません');
-        }
-        } catch (error) {
-          console.error('投稿詳細の取得に失敗:', error);
-          setError('投稿の読み込みに失敗しました');
-        } finally {
-          setLoading(false);
-        }
+  setLoading(true);
+  
+  // ユーザーIDを取得
+  const userId = localStorage.getItem("daily-report-user-id");
+  if (!userId) {
+    setError("ユーザー認証が必要です");
+    setLoading(false);
+    return;
+  }
+
+  const dbUtil = DBUtil.getInstance();
+  await dbUtil.initDB();
+  
+  // UnifiedCoreSystemから投稿データを取得（1回のみ）
+  const postData = await UnifiedCoreSystem.getPost(postId, userId);
+  
+  if (postData) {
+    try {
+      const group = await dbUtil.get(STORES.GROUPS, postData.groupId) as any;
+      if (group) {
+        postData.groupName = group.name;
+      }
+    } catch (groupError) {
+      console.error('グループ情報の取得に失敗:', groupError);
+    }
+    
+    setPost(postData);
+    setEditedMessage(postData.message || '');
+    setEditedTags(postData.tags || []);
+  } else {
+    // 投稿が見つからない場合
+    setError('指定された投稿が見つかりません');
+  }
+} catch (error) {
+  console.error('投稿詳細の取得に失敗:', error);
+  setError('投稿の読み込みに失敗しました');
+} finally {
+  setLoading(false);
+}
     };
     
     fetchPost();
@@ -190,9 +203,11 @@ useEffect(() => {
   const handleSave = async () => {
     if (!post) return;
     
-    try {
-      setSaving(true);
-      clearErrors();
+  try {
+  setSaving(true);
+  setSyncStatus('local'); // この行を追加
+  clearErrors();
+
       
       // 新しい写真をBase64に変換（安全な処理）
       let additionalPhotoUrls: string[] = [];
@@ -244,7 +259,45 @@ useEffect(() => {
       // データベースに保存
       const dbUtil = DBUtil.getInstance();
       await dbUtil.initDB();
-      await dbUtil.save(STORES.POSTS, updatedPost);
+      // ローカル保存（既存のオフライン機能維持）
+await dbUtil.save(STORES.POSTS, updatedPost);
+
+// ハイブリッド同期に状態表示を追加
+setSyncStatus('online'); // この行を追加
+try {
+  console.log('🔄 EditPage: ハイブリッド同期開始');
+  
+  await UnifiedCoreSystem.savePost({
+    message: sanitizedMessage,
+    files: editedPhotos ? Array.from(editedPhotos) : [],
+    tags: validTags.map(tag => tag.replace('#', '')),
+    groupId: post.groupId
+  });
+  
+  console.log('✅ EditPage: オンライン同期完了');
+  setSyncStatus('completed'); // この行を追加
+} catch (syncError) {
+  console.warn('⚠️ EditPage: オンライン同期失敗（オフライン保存は完了）:', syncError);
+  setSyncStatus('completed'); // この行を追加（ローカル保存完了で成功扱い）
+}
+
+
+      // UnifiedCoreSystemの更新通知を追加
+try {
+  const updateFlag = Date.now().toString();
+  localStorage.setItem('daily-report-posts-updated', updateFlag);
+  window.dispatchEvent(new CustomEvent('postsUpdated', {
+    detail: {
+      updatedPost: updatedPost,
+      timestamp: Date.now(),
+      source: 'EditPostPage',
+      action: 'update'
+    }
+  }));
+  console.log('✅ EditPage: 統合システムに更新通知完了');
+} catch (error) {
+  console.error('❌ EditPage: 更新通知エラー:', error);
+}
       
       alert('✅ 投稿を更新しました！');
       
@@ -280,6 +333,23 @@ useEffect(() => {
       const dbUtil = DBUtil.getInstance();
       await dbUtil.initDB();
       await dbUtil.delete(STORES.POSTS, post.id);
+
+      // UnifiedCoreSystemの削除通知を追加
+try {
+  const updateFlag = Date.now().toString();
+  localStorage.setItem('daily-report-posts-updated', updateFlag);
+  window.dispatchEvent(new CustomEvent('postsUpdated', {
+    detail: {
+      deletedPostId: post.id, 
+      timestamp: Date.now(),
+      source: 'EditPostPage',
+      action: 'delete'
+    }
+  }));
+  console.log('✅ EditPage: 削除通知完了');
+} catch (error) {
+  console.error('❌ EditPage: 削除通知エラー:', error);
+}
       
       alert('✅ 投稿を削除しました');
       
@@ -887,8 +957,10 @@ useEffect(() => {
                     borderRadius: '50%',
                     animation: 'spin 1s linear infinite'
                   }}></div>
-                  保存中...
-                </>
+                   {syncStatus === 'local' && 'ローカル保存中...'}
+    {syncStatus === 'online' && 'クラウド同期中...'}
+    {syncStatus === 'completed' && '保存完了!'}
+  </>
               ) : isValidating ? (
                 <>
                   <div style={{

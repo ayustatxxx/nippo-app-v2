@@ -1288,11 +1288,18 @@ const PostDetailModal: React.FC<{
   };
 
   // 投稿の詳細ページへ移動する関数
- const handleViewPostDetails = (postId: string, groupId: string) => {
-  const targetPost = posts.find(post => post.id === postId);
-  if (targetPost) {
-    setSelectedPostForDetail(targetPost);
-  }
+const handleViewPostDetails = (postId: string, groupId: string) => {
+  // スクロール位置を保存
+  sessionStorage.setItem('homeScrollPosition', window.pageYOffset.toString());
+  console.log('📍 スクロール位置保存:', window.pageYOffset);
+  
+  const params = new URLSearchParams();
+  params.set('from', 'home');
+  params.set('groupId', groupId);
+  params.set('postId', postId);
+  
+  const paramString = params.toString() ? `?${params.toString()}` : '';
+  navigate(`/post/${postId}${paramString}`);
 };
 
 
@@ -1341,6 +1348,16 @@ useEffect(() => {
   
   const loadDataFast = async () => {
   console.log('🔍 loadDataFast関数開始'); // 追加
+  
+  // ★ ここにスクロール位置復帰処理を追加 ★
+  const savedPosition = sessionStorage.getItem('homeScrollPosition');
+  if (savedPosition) {
+    console.log('📍 スクロール位置復帰:', savedPosition);
+    setTimeout(() => {
+      window.scrollTo(0, parseInt(savedPosition));
+      sessionStorage.removeItem('homeScrollPosition');
+    }, 500); // データ読み込み後に実行
+  }
   
   // 復帰モードの判定を追加
   const returnToDetail = sessionStorage.getItem('returnToDetail');

@@ -53,6 +53,8 @@ const [isMemosLoading, setIsMemosLoading] = useState(false);
 const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
 const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 const [userIsAdmin, setUserIsAdmin] = useState(false); 
+const [galleryImages, setGalleryImages] = useState<string[]>([]);
+
 
 
 // メモを取得する関数
@@ -236,6 +238,15 @@ const handleStatusUpdate = async (newStatus: string) => {
     // ページを開いた時に一番上にスクロールする
     window.scrollTo(0, 0);
   }, [postId]);
+
+
+  // ★ 新しいuseEffectを追加（投稿データ変更時の初期化） ★
+  useEffect(() => {
+    if (post && post.photoUrls && post.photoUrls.length > 0) {
+      setGalleryImages(post.photoUrls);
+      console.log('✅ PostDetail画像初期化:', post.photoUrls.length);
+    }
+  }, [post]);
 
   
   // 日付と時間を分割する関数
@@ -489,10 +500,13 @@ const StatusModal: React.FC<{
     const postId = searchParams.get('postId');
     
     // 戻り先ページの即座スクロール復元用フラグを設定
-    const savedPosition = sessionStorage.getItem('homeScrollPosition');
-    if (savedPosition) {
-      sessionStorage.setItem('restoreScrollImmediately', savedPosition);
-    }
+const handleBack = () => {
+  const savedPosition = sessionStorage.getItem('homeScrollPosition');
+  if (savedPosition) {
+    sessionStorage.setItem('restoreScrollImmediately', savedPosition);
+  }
+  navigate(-1);
+};
     
     const searchQuery = searchParams.get('searchQuery');
     const startDate = searchParams.get('startDate');
@@ -752,11 +766,33 @@ const StatusModal: React.FC<{
                         backgroundColor: '#f8f8f8',
                         cursor: 'pointer'
                       }}
+                     
                       onClick={() => {
-                        const imageIndex = post.photoUrls.findIndex(photoUrl => photoUrl === url);
-                        setGalleryIndex(imageIndex);
-                        setGalleryOpen(true);
-                      }}
+  // データの安全性確認
+  if (!post?.photoUrls || post.photoUrls.length === 0) {
+    console.warn('⚠️ 投稿データまたは画像データが不完全');
+    return;
+  }
+  
+  console.log('🔍 [PostDetail] 安全な画像クリック開始:', {
+    photoUrlsLength: post.photoUrls.length,
+    clickedUrl: url.substring(0, 30) + '...'
+  });
+  
+  const imageIndex = post.photoUrls.findIndex(photoUrl => photoUrl === url);
+  
+  // 防御的コピーでデータの安定性を確保
+  const imagesCopy = [...post.photoUrls];
+  setGalleryImages(imagesCopy);
+  setGalleryIndex(imageIndex);
+  setGalleryOpen(true);
+  
+  console.log('✅ [PostDetail] 画像設定完了:', {
+    imageIndex,
+    totalImages: imagesCopy.length,
+    clickedImageUrl: url.substring(0, 30) + '...'
+  });
+}}
                     >
                       <img
                         src={url}
@@ -956,12 +992,18 @@ const StatusModal: React.FC<{
       </div>
       
       {/* 画像ギャラリーモーダル */}
-<ImageGalleryModal
-  images={post?.photoUrls || []}
-  initialIndex={galleryIndex}
-  isOpen={galleryOpen}
-  onClose={() => setGalleryOpen(false)}
-/>
+      {galleryOpen && (
+  <ImageGalleryModal
+    key={`gallery-${post?.id}-${galleryIndex}-${Date.now()}`}
+    images={galleryImages}
+    initialIndex={galleryIndex}
+    isOpen={galleryOpen}
+    onClose={() => {
+      setGalleryOpen(false);
+      setGalleryImages([]); // 追加：状態をクリア
+    }}
+  />
+)}
 
 
     {/* メモ追加モーダル */}

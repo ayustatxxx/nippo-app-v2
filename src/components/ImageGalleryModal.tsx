@@ -24,13 +24,27 @@ const ImageGalleryModal: React.FC<ImageGalleryModalProps> = ({
 
   // モーダルが開かれたときに初期インデックスを設定
   useEffect(() => {
-    if (isOpen) {
-      setCurrentIndex(initialIndex);
-      setScale(1);
-      setPosition({ x: 0, y: 0 });
-      setIsZoomed(false);
-    }
-  }, [isOpen, initialIndex]);
+  console.log('🔍 [ImageGallery] useEffect実行:', {
+    isOpen,
+    initialIndex,
+    imagesLength: images.length,
+    firstImage: images[0]?.substring(0, 50) + '...',
+    // ★ この行を追加 ★
+    allImagesPreview: images.map((img, i) => `${i}: ${img.substring(0, 30)}...`)
+  });
+  
+  if (isOpen) {
+    console.log('✅ [ImageGallery] モーダル初期化:', {
+      settingIndex: initialIndex,
+      currentImages: images.length,
+      // ★ この行を追加 ★
+      receivedImages: images.map(img => img.substring(0, 50) + '...')
+    });
+    setCurrentIndex(initialIndex);
+    // ... 以下略
+  }
+}, [isOpen, initialIndex, images]);
+
 
   // キーボードナビゲーション
   useEffect(() => {
