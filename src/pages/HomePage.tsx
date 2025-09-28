@@ -1289,14 +1289,23 @@ const PostDetailModal: React.FC<{
 
   // 投稿の詳細ページへ移動する関数
 const handleViewPostDetails = (postId: string, groupId: string) => {
+  const targetPost = posts.find(post => post.id === postId);
+  
   // スクロール位置を保存
   sessionStorage.setItem('homeScrollPosition', window.pageYOffset.toString());
   console.log('📍 スクロール位置保存:', window.pageYOffset);
+  
+  // 投稿データを事前保存（高速化）
+  if (targetPost) {
+    sessionStorage.setItem(`post-${postId}`, JSON.stringify(targetPost));
+    console.log('⚡ 投稿データ事前保存:', postId);
+  }
   
   const params = new URLSearchParams();
   params.set('from', 'home');
   params.set('groupId', groupId);
   params.set('postId', postId);
+  params.set('preloaded', 'true'); // 事前読み込みフラグ
   
   const paramString = params.toString() ? `?${params.toString()}` : '';
   navigate(`/post/${postId}${paramString}`);
