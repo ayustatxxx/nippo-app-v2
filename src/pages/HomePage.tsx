@@ -1419,6 +1419,7 @@ useEffect(() => {
       return;
     }
     
+    
     console.log('🔍 認証OK、データ取得処理に進む'); // 追加
     
     setIsAuthenticated(true);
