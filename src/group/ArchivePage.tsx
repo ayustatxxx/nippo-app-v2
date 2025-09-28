@@ -6,6 +6,8 @@ import { Post } from '../types';
 import ImageGalleryModal from '../components/ImageGalleryModal';
 import { getGroupPosts, markPostAsRead, getPostReadStatus } from "../utils/firestoreService";
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
+import { getUser } from '../firebase/firestore';
+import Header from '../components/Header';
 
 
 // 投稿データにメモ情報を追加するための型拡張
@@ -664,6 +666,9 @@ const [galleryIndex, setGalleryIndex] = useState(0);
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(
     new Set()
   );
+  // 詳細モーダル用のstate変数を追加
+  const [selectedPostForDetail, setSelectedPostForDetail] = useState<Post | null>(null);
+  
   const [selectAll, setSelectAll] = useState(false);
   const [downloadLink, setDownloadLink] = useState<string | null>(null);
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
@@ -678,6 +683,7 @@ const [currentUserId, setCurrentUserId] = useState<string>('');
 
   // ステータス選択用の状態
   const [selectedPostForStatus, setSelectedPostForStatus] = useState<string | null>(null);
+
 
 
   // データ分析機能用の状態を追加
@@ -993,26 +999,15 @@ const shouldShowExportButton = () => {
 
   // 詳細ボタンのハンドラー
   const handleEditPost = (postId: string) => {
-  const params = new URLSearchParams();
-  params.set('from', 'archive');
-  params.set('groupId', groupId);
-  params.set('postId', postId);
-  
-  // ★ 現在の検索状態を保持 ★
-  if (searchQuery.trim()) {
-    params.set('searchQuery', searchQuery);
+  const targetPost = posts.find(post => post.id === postId);
+  if (targetPost) {
+    // スクロール位置を保存
+    sessionStorage.setItem('archiveScrollPosition', window.pageYOffset.toString());
+    console.log('📍 Archive スクロール位置保存:', window.pageYOffset);
+    
+    setSelectedPostForDetail(targetPost);
   }
-  if (startDate) {
-    params.set('startDate', startDate.toISOString());
-  }
-  if (endDate) {
-    params.set('endDate', endDate.toISOString());
-  }
-  
-  const paramString = params.toString() ? `?${params.toString()}` : '';
-  navigate(`/post/${postId}${paramString}`);
 };
-
 
 
 useEffect(() => {
@@ -1781,6 +1776,320 @@ ${selectedPosts
       setIsGeneratingPdf(false);
     }
   };
+
+  // 時間抽出ヘルパー関数
+const extractTime = (timeString: string): string => {
+  const timePart = timeString.split('　')[1];
+  return timePart || timeString;
+};
+
+  
+// PostDetailModal コンポーネント
+    const PostDetailModal: React.FC<{
+      post: Post;
+      onClose: () => void;
+      navigate: (path: string) => void;
+      onMemoClick: (post: Post) => void;
+    }> = ({ post, onClose, navigate, onMemoClick }) => {
+      const [displayPost, setDisplayPost] = useState<Post>(post);
+    
+      // ユーザー情報を取得して表示名・会社名・役職を補完
+      useEffect(() => {
+        const fetchUserInfo = async () => {
+          try {
+            const userInfo = await getUser(displayPost.userId);
+            if (userInfo) {
+              setDisplayPost(prevPost => ({
+                ...prevPost,
+                username: userInfo.displayName || userInfo.username || prevPost.username,
+                company: userInfo.company || '会社名なし',
+                position: userInfo.position || '役職なし'
+              }));
+            }
+          } catch (error) {
+            console.error('ユーザー情報取得エラー:', error);
+          }
+        };
+    
+        fetchUserInfo();
+      }, [displayPost.userId]);
+    
+      return (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: '#f5f5f5',
+            zIndex: 1000,
+            overflowY: 'auto',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Header 
+            title="投稿詳細"
+            showBackButton={true}
+            onBackClick={onClose}
+          />
+          
+          <div style={{ 
+            maxWidth: '480px', 
+            margin: '0 auto',
+            padding: '1rem',
+            paddingTop: '70px',
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+              margin: '0.5rem 0 1.5rem 0'
+            }}>
+              <div style={{
+                padding: '1rem',
+                borderBottom: '1px solid #f0f0f0',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '1rem'
+              }}>
+                {/* アバター部分 */}
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(5, 90, 104, 0.1)',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}>
+                  <svg 
+                    width="30"
+                    height="30"
+                    viewBox="0 0 24 24" 
+                    fill="#055A68" 
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" />
+                  </svg>
+                </div>
+                
+                {/* ユーザー情報（名前、役職・会社名） */}
+                <div style={{ flex: 1 }}>
+                  <div style={{ 
+                    fontWeight: 'bold', 
+                    color: '#055A68', 
+                    fontSize: '1.1rem',
+                    marginBottom: '0.2rem'
+                  }}>
+                    {displayPost.username || 'ユーザー'}
+                  </div>
+                  <div style={{ 
+                    color: '#666', 
+                    fontSize: '0.85rem' 
+                  }}>
+                    {displayPost.position || '役職なし'} • {displayPost.company || '会社名なし'}
+                  </div>
+                </div>
+                
+                {/* 日時表示 */}
+                <div style={{ 
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: '8px',
+                  color: '#055A68',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'flex-end',
+                  gap: '0.0rem'
+                }}>
+                  <div>{extractTime(displayPost.time)}</div>
+                </div>
+              </div>
+              
+              {/* グループ情報 */}
+              {/* グループ情報 */}
+    <div 
+      style={{
+        padding: '0.6rem 1rem',
+        backgroundColor: 'rgba(5, 90, 104, 0.05)',
+        color: '#055A68',
+        fontSize: '0.9rem',
+        fontWeight: '500',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid #f0f0f0'
+      }}
+      onClick={() => navigate(`/group/${displayPost.groupId}?from=home-detail&postId=${displayPost.id}`)}
+    >
+      <span>{displayPost.groupName || 'グループ'}</span>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#055A68"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="9,18 15,12 9,6"></polyline>
+      </svg>
+    </div>
+    
+              {/* 投稿内容 */}
+              <div style={{ padding: '1.2rem' }}>
+                
+                {/* メッセージ */}
+                {displayPost.message && (
+                  <div style={{
+                    whiteSpace: 'pre-wrap',
+                    lineHeight: '1.6',
+                    color: '#333',
+                    fontSize: '1rem',
+                    marginBottom: '1.5rem'
+                  }}>
+                    {displayPost.message}
+                    {displayPost.isEdited && (
+                      <span style={{
+                        color: 'rgba(5, 90, 104, 0.7)',
+                        fontSize: '0.85rem',
+                        marginLeft: '0.5rem'
+                      }}>
+                        （編集済み）
+                      </span>
+                    )}
+                  </div>
+                )}
+    
+                {/* メッセージがない場合の編集済み表示 */}
+                {!displayPost.message && displayPost.isEdited && (
+                  <div style={{
+                    whiteSpace: 'pre-wrap',
+                    lineHeight: '1.6',
+                    color: 'rgba(255, 255, 255, 0.8)',
+                    fontSize: '0.85rem',
+                    marginBottom: '1.5rem',
+                    fontStyle: 'italic'
+                  }}>
+                    （編集済み）
+                  </div>
+                )}
+                
+                {/* タグ */}
+                {displayPost.tags && displayPost.tags.length > 0 && (
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
+                    marginBottom: '1.5rem'
+                  }}>
+                    {displayPost.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        style={{
+                          backgroundColor: 'rgba(5, 90, 104, 0.08)',
+                          color: '#055A68',
+                          padding: '0.3rem 0.7rem',
+                          borderRadius: '999px',
+                          fontSize: '0.8rem',
+                          fontWeight: '600'
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                {/* 画像 */}
+                {displayPost.photoUrls && displayPost.photoUrls.length > 0 && (
+                  <div style={{
+                    marginTop: '1rem',
+                    display: 'grid',
+                    gridTemplateColumns: displayPost.photoUrls.length === 1 ? '1fr' : 
+                                        displayPost.photoUrls.length === 2 ? '1fr 1fr' : 
+                                        'repeat(3, 1fr)',
+                    gap: '0.5rem'
+                  }}>
+                    {displayPost.photoUrls.map((url, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          aspectRatio: '1 / 1',
+                          overflow: 'hidden',
+                          borderRadius: '8px',
+                          backgroundColor: '#f8f8f8',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => {
+      if (!displayPost?.photoUrls || displayPost.photoUrls.length === 0) {
+        console.warn('⚠️ 画像データが不完全');
+        return;
+      }
+      
+      const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
+      setGalleryImages([...displayPost.photoUrls]); // ← この行が重要
+      setGalleryIndex(imageIndex);
+      setGalleryOpen(true);
+      
+      console.log('✅ モーダル画像設定完了:', {
+        imageIndex,
+        totalImages: displayPost.photoUrls.length
+      });
+    }}
+                      >
+                        <img
+                          src={url}
+                          alt={`投稿画像 ${index + 1}`}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover'
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+    
+             {/* アクションボタン - Home専用軽量版 */}
+    <div style={{
+      marginTop: '2rem',
+      paddingTop: '1rem',
+      borderTop: '1px solid #f0f0f0',
+      display: 'flex',
+      justifyContent: 'flex-start',
+      alignItems: 'center'
+    }}>
+      {/* メモボタンのみ */}
+      <button
+        onClick={() => onMemoClick(displayPost)}
+        style={{
+          padding: '0.5rem 1.2rem',
+          backgroundColor: 'rgb(0, 102, 114)',
+          color: '#F0DB4F',
+          border: 'none',
+          borderRadius: '20px',
+          fontSize: '0.9rem',
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+      >
+        メモ
+      </button>
+    </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+  
 
   return (
     <div
@@ -3451,8 +3760,7 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
       </h3>
       
       <textarea
-        value={memoContent}
-        onChange={(e) => setMemoContent(e.target.value)}
+       onChange={(e) => setMemoContent(e.target.value)}
         placeholder="メモ内容を入力してください"
         style={{
           width: '100%',
@@ -3469,44 +3777,20 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
         }}
       />
       
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <button
-          onClick={() => selectedPostForMemo && saveMemo(selectedPostForMemo, memoContent)}
-          disabled={!memoContent.trim()}
-          style={{
-            flex: 1,
-            padding: '0.75rem',
-            backgroundColor: memoContent.trim() ? '#F0DB4F' : '#ccc',
-            color: '#055A68',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '0.9rem',
-            fontWeight: 'bold',
-            cursor: memoContent.trim() ? 'pointer' : 'not-allowed',
-          }}
-        >
-          保存
-        </button>
-        
-        <button
-          onClick={() => setMemoModalOpen(false)}
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: '#fff',
-            color: '#666',
-            border: '1px solid #ddd',
-            borderRadius: '8px',
-            fontSize: '0.9rem',
-            cursor: 'pointer',
-          }}
-        >
-          キャンセル
-        </button>
-      </div>
+
     </div>
   </div>
 )}
 
+{/* 投稿詳細モーダル */}
+{selectedPostForDetail && (
+  <PostDetailModal
+    post={selectedPostForDetail}
+    onClose={() => setSelectedPostForDetail(null)}
+    navigate={navigate}
+    onMemoClick={(post) => handleAddMemo(post.id)}
+  />
+)}
       {/* グループフッターナビゲーション */}
       <GroupFooterNav activeTab="history" />
     </div>
