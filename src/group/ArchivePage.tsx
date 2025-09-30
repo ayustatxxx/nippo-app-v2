@@ -2057,32 +2057,80 @@ const extractTime = (timeString: string): string => {
                   </div>
                 )}
     
-             {/* アクションボタン - Home専用軽量版 */}
-    <div style={{
-      marginTop: '2rem',
-      paddingTop: '1rem',
-      borderTop: '1px solid #f0f0f0',
-      display: 'flex',
-      justifyContent: 'flex-start',
-      alignItems: 'center'
-    }}>
-      {/* メモボタンのみ */}
-      <button
-        onClick={() => onMemoClick(displayPost)}
-        style={{
-          padding: '0.5rem 1.2rem',
-          backgroundColor: 'rgb(0, 102, 114)',
-          color: '#F0DB4F',
-          border: 'none',
-          borderRadius: '20px',
-          fontSize: '0.9rem',
-          cursor: 'pointer',
-          fontWeight: 'bold'
-        }}
-      >
-        メモ
-      </button>
-    </div>
+            {/* アクションボタン - Archive完全版 */}
+<div style={{
+  marginTop: '2rem',
+  paddingTop: '1rem',
+  borderTop: '1px solid #f0f0f0',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: '1rem'
+}}>
+  {/* 左側：メモボタン */}
+  <button
+    onClick={() => onMemoClick(displayPost)}
+    style={{
+      padding: '0.5rem 1.2rem',
+      backgroundColor: 'rgb(0, 102, 114)',
+      color: '#F0DB4F',
+      border: 'none',
+      borderRadius: '20px',
+      fontSize: '0.9rem',
+      cursor: 'pointer',
+      fontWeight: 'bold'
+    }}
+  >
+    メモ
+  </button>
+
+  {/* 右側：編集・削除ボタン */}
+  <div style={{ display: 'flex', gap: '0.5rem' }}>
+    <button
+      onClick={() => {
+        onClose();
+        navigate(`/post/${displayPost.id}?from=archive&groupId=${displayPost.groupId}`);
+      }}
+      style={{
+        padding: '0.5rem 1.2rem',
+        backgroundColor: 'rgb(0, 102, 114)',
+        color: '#F0DB4F',
+        border: 'none',
+        borderRadius: '20px',
+        fontSize: '0.9rem',
+        cursor: 'pointer',
+        fontWeight: 'bold'
+      }}
+    >
+      編集
+    </button>
+
+    <button
+      onClick={() => {
+        if (window.confirm('この投稿を削除してもよろしいですか？')) {
+          // 削除処理（既存のhandleDelete関数を活用）
+          onClose();
+          const deleteEvent = new CustomEvent('deletePost', { 
+            detail: { postId: displayPost.id } 
+          });
+          window.dispatchEvent(deleteEvent);
+        }
+      }}
+      style={{
+        padding: '0.5rem 1.2rem',
+        backgroundColor: 'rgb(0, 102, 114)',
+        color: '#F0DB4F',
+        border: 'none',
+        borderRadius: '20px',
+        fontSize: '0.9rem',
+        cursor: 'pointer',
+        fontWeight: 'bold'
+      }}
+    >
+      削除
+    </button>
+  </div>
+</div>
               </div>
             </div>
           </div>
