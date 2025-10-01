@@ -60,6 +60,7 @@ interface PostCardProps {
   getContainerStatusStyle: (status: string) => any;
   userRole: 'admin' | 'user';
   onMemoClick: (post: Post) => void; // この行を追加
+  onPlusButtonClick: (post: Post) => void;
 }
 
 
@@ -79,7 +80,8 @@ const PostCard: React.FC<PostCardProps> = ({
   onStatusUpdate, 
   getContainerStatusStyle,
   userRole,
-  onMemoClick  // この行を追加  
+  onMemoClick,
+  onPlusButtonClick  
 }) => {
   const [selectedPostForStatus, setSelectedPostForStatus] = useState<string | null>(null); 
   const [authorDisplayName, setAuthorDisplayName] = useState<string>('読み込み中...');
@@ -380,29 +382,29 @@ useEffect(() => {
           
           {/* 8枚以上ある場合、最後の枠に+X表示 - こちらも詳細ページに遷移 */}
           {post.photoUrls.length > 7 && (
-            <div
-              style={{
-                width: 'calc((100% - 1.5rem) / 4)',
-                aspectRatio: '1/1',
-                borderRadius: '8px',
-                backgroundColor: 'rgba(0, 102, 114, 0.1)',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                color: 'rgb(0, 102, 114)',
-                fontSize: '1.1rem',
-                fontWeight: 'bold',
-                marginTop: '0.5rem',
-                cursor: 'pointer',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onImageClick(post.photoUrls[0], post.photoUrls);
-              }}
-            >
-              +{post.photoUrls.length - 7}
-            </div>
-          )}
+  <div
+    style={{
+      width: 'calc((100% - 1.5rem) / 4)',
+      aspectRatio: '1/1',
+      borderRadius: '8px',
+      backgroundColor: 'rgba(0, 102, 114, 0.1)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      color: 'rgb(0, 102, 114)',
+      fontSize: '1.1rem',
+      fontWeight: 'bold',
+      marginTop: '0.5rem',
+      cursor: 'pointer',
+    }}
+    onClick={(e) => {
+  e.stopPropagation();
+  onPlusButtonClick(post);
+}}
+  >
+    +{post.photoUrls.length - 7}
+  </div>
+)}
         </div>
       )}
 
@@ -2398,6 +2400,7 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
   getContainerStatusStyle={getContainerStatusStyle}
   userRole={userRole}  
   onMemoClick={handleMemoClick} 
+  onPlusButtonClick={(post) => setSelectedPostForDetail(post)}
 />
             )
           ))}
