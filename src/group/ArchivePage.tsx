@@ -997,15 +997,13 @@ const shouldShowExportButton = () => {
          filteredPosts.length > 0;     // 投稿がある時
 };
 
-  // 詳細ボタンのハンドラー
-  const handleEditPost = (postId: string) => {
+// 詳細ボタンのハンドラー
+const handleEditPost = (postId: string) => {
   const targetPost = posts.find(post => post.id === postId);
   if (targetPost) {
-    // スクロール位置を保存
-    sessionStorage.setItem('archiveScrollPosition', window.pageYOffset.toString());
-    console.log('📍 Archive スクロール位置保存:', window.pageYOffset);
-    
     setSelectedPostForDetail(targetPost);
+  } else {
+    console.warn('⚠️ 投稿が見つかりません:', postId);
   }
 };
 
@@ -1784,35 +1782,43 @@ const extractTime = (timeString: string): string => {
 };
 
   
-// PostDetailModal コンポーネント
-    const PostDetailModal: React.FC<{
-      post: Post;
-      onClose: () => void;
-      navigate: (path: string) => void;
-      onMemoClick: (post: Post) => void;
-    }> = ({ post, onClose, navigate, onMemoClick }) => {
-      const [displayPost, setDisplayPost] = useState<Post>(post);
-    
-      // ユーザー情報を取得して表示名・会社名・役職を補完
-      useEffect(() => {
-        const fetchUserInfo = async () => {
-          try {
-            const userInfo = await getUser(displayPost.userId);
-            if (userInfo) {
-              setDisplayPost(prevPost => ({
-                ...prevPost,
-                username: userInfo.displayName || userInfo.username || prevPost.username,
-                company: userInfo.company || '会社名なし',
-                position: userInfo.position || '役職なし'
-              }));
-            }
-          } catch (error) {
-            console.error('ユーザー情報取得エラー:', error);
-          }
-        };
-    
-        fetchUserInfo();
-      }, [displayPost.userId]);
+    // PostDetailModal コンポーネント
+const PostDetailModal: React.FC<{
+  post: Post;
+  onClose: () => void;
+  navigate: (path: string) => void;
+  onMemoClick: (post: Post) => void;
+}> = ({ post, onClose, navigate, onMemoClick }) => {
+  const [displayPost, setDisplayPost] = useState<Post>(post);
+  
+  // 現在ログインしているユーザーのIDを取得
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";
+  
+  // この投稿の作成者かどうかを判定
+  const isAuthor = displayPost.userId === currentUserId || 
+                   displayPost.createdBy === currentUserId ||
+                   displayPost.authorId === currentUserId;
+
+  // ユーザー情報を取得して表示名・会社名・役職を補完
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        const userInfo = await getUser(displayPost.userId);
+        if (userInfo) {
+          setDisplayPost(prevPost => ({
+            ...prevPost,
+            username: userInfo.displayName || userInfo.username || prevPost.username,
+            company: userInfo.company || '会社名なし',
+            position: userInfo.position || '役職なし'
+          }));
+        }
+      } catch (error) {
+        console.error('ユーザー情報取得エラー:', error);
+      }
+    };
+
+    fetchUserInfo();
+  }, [displayPost.userId]);
     
       return (
         <div
@@ -1909,37 +1915,7 @@ const extractTime = (timeString: string): string => {
                 </div>
               </div>
               
-              {/* グループ情報 */}
-              {/* グループ情報 */}
-    <div 
-      style={{
-        padding: '0.6rem 1rem',
-        backgroundColor: 'rgba(5, 90, 104, 0.05)',
-        color: '#055A68',
-        fontSize: '0.9rem',
-        fontWeight: '500',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        borderBottom: '1px solid #f0f0f0'
-      }}
-      onClick={() => navigate(`/group/${displayPost.groupId}?from=home-detail&postId=${displayPost.id}`)}
-    >
-      <span>{displayPost.groupName || 'グループ'}</span>
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="#055A68"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <polyline points="9,18 15,12 9,6"></polyline>
-      </svg>
-    </div>
+              
     
               {/* 投稿内容 */}
               <div style={{ padding: '1.2rem' }}>
@@ -2057,17 +2033,16 @@ const extractTime = (timeString: string): string => {
                   </div>
                 )}
     
-            {/* アクションボタン - Archive完全版 */}
+          {/* アクションボタン - 権限制御付き */}
 <div style={{
   marginTop: '2rem',
   paddingTop: '1rem',
   borderTop: '1px solid #f0f0f0',
   display: 'flex',
   justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: '1rem'
+  alignItems: 'center'
 }}>
-  {/* 左側：メモボタン */}
+  {/* メモボタン（全員に表示） */}
   <button
     onClick={() => onMemoClick(displayPost)}
     style={{
@@ -2084,52 +2059,56 @@ const extractTime = (timeString: string): string => {
     メモ
   </button>
 
-  {/* 右側：編集・削除ボタン */}
-  <div style={{ display: 'flex', gap: '0.5rem' }}>
-    <button
-      onClick={() => {
-        onClose();
-        navigate(`/post/${displayPost.id}?from=archive&groupId=${displayPost.groupId}`);
-      }}
-      style={{
-        padding: '0.5rem 1.2rem',
-        backgroundColor: 'rgb(0, 102, 114)',
-        color: '#F0DB4F',
-        border: 'none',
-        borderRadius: '20px',
-        fontSize: '0.9rem',
-        cursor: 'pointer',
-        fontWeight: 'bold'
-      }}
-    >
-      編集
-    </button>
-
-    <button
-      onClick={() => {
-        if (window.confirm('この投稿を削除してもよろしいですか？')) {
-          // 削除処理（既存のhandleDelete関数を活用）
+  {/* 編集・削除ボタン（投稿者のみ表示） */}
+  {isAuthor && (
+    <div style={{ display: 'flex', gap: '0.5rem' }}>
+      <button
+        onClick={() => {
           onClose();
-          const deleteEvent = new CustomEvent('deletePost', { 
-            detail: { postId: displayPost.id } 
-          });
-          window.dispatchEvent(deleteEvent);
-        }
-      }}
-      style={{
-        padding: '0.5rem 1.2rem',
-        backgroundColor: 'rgb(0, 102, 114)',
-        color: '#F0DB4F',
-        border: 'none',
-        borderRadius: '20px',
-        fontSize: '0.9rem',
-        cursor: 'pointer',
-        fontWeight: 'bold'
-      }}
-    >
-      削除
-    </button>
-  </div>
+          const params = new URLSearchParams();
+          params.set('from', 'archive');
+          params.set('groupId', displayPost.groupId);
+          navigate(`/edit-post/${displayPost.id}?${params.toString()}`);
+        }}
+        style={{
+          padding: '0.5rem 1.2rem',
+          backgroundColor: 'rgb(0, 102, 114)',
+          color: '#F0DB4F',
+          border: 'none',
+          borderRadius: '20px',
+          fontSize: '0.9rem',
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+      >
+        編集
+      </button>
+
+      <button
+        onClick={() => {
+          if (window.confirm('この投稿を削除してもよろしいですか？')) {
+            onClose();
+            const deleteEvent = new CustomEvent('deletePost', { 
+              detail: { postId: displayPost.id } 
+            });
+            window.dispatchEvent(deleteEvent);
+          }
+        }}
+        style={{
+          padding: '0.5rem 1.2rem',
+          backgroundColor: 'rgb(0, 102, 114)',
+          color: '#F0DB4F',
+          border: 'none',
+          borderRadius: '20px',
+          fontSize: '0.9rem',
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+      >
+        削除
+      </button>
+    </div>
+  )}
 </div>
               </div>
             </div>

@@ -259,22 +259,40 @@ const handleStatusUpdate = async (newStatus: string) => {
   };
   
 
-  // 他のユーザーが既読したかチェック（3時間制限）
+ // 他のユーザーが既読したかチェック（編集制限）
   const hasOthersRead = (post: Post): boolean => {
-    // 暫定的に、投稿から3時間経過したら編集不可とする
-    const postTime = new Date(post.timestamp || Date.now() - 3600000);
-    const now = new Date();
-    const hoursDiff = (now.getTime() - postTime.getTime()) / (1000 * 60 * 60);
-    return hoursDiff > 3; // 3時間を超えたら編集不可
+    const currentUserId = localStorage.getItem("daily-report-user-id");
+    
+    // readByオブジェクトから自分以外のユーザーが既読したかチェック
+    if (post.readBy && typeof post.readBy === 'object') {
+      const readers = Object.keys(post.readBy);
+      const othersRead = readers.some(userId => userId !== currentUserId);
+      
+      console.log('🔍 既読チェック:', {
+        readers,
+        currentUserId,
+        othersRead
+      });
+      
+      return othersRead;
+    }
+    
+    return false;
   };
 
   // 削除期限をチェック（24時間制限）
-const isDeleteExpired = (post: Post): boolean => {
-  const postTime = new Date(post.timestamp || Date.now() - 3600000);
-  const now = new Date();
-  const hoursDiff = (now.getTime() - postTime.getTime()) / (1000 * 60 * 60);
-  return hoursDiff > 24; // 24時間を超えたら削除不可
-};
+  const isDeleteExpired = (post: Post): boolean => {
+    const postTime = new Date(post.timestamp || Date.now());
+    const now = new Date();
+    const hoursDiff = (now.getTime() - postTime.getTime()) / (1000 * 60 * 60);
+    
+    console.log('🔍 削除期限チェック:', {
+      hoursDiff: hoursDiff.toFixed(1),
+      isExpired: hoursDiff > 24
+    });
+    
+    return hoursDiff > 24; // 24時間を超えたら削除不可
+  };
 
   // メモボタンのハンドラー
   const handleMemoClick = (postId: string) => {
@@ -745,68 +763,81 @@ const handleBack = () => {
                   ))}
                 </div>
               )}
+
+
+ 
               
-             {/* 画像 */}
-             {post.photoUrls && post.photoUrls.length > 0 && (
-                <div style={{
-                  marginTop: '1rem',
-                  display: 'grid',
-                  gridTemplateColumns: post.photoUrls.length === 1 ? '1fr' : 
-                                      post.photoUrls.length === 2 ? '1fr 1fr' : 
-                                      'repeat(3, 1fr)',
-                  gap: '0.5rem'
-                }}>
-                  {post.photoUrls.map((url, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        aspectRatio: '1 / 1',
-                        overflow: 'hidden',
-                        borderRadius: '8px',
-                        backgroundColor: '#f8f8f8',
-                        cursor: 'pointer'
-                      }}
-                     
-                      onClick={() => {
-  // データの安全性確認
-  if (!post?.photoUrls || post.photoUrls.length === 0) {
-    console.warn('⚠️ 投稿データまたは画像データが不完全');
-    return;
-  }
-  
-  console.log('🔍 [PostDetail] 安全な画像クリック開始:', {
-    photoUrlsLength: post.photoUrls.length,
-    clickedUrl: url.substring(0, 30) + '...'
-  });
-  
-  const imageIndex = post.photoUrls.findIndex(photoUrl => photoUrl === url);
-  
-  // 防御的コピーでデータの安定性を確保
-  const imagesCopy = [...post.photoUrls];
-  setGalleryImages(imagesCopy);
-  setGalleryIndex(imageIndex);
-  setGalleryOpen(true);
-  
-  console.log('✅ [PostDetail] 画像設定完了:', {
-    imageIndex,
-    totalImages: imagesCopy.length,
-    clickedImageUrl: url.substring(0, 30) + '...'
-  });
-}}
-                    >
-                      <img
-                        src={url}
-                        alt={`投稿画像 ${index + 1}`}
+            {/* 画像 */}
+              {(() => {
+                // post.photoUrls と post.images を統合
+                const allImages = [
+                  ...(post.photoUrls || []),
+                  ...(post.images || [])
+                ].filter((url, index, self) => 
+                  url && self.indexOf(url) === index // 重複削除
+                );
+                
+                // デバッグ用ログ
+                console.log('📸 PostDetail画像統合:', {
+                  photoUrls: post.photoUrls?.length || 0,
+                  images: post.images?.length || 0,
+                  total: allImages.length
+                });
+                
+                // 画像が存在しない場合は何も表示しない
+                if (allImages.length === 0) return null;
+                
+                // 画像を表示
+                return (
+                  <div style={{
+                    marginTop: '1rem',
+                    display: 'grid',
+                    gridTemplateColumns: allImages.length === 1 ? '1fr' : 
+                                        allImages.length === 2 ? '1fr 1fr' : 
+                                        'repeat(3, 1fr)',
+                    gap: '0.5rem'
+                  }}>
+                    {allImages.map((url, index) => (
+                      <div
+                        key={index}
                         style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover'
+                          aspectRatio: '1 / 1',
+                          overflow: 'hidden',
+                          borderRadius: '8px',
+                          backgroundColor: '#f8f8f8',
+                          cursor: 'pointer'
                         }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+                        onClick={() => {
+                          if (!allImages || allImages.length === 0) {
+                            console.warn('⚠️ 画像データが不完全');
+                            return;
+                          }
+                          
+                          const imageIndex = allImages.findIndex(photoUrl => photoUrl === url);
+                          setGalleryImages(allImages);
+                          setGalleryIndex(imageIndex);
+                          setGalleryOpen(true);
+                          
+                          console.log('✅ 画像ギャラリー起動:', {
+                            imageIndex,
+                            totalImages: allImages.length
+                          });
+                        }}
+                      >
+                        <img
+                          src={url}
+                          alt={`投稿画像 ${index + 1}`}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover'
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
               
              {/* メモセクション */}
              {memos.length > 0 && (
@@ -940,50 +971,50 @@ const handleBack = () => {
 </button>
 </div>
 
-                {/* 右側 - 編集・削除ボタン */}
-                <div style={{ display: 'flex', gap: '0.8rem' }}>
-                  {/* 編集ボタン（投稿者本人のみ かつ 3時間以内） */}
-                  {post.userId === localStorage.getItem("daily-report-user-id") && !hasOthersRead(post) && (
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleEditClick(post.id);
-                      }}
-                      style={{
-                        padding: '0.5rem 1.2rem',
-                        backgroundColor: 'rgb(0, 102, 114)',　
-                        color: '#F0DB4F',
-                        border: 'none',
-                        borderRadius: '20px',
-                        fontSize: '0.9rem',
-                        cursor: 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      編集
-                    </button>
-                  )}
-                  
-                  {/* 削除ボタン（投稿者本人のみ かつ 24時間以内） */}
-                  {post.userId === localStorage.getItem("daily-report-user-id") && !isDeleteExpired(post) && (
-                    <button
-                      onClick={() => handleDeleteClick(post.id)}
-                      style={{
-                        padding: '0.5rem 1.2rem',
-                        backgroundColor: 'rgb(0, 102, 114)',
-                        color: '#F0DB4F',
-                        border: 'none',
-                        borderRadius: '20px',
-                        fontSize: '0.9rem',
-                        cursor: 'pointer',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      削除
-                    </button>
-                  )}
-                </div>
+{/* 右側 - 編集・削除ボタン（簡易版テスト） */}
+<div style={{ display: 'flex', gap: '0.8rem' }}>
+  {post.userId === localStorage.getItem("daily-report-user-id") && (
+    <button
+      onClick={() => {
+        alert('編集ボタンが押されました');
+        handleEditClick(post.id);
+      }}
+      style={{
+        padding: '0.5rem 1.2rem',
+        backgroundColor: 'rgb(0, 102, 114)',
+        color: '#F0DB4F',
+        border: 'none',
+        borderRadius: '20px',
+        fontSize: '0.9rem',
+        cursor: 'pointer',
+        fontWeight: 'bold'
+      }}
+    >
+      編集
+    </button>
+  )}
+  
+  {post.userId === localStorage.getItem("daily-report-user-id") && (
+    <button
+      onClick={() => {
+        alert('削除ボタンが押されました');
+        handleDeleteClick(post.id);
+      }}
+      style={{
+        padding: '0.5rem 1.2rem',
+        backgroundColor: 'rgb(0, 102, 114)',
+        color: '#F0DB4F',
+        border: 'none',
+        borderRadius: '20px',
+        fontSize: '0.9rem',
+        cursor: 'pointer',
+        fontWeight: 'bold'
+      }}
+    >
+      削除
+    </button>
+  )}
+</div>
               </div>
               
             </div>

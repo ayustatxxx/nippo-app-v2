@@ -263,26 +263,23 @@ useEffect(() => {
 await dbUtil.save(STORES.POSTS, updatedPost);
 
 // ハイブリッド同期に状態表示を追加
-setSyncStatus('online'); // この行を追加
+setSyncStatus('online');
 try {
-  console.log('🔄 EditPage: ハイブリッド同期開始');
-  
-  await UnifiedCoreSystem.savePost({
+  await UnifiedCoreSystem.updatePost(post.id, {
     message: sanitizedMessage,
-    files: editedPhotos ? Array.from(editedPhotos) : [],
-    tags: validTags.map(tag => tag.replace('#', '')),
-    groupId: post.groupId
+    tags: validTags,
+    photoUrls: [...remainingPhotos, ...additionalPhotoUrls],
+    files: editedPhotos ? Array.from(editedPhotos) : undefined
   });
   
-  console.log('✅ EditPage: オンライン同期完了');
-  setSyncStatus('completed'); // この行を追加
+  console.log('✅ EditPage: 投稿更新完了');
+  setSyncStatus('completed');
 } catch (syncError) {
-  console.warn('⚠️ EditPage: オンライン同期失敗（オフライン保存は完了）:', syncError);
-  setSyncStatus('completed'); // この行を追加（ローカル保存完了で成功扱い）
+  console.warn('⚠️ EditPage: 投稿更新失敗（ローカル保存は完了）:', syncError);
+  setSyncStatus('completed');
 }
 
-
-      // UnifiedCoreSystemの更新通知を追加
+// UnifiedCoreSystemの更新通知を追加
 try {
   const updateFlag = Date.now().toString();
   localStorage.setItem('daily-report-posts-updated', updateFlag);
@@ -298,23 +295,20 @@ try {
 } catch (error) {
   console.error('❌ EditPage: 更新通知エラー:', error);
 }
-      
-      alert('✅ 投稿を更新しました！');
-      
-      // 元のページに戻る
-      const from = searchParams.get('from');
-      const groupId = searchParams.get('groupId');
-      
-      if (from === 'archive' && groupId) {
-        navigate(`/group/${groupId}/archive`);
-      } else {
-        const params = new URLSearchParams();
-        if (from) params.set('from', from);
-        if (groupId) params.set('groupId', groupId);
-        const paramString = params.toString() ? `?${params.toString()}` : '';
-        
-        navigate(`/post/${postId}${paramString}`);
-      }
+
+alert('✅ 投稿を更新しました!');
+
+// 常に詳細ページに戻る
+const from = searchParams.get('from');
+const groupId = searchParams.get('groupId');
+
+const params = new URLSearchParams();
+if (from) params.set('from', from);
+if (groupId) params.set('groupId', groupId);
+const paramString = params.toString() ? `?${params.toString()}` : '';
+
+navigate(`/post/${postId}${paramString}`);
+
 
     } catch (error) {
       console.error('投稿の更新に失敗:', error);

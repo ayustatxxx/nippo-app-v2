@@ -164,6 +164,146 @@ if (postData.files && postData.files.length > 0) {
     }
   }
 
+  // 📁 UnifiedCoreSystem.ts
+
+  static async updatePost(
+  postId: string,
+  updates: {
+    message?: string;
+    files?: File[];
+    tags?: string[];
+    photoUrls?: string[];
+  }
+): Promise<void> {
+  try {
+    console.log('🔄 [UnifiedCore] 投稿更新開始:', postId);
+    
+    // Step 1: ユーザー認証確認
+    const user = await getCurrentUser();
+    if (!user) {
+      throw new Error('ユーザー認証が必要です');
+    }
+
+    // Step 2: 更新データ準備
+const updateData: any = {
+  updatedAt: Date.now(),
+  isEdited: true
+};
+
+if (updates.message !== undefined) {
+  updateData.message = this.sanitizeInput(updates.message);
+}
+
+if (updates.tags !== undefined) {
+  updateData.tags = this.processTags(updates.tags);
+}
+
+// ✅ 新しい画像ファイルの処理を追加
+let newProcessedImages: string[] = [];
+
+if (updates.files && updates.files.length > 0) {
+  console.log('📁 [UpdatePost] 新規画像ファイル処理開始:', updates.files.length, '枚');
+  
+  try {
+    const validationResult = await this.fileValidator.validateFiles(updates.files);
+    
+    if (validationResult.errors.length > 0) {
+      throw new Error(`ファイル検証エラー: ${validationResult.errors.join(', ')}`);
+    }
+    
+    newProcessedImages = await this.fileValidator.processFilesInBatches(validationResult.validFiles);
+    console.log('✅ [UpdatePost] 新規画像処理完了:', newProcessedImages.length, '枚');
+    
+    // セキュリティログ
+    this.fileValidator.logSecurityEvent('files_uploaded', {
+      fileCount: validationResult.validFiles.length,
+      totalSize: validationResult.totalSize,
+      context: 'post_update'
+    });
+  } catch (fileError) {
+    console.error('❌ [UpdatePost] 画像処理エラー:', fileError);
+    throw fileError;
+  }
+}
+
+// photoUrlsの結合処理
+if (newProcessedImages.length > 0) {
+  const existingPhotos = updates.photoUrls || [];
+  updateData.photoUrls = [...existingPhotos, ...newProcessedImages];
+  console.log('✅ [UpdatePost] 画像URL結合完了:', updateData.photoUrls.length, '枚');
+} else if (updates.photoUrls !== undefined) {
+  updateData.photoUrls = updates.photoUrls;
+}
+
+// Step 3: Firestoreで更新
+const { doc, updateDoc, getFirestore } = await import('firebase/firestore');
+const db = getFirestore();
+const postRef = doc(db, 'posts', postId);
+
+await updateDoc(postRef, updateData);
+console.log('✅ Firestore更新完了');
+
+// Step 4: IndexedDB同期
+const dbUtil = DBUtil.getInstance();
+await dbUtil.initDB();
+const existingPost = await dbUtil.get(STORES.POSTS, postId);
+
+if (existingPost) {
+  const currentPost = existingPost as Post;
+  const updatedPost: Post = {
+    ...currentPost,
+    ...updateData,
+    id: postId,
+    updatedAt: updateData.updatedAt,
+    isEdited: true
+  };
+  
+  await dbUtil.save(STORES.POSTS, updatedPost);
+  console.log('✅ IndexedDB同期完了');
+
+  // Step 5: 全システム更新通知(直接実装)
+  const updateFlag = Date.now().toString();
+  localStorage.setItem('daily-report-posts-updated', updateFlag);
+  localStorage.setItem('last-updated-group-id', updatedPost.groupId);
+
+  const updateEvent = new CustomEvent('postsUpdated', {
+    detail: {
+      updatedPost: updatedPost,
+      timestamp: Date.now(),
+      source: 'UnifiedCoreSystem',
+      action: 'update'
+    }
+  });
+
+  window.dispatchEvent(updateEvent);
+  window.dispatchEvent(new CustomEvent('refreshPosts'));
+
+  // 段階的通知
+  [100, 300, 500, 1000].forEach((delay) => {
+    setTimeout(() => {
+      localStorage.setItem('daily-report-posts-updated', Date.now().toString());
+      window.dispatchEvent(new CustomEvent('postsUpdated', {
+        detail: { updatedPost, timestamp: Date.now(), delay }
+      }));
+
+      if (window.refreshArchivePage) window.refreshArchivePage();
+      if (window.refreshHomePage) window.refreshHomePage();
+    }, delay);
+  });
+
+  console.log('✅ 投稿更新通知完了');
+} else {
+  console.warn('⚠️ IndexedDBに投稿が見つかりません:', postId);
+}
+
+} catch (error) {
+  console.error('❌ UnifiedCoreSystem: 投稿更新エラー', error);
+  throw error;
+}
+}
+
+
+
   /**
    * システム健康状態確認
    * UserGroupResolverのヘルスチェック機能活用
