@@ -23,9 +23,8 @@ export class PostService {
 
   // ステータス更新（まず基本実装）
   static updatePostStatus = withErrorHandling(
-  async (postId: string, status: string, userId: string): Promise<void> => {
+  async (postId: string, status: string, userId: string, userName: string): Promise<void> => {
     const groups = ['wIXThgBDhzi7VaRFCS0l', 'RoPn9JmPal4BNsr6sdIf'];
-    const userName = localStorage.getItem("daily-report-username") || "ユーザー";
     
     // 投稿がどのグループにあるか確認
     const post = await PostService.getPost(postId);

@@ -12,6 +12,8 @@ import { PostService } from '../utils/postService';
 import { MemoService } from '../utils/memoService';
 import { getUser } from '../firebase/firestore';
 import { UserGroupResolver } from '../utils/userGroupResolver';
+import { DisplayNameResolver } from '../utils/displayNameResolver';
+
 
 
 // ★ここに追加★
@@ -75,20 +77,12 @@ const fetchMemos = async (postId: string) => {
 const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'createdBy' | 'createdByName' | 'postId'>) => {
   try {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "admin_user";
-    // より汎用的なユーザー名取得
-let currentUsername = localStorage.getItem("daily-report-display-name") || 
-                     localStorage.getItem("daily-report-username");
+    
+      // ✅ DisplayNameResolverを使用
+    const currentUser = await getUser(currentUserId);
+    const currentUsername = currentUser ? DisplayNameResolver.resolve(currentUser) : "ユーザー";
 
-// 動的フォールバック（ハードコーディング排除）
-if (!currentUsername || currentUsername === "ユーザー") {
-  // ユーザーIDから動的に表示名を生成
-  const userIdMapping = {
-    "PSRHsJgsGjN7XCEZRNrfD92oyQT2": "hokusai",
-    "TaYFApMkMyfu9g1w26cRLBbiVEY2": "nobunaga"
-  };
-  
-  currentUsername = userIdMapping[currentUserId] || `ユーザー${currentUserId.slice(-4)}`;
-}
+
    
 
     const newMemo: Memo = {
@@ -123,7 +117,9 @@ const handleStatusUpdate = async (newStatus: string) => {
   
   try {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "admin_user";
-    const currentUsername = localStorage.getItem("daily-report-username") || "ユーザー";
+    // ✅ DisplayNameResolverを使用
+    const currentUser = await getUser(currentUserId);
+    const currentUsername = currentUser ? DisplayNameResolver.resolve(currentUser) : "ユーザー";
     
     const updatedPost = {
       ...post,
@@ -135,7 +131,7 @@ const handleStatusUpdate = async (newStatus: string) => {
     
     console.log('📊 [デバッグ] ステータス更新:', newStatus);
     
-    await PostService.updatePostStatus(post.id, newStatus, currentUserId);
+    await PostService.updatePostStatus(post.id, newStatus, currentUserId, currentUsername);
     
     setPost(updatedPost);
     setIsStatusModalOpen(false);
