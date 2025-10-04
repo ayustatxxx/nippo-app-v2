@@ -5,6 +5,7 @@ import { Group } from '../types';
 import { DBUtil, STORES } from '../utils/dbUtil';
 import GroupFooterNav from '../components/GroupFooterNav';
 import { getGroupWithFirestore } from '../utils/dbUtil';
+import UnifiedCoreSystem from '../core/UnifiedCoreSystem';
 
 
 const GroupTopPage: React.FC = () => {
@@ -69,6 +70,11 @@ const GroupTopPage: React.FC = () => {
   // チェックイン状態（既存の作業時間投稿IDを保持）
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [checkInPostId, setCheckInPostId] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false); // 処理中フラグ
+  const [checkInTime, setCheckInTime] = useState<number | null>(null); // チェックイン時刻
+  const [isInitialized, setIsInitialized] = useState(false); 
+  const [isLoadingCheckInState, setIsLoadingCheckInState] = useState(true); 
+
   
   useEffect(() => {
     // データ読み込み処理
@@ -134,77 +140,129 @@ try {
         updatedAt: Date.now()
       };
       setGroup(dummyGroup);
+     }
     }
+  } catch (groupError) {
+    console.error('グループ取得エラー:', groupError);
   }
-} catch (error) {
-  console.error('❌ グループデータ取得エラー:', error);
-  // エラー時もダミーデータを表示
-  const errorGroup: Group = {
-    id: groupId,
-    name: "エラーが発生しました",
-    description: "グループデータの取得に失敗しました",
-    adminId: "admin_user",
-    members: [{
-  id: "admin_user",
-  role: 'admin',
-  isAdmin: true,
-  joinedAt: Date.now() - 1000000,
-  email: 'admin@example.com',
-  username: 'admin_user'
-}],
-    settings: {
-      reportDeadline: "18:00",
-      reportSettings: {
-        frequency: "daily"
-      }
-    },
-    createdAt: Date.now() - 1000000,
-    updatedAt: Date.now()
-  };
-  setGroup(errorGroup);
-}
-        
-        // 今日の作業時間投稿を確認
-        await checkTodayWorkTimePost(userIdFromStorage);
-      } catch (error) {
-        console.error('データロードエラー:', error);
-      }
-    };
-    
-    loadData();
-  }, [groupId]);
+
   
-  // 今日の作業時間投稿を確認
-  const checkTodayWorkTimePost = async (userId: string) => {
+  // 今日の作業時間投稿を確認（初回のみ）
+if (!isInitialized) {
+  console.log('📍 checkTodayWorkTimePost 呼び出し直前');
+  await checkTodayWorkTimePost(userIdFromStorage);
+  console.log('📍 checkTodayWorkTimePost 呼び出し直後');
+  setIsInitialized(true);
+} else {
+  console.log('📍 checkTodayWorkTimePost スキップ（既に初期化済み）');
+}
+
+    
+  } catch (error) {
+    console.error('データロードエラー:', error);
+  }
+};
+
+loadData();
+}, [groupId]);
+  
+
+ // 今日の作業時間投稿を確認（改善版）
+const checkTodayWorkTimePost = async (userId: string) => {
+  try {
+    setIsLoadingCheckInState(true);
+    console.log('🔍 今日のチェックイン状態を確認中...');
+    
+    const dbUtil = DBUtil.getInstance();
+    await dbUtil.initDB();
+    
+    // 今日の日付を取得
+    const today = new Date();
+    const dateStr = `${today.getFullYear()} / ${today.getMonth() + 1} / ${today.getDate()}`;
+    
+    console.log('📅 検索対象日付:', dateStr);
+    
+    // 少し待ってからIndexedDBを確認（同期を待つ）
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // 今日の作業時間投稿を検索（エラーハンドリング強化）
+    let posts = [];
     try {
-      const dbUtil = DBUtil.getInstance();
-      await dbUtil.initDB();
-      
-      // 今日の日付を取得
-      const today = new Date();
-      const dateStr = `${today.getFullYear()} / ${today.getMonth() + 1} / ${today.getDate()}`;
-      
-      // 今日の作業時間投稿を検索
-      const posts = await dbUtil.getAll<any>(STORES.POSTS);
-      const todayWorkPost = posts.find(post => 
-        post.userId === userId &&
-        post.groupId === groupId &&
-        post.isWorkTimePost &&
-        post.time.startsWith(dateStr) &&
-        !post.checkOutTime
-      );
-      
-      if (todayWorkPost) {
-        setIsCheckedIn(true);
-        setCheckInPostId(todayWorkPost.id);
-      } else {
-        setIsCheckedIn(false);
-        setCheckInPostId(null);
-      }
-    } catch (error) {
-      console.error('作業時間投稿の確認エラー:', error);
+      posts = await dbUtil.getAll<any>(STORES.POSTS);
+      console.log('📦 取得した投稿数:', posts.length);
+    } catch (dbError) {
+      console.error('❌ IndexedDB取得エラー:', dbError);
+      posts = [];
     }
-  };
+    
+    // 🔧 新しいロジック：今日の全ての出退勤投稿を取得
+    const todayWorkTimePosts = posts.filter(post => {
+      const isUserMatch = post.userId === userId;
+      const isGroupMatch = post.groupId === groupId;
+      const hasWorkTimeTag = post.tags?.includes('#出退勤時間');
+      const isToday = post.createdAt && new Date(post.createdAt).toDateString() === today.toDateString();
+      
+      return isUserMatch && isGroupMatch && hasWorkTimeTag && isToday;
+    });
+
+    console.log('📦 今日の出退勤投稿数:', todayWorkTimePosts.length);
+
+    // 投稿が0件の場合
+    if (todayWorkTimePosts.length === 0) {
+      console.log('❌ チェックイン状態の投稿なし');
+      setIsCheckedIn(false);
+      setCheckInPostId(null);
+      setCheckInTime(null);
+      return;
+    }
+
+    // 🔧 重要：最新の投稿を取得（createdAtでソート）
+    const latestPost = todayWorkTimePosts.sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime();
+      const timeB = new Date(b.createdAt).getTime();
+      return timeB - timeA; // 新しい順にソート
+    })[0];
+
+    console.log('📋 最新の出退勤投稿:', {
+      id: latestPost.id,
+      tags: latestPost.tags,
+      createdAt: latestPost.createdAt
+    });
+
+    // 🔧 最新の投稿がチェックインかチェックアウトかを判定
+    const hasCheckInTag = latestPost.tags?.includes('#チェックイン');
+    const hasCheckOutTag = latestPost.tags?.includes('#チェックアウト');
+
+    if (hasCheckInTag && !hasCheckOutTag) {
+      // 最新がチェックイン → チェックイン中
+      console.log('✅ チェックイン状態の投稿を発見:', latestPost.id);
+      setIsCheckedIn(true);
+      setCheckInPostId(latestPost.id);
+      
+      // チェックイン時刻を復元
+      if (latestPost.createdAt) {
+        setCheckInTime(new Date(latestPost.createdAt).getTime());
+      }
+    } else if (hasCheckOutTag) {
+      // 最新がチェックアウト → チェックアウト済み
+      console.log('✅ チェックアウト済み:', latestPost.id);
+      setIsCheckedIn(false);
+      setCheckInPostId(null);
+      setCheckInTime(null);
+    } else {
+      // どちらのタグもない場合（念のため）
+      console.log('⚠️ タグ情報が不明:', latestPost.id);
+      setIsCheckedIn(false);
+      setCheckInPostId(null);
+      setCheckInTime(null);
+    }
+    
+  } catch (error) {
+    console.error('作業時間投稿の確認エラー:', error);
+  } finally {
+    setIsLoadingCheckInState(false);
+  }
+};
   
   // グループ名の高さを測定し、必要に応じて切り詰める
   useEffect(() => {
@@ -292,92 +350,151 @@ const handleBack = () => {
 };
 
   
-  // チェックイン・チェックアウト処理（修正版）
-  const handleCheckInOut = async () => {
-    if (!groupId || !userId) return;
-    
-    try {
-      const dbUtil = DBUtil.getInstance();
-      await dbUtil.initDB();
-      
-      const now = new Date();
-      const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-      const weekday = weekdays[now.getDay()];
-      const date = `${now.getFullYear()} / ${now.getMonth() + 1} / ${now.getDate()}（${weekday}）`;
-      const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      
-      if (!isCheckedIn) {
-        // チェックイン処理
-        const newPost = {
-          id: `worktime_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          message: `作業開始: ${time}`,
-          time: `${date}　${time}`,
-          photoUrls: [],
-          tags: ["#出退勤時間"],
-          userId: userId,
-          username: username,
-          groupId: groupId,
-          timestamp: Date.now(),
-          isWorkTimePost: true, // 作業時間投稿フラグ
-          checkOutTime: null    // チェックアウト時間（null で初期化）
-        };
+// チェックイン・チェックアウト処理（完全版 - ガード強化）
+const handleCheckInOut = async () => {
+  // 🔍 診断ログ追加（ここから）
+  console.log('🔍🔍🔍 ===== handleCheckInOut 呼び出し診断 =====');
+  console.log('📞 呼び出し元のスタックトレース:');
+  console.log(new Error().stack);
+  console.log('📊 現在の状態:');
+  console.log({
+    isCheckedIn,
+    isProcessing,
+    isLoadingCheckInState,
+    checkInPostId,
+    checkInTime
+  });
+  console.log('🔍🔍🔍 =========================================');
 
+    // ここから追加 ↓
+  console.log('🎯 イベント情報詳細:');
+  console.log('- イベントタイプ:', window.event?.type);
+  console.log('- イベント全体:', window.event);
+  console.log('- フォーカス中の要素:', document.activeElement);
+  console.log('- フォーカス中の要素タグ:', document.activeElement?.tagName);
+  
+  const button = document.activeElement;
+  if (button?.tagName === 'BUTTON') {
+    console.log('- ボタンのテキスト:', button.textContent);
+    console.log('- ボタンのdisabled:', button.hasAttribute('disabled'));
+  }
+
+
+  // 強力なガード：処理中は実行しない
+  if (!groupId || !userId || isProcessing) {
+    console.log('⚠️ handleCheckInOut: 実行条件を満たしていません', {
+      groupId: !!groupId,
+      userId: !!userId,
+      isProcessing
+    });
+    return;
+  }
+
+  // 連続クリック防止（300msに短縮）
+  const now = Date.now();
+  const lastClickKey = 'lastCheckInOutClick';
+  const lastClick = parseInt(localStorage.getItem(lastClickKey) || '0');
+  
+  if (now - lastClick < 300) {
+    console.log('⚠️ 連続クリック防止');
+    return;
+  }
+  
+  localStorage.setItem(lastClickKey, now.toString());
+
+  console.log('🎯 handleCheckInOut: 実行開始', {
+    isCheckedIn,
+    checkInPostId
+  });
+  
+  try {
+    setIsProcessing(true); 
+    
+    const now = new Date();
+    const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    const weekday = weekdays[now.getDay()];
+    const date = `${now.getFullYear()} / ${now.getMonth() + 1} / ${now.getDate()}（${weekday}）`;
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    
+    if (!isCheckedIn) {
+      // チェックイン処理
+      try {
+        console.log('🔵 チェックイン処理開始');
         
-        // 投稿を保存
-        await dbUtil.save(STORES.POSTS, newPost);
+        const postId = await UnifiedCoreSystem.savePost({
+          message: `作業開始: ${time}\n日時: ${date}　${time}`,
+          files: [],
+          tags: ["#出退勤時間", "#チェックイン"],
+          groupId: groupId
+        });
+
+        console.log('✅ チェックイン投稿保存完了:', postId);
         
         // 状態を更新
         setIsCheckedIn(true);
-        setCheckInPostId(newPost.id);
+        setCheckInPostId(postId);
+        setCheckInTime(now.getTime()); // チェックイン時刻を記録
         
         // 成功メッセージ
         alert(`✅ 作業開始を記録しました (${time})`);
         
-        // アーカイブページには移動しない
-        // navigate(`/group/${groupId}/archive`);
-      } else {
-        // チェックアウト処理
-        if (checkInPostId) {
-          const originalPost = await dbUtil.get<any>(STORES.POSTS, checkInPostId);
-          
-          if (originalPost) {
-            // 元の作業開始時間を取得
-            const checkInTimeMatch = originalPost.message.match(/作業開始: (\d{2}:\d{2})/);
-            const checkInTime = checkInTimeMatch ? checkInTimeMatch[1] : "不明";
-            
-            // 作業時間を計算
-            const checkInDate = parseDateString(originalPost.time);
-            const duration = Math.floor((Date.now() - checkInDate.getTime()) / 1000 / 60); // 分単位
-            const hours = Math.floor(duration / 60);
-            const minutes = duration % 60;
-            
-            // 投稿内容を更新
-            const updatedPost = {
-              ...originalPost,
-              message: `作業時間: ${checkInTime} - ${time} (${hours}時間${minutes}分)`,
-              checkOutTime: now.getTime()
-            };
-            
-            // 投稿を更新
-            await dbUtil.save(STORES.POSTS, updatedPost);
-            
-            // 状態を更新
-            setIsCheckedIn(false);
-            setCheckInPostId(null);
-            
-            // 成功メッセージ
-            alert(`✅ 作業終了を記録しました (${time})\n作業時間: ${hours}時間${minutes}分`);
-            
-            // アーカイブページには移動しない
-            // navigate(`/group/${groupId}/archive`);
-          }
-        }
+      } catch (error) {
+        console.error('❌ チェックイン保存エラー:', error);
+        alert('チェックイン記録の保存に失敗しました。もう一度お試しください。');
       }
-    } catch (error) {
-      console.error('作業時間記録エラー:', error);
-      alert('作業時間の記録に失敗しました');
+      
+    } else {
+      // チェックアウト処理
+      try {
+        console.log('🔴 チェックアウト処理開始');
+        
+        // 作業時間を計算（実際の時間差）
+        let hours = 0;
+        let minutes = 0;
+        
+        if (checkInTime) {
+          const duration = Math.floor((now.getTime() - checkInTime) / 1000 / 60); // 分単位
+          hours = Math.floor(duration / 60);
+          minutes = duration % 60;
+          console.log(`⏱️ 作業時間計算: ${hours}時間${minutes}分`);
+        } else {
+          // フォールバック（チェックイン時刻が不明な場合）
+          hours = 8;
+          minutes = 0;
+          console.log('⚠️ チェックイン時刻不明、デフォルト値使用');
+        }
+        
+        const postId = await UnifiedCoreSystem.savePost({
+          message: `作業終了: ${time}\n日時: ${date}　${time}\n作業時間: ${hours}時間${minutes}分`,
+          files: [],
+          tags: ["#出退勤時間", "#チェックアウト"],
+          groupId: groupId
+        });
+
+        console.log('✅ チェックアウト投稿保存完了:', postId);
+        
+        // 状態をリセット
+        setIsCheckedIn(false);
+        setCheckInPostId(null);
+        setCheckInTime(null);
+        
+        // 成功メッセージ
+        alert(`✅ 作業終了を記録しました (${time})\n作業時間: ${hours}時間${minutes}分`);
+        
+      } catch (error) {
+        console.error('❌ チェックアウト保存エラー:', error);
+        alert('チェックアウト記録の保存に失敗しました。もう一度お試しください。');
+      }
     }
-  };
+  } catch (error) {
+    console.error('作業時間記録エラー:', error);
+    alert('作業時間の記録に失敗しました');
+  } finally {
+    setIsProcessing(false); // 処理終了
+  }
+};
+
+  
   
   // 日本語形式の日付文字列からDateオブジェクトを作成する関数
   const parseDateString = (dateTimeStr: string): Date => {
@@ -555,23 +672,25 @@ const handleBack = () => {
         
         {/* チェックイン・チェックアウトボタン */}
         <button
-          onClick={handleCheckInOut}
-          style={{
-            backgroundColor: isCheckedIn ? '#F6C8A6' : '#F0DB4F',
-            color: '#055A68',
-            border: 'none',
-            borderRadius: '30px',
-            padding: '12px 30px',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginBottom: '0px',
-          }}
+  onClick={handleCheckInOut}
+  disabled={isLoadingCheckInState || isProcessing}  // ← この行を追加
+  style={{
+    backgroundColor: isCheckedIn ? '#F6C8A6' : '#F0DB4F',
+    color: '#055A68',
+    border: 'none',
+    borderRadius: '30px',
+    padding: '12px 30px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    cursor: isLoadingCheckInState || isProcessing ? 'not-allowed' : 'pointer',  // ← 修正
+    transition: 'all 0.3s ease',
+    boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '0px',
+    opacity: isLoadingCheckInState || isProcessing ? 0.5 : 1,  // ← 追加
+  }}
           onMouseOver={(e) => {
             e.currentTarget.style.transform = 'translateY(-2px)';
             e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.15)';

@@ -168,7 +168,7 @@ export const getGroupPosts = async (groupId: string): Promise<any[]> => {
       const post = {
         id: doc.id,
         message: data.message || '',
-        photoUrls: data.images || data.photoUrls || [],
+        photoUrls: [...(data.photoUrls || []), ...(data.images || [])],
         tags: data.tags || [],
         userId: data.userId || data.createdBy || data.authorId || '',
         authorId: data.authorId || data.userId || data.createdBy || '', // 追加
