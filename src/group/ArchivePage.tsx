@@ -6,6 +6,7 @@ import { Post } from '../types';
 import ImageGalleryModal from '../components/ImageGalleryModal';
 import { getGroupPosts, markPostAsRead, getPostReadStatus } from "../utils/firestoreService";
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
+import { DisplayNameResolver } from '../utils/displayNameResolver';  
 import { getUser } from '../firebase/firestore';
 import Header from '../components/Header';
 
@@ -138,25 +139,7 @@ const WorkTimePostCard: React.FC<{
             </svg>
           </div>
           <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>
-  {(() => {
-    let username = post.username;
-    if (!username || username === 'undefined' || username.trim() === '') {
-      const currentUserId = localStorage.getItem("daily-report-user-id");
-      if (post.userId === currentUserId) {
-        // プロフィール名を最優先で取得
-        const profileName = localStorage.getItem("daily-report-profile-name");
-        if (profileName && profileName !== "undefined" && profileName.trim()) {
-          username = profileName.trim();
-          console.log(`🔄 [Archive名前修正] 投稿 ${post.id}: undefined → ${username}`);
-        } else {
-          username = localStorage.getItem("daily-report-username") || 'ユーザー';
-        }
-      } else {
-        username = 'ユーザー';
-      }
-    }
-    return username;
-  })()}
+  {DisplayNameResolver.resolve(post)}
 </div>
         </div>
 
@@ -1014,9 +997,7 @@ useEffect(() => {
     try {
       setLoading(true);
       
-     
-      
-      // localStorage更新フラグをチェック
+      // localStorageフラグをチェック
       const updateFlag = localStorage.getItem('daily-report-posts-updated');
       console.log('🔍 [Archive] 投稿データ取得開始');
       
@@ -1025,11 +1006,14 @@ useEffect(() => {
         setLoading(false);
         return;
       }
+      
+      // ✅ ユーザーIDを取得
+      const userId = localStorage.getItem('daily-report-user-id') || '';
     
       // APIが未実装のため空データで初期化
       console.log('🔍 [Archive] Firestoreから投稿を取得中...');
-      console.log('🔄 [Archive] UnifiedCoreSystem統合開始');
-      const fetchedPosts = await getGroupPosts(groupId);
+      console.log('📄 [Archive] UnifiedCoreSystem統合開始');
+      const fetchedPosts = await UnifiedCoreSystem.getGroupPosts(groupId, userId);  // ✅ 修正
       console.log('✅ [Archive] データ取得完了:', fetchedPosts.length, '件');
       console.log('✅ [Archive] 投稿取得完了:', fetchedPosts.length, '件');
 
