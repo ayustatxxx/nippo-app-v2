@@ -646,9 +646,10 @@ const ArchivePage: React.FC = () => {
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
-const [galleryImages, setGalleryImages] = useState<string[]>([]);
-const [galleryIndex, setGalleryIndex] = useState(0);
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [galleryIndex, setGalleryIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+
 
   // 検索関連のステート
   const [searchQuery, setSearchQuery] = useState('');
@@ -1013,6 +1014,8 @@ useEffect(() => {
     try {
       setLoading(true);
       
+     
+      
       // localStorage更新フラグをチェック
       const updateFlag = localStorage.getItem('daily-report-posts-updated');
       console.log('🔍 [Archive] 投稿データ取得開始');
@@ -1022,17 +1025,18 @@ useEffect(() => {
         setLoading(false);
         return;
       }
-
     
       // APIが未実装のため空データで初期化
       console.log('🔍 [Archive] Firestoreから投稿を取得中...');
       console.log('🔄 [Archive] UnifiedCoreSystem統合開始');
-const fetchedPosts = await getGroupPosts(groupId);
-console.log('✅ [Archive] データ取得完了:', fetchedPosts.length, '件');
+      const fetchedPosts = await getGroupPosts(groupId);
+      console.log('✅ [Archive] データ取得完了:', fetchedPosts.length, '件');
       console.log('✅ [Archive] 投稿取得完了:', fetchedPosts.length, '件');
 
-setPosts(fetchedPosts);
-setFilteredPosts(fetchedPosts);
+      setPosts(fetchedPosts);
+      setFilteredPosts(fetchedPosts);
+      
+      
       
     } catch (error) {
       console.error('❌ [Archive] 投稿データのロード中にエラーが発生しました', error);
@@ -1052,14 +1056,16 @@ setFilteredPosts(fetchedPosts);
   
   window.addEventListener('storage', handleStorageChange);
   
+ 
   // 定期的な更新チェック
-  const interval = setInterval(() => {
-    const currentFlag = localStorage.getItem('daily-report-posts-updated');
-    if (currentFlag && currentFlag !== localStorage.getItem('last-archive-update')) {
-      localStorage.setItem('last-archive-update', currentFlag);
-      fetchPosts();
-    }
-  }, 2000);
+const interval = setInterval(() => {
+  const currentFlag = localStorage.getItem('daily-report-posts-updated');
+  if (currentFlag && currentFlag !== localStorage.getItem('last-archive-update')) {
+    localStorage.setItem('last-archive-update', currentFlag);
+    
+    fetchPosts();
+  }
+}, 5000);
   
   return () => {
     window.removeEventListener('storage', handleStorageChange);

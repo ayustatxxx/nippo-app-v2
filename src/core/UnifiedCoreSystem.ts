@@ -164,6 +164,42 @@ if (postData.files && postData.files.length > 0) {
     }
   }
 
+
+  /**
+   * グループの投稿を取得（権限チェック付き）
+   * @param groupId グループID
+   * @param userId ユーザーID
+   * @returns 投稿の配列
+   */
+  static async getGroupPosts(groupId: string, userId: string): Promise<Post[]> {
+    console.log('🔍 UnifiedCoreSystem: グループ投稿取得開始', { groupId, userId });
+    
+    try {
+      // Step 1: 権限確認 - このユーザーはこのグループにアクセスできるか？
+      const userGroups = await this.getUserGroups(userId);
+      const hasAccess = userGroups.some(g => g.id === groupId);
+      
+      if (!hasAccess) {
+        console.warn('⚠️ アクセス権限なし:', { groupId, userId });
+        return [];
+      }
+      
+      console.log('✅ 権限確認OK');
+      
+      // Step 2: firestoreServiceから投稿を取得
+      const { getGroupPosts } = await import('../utils/firestoreService');
+      const posts = await getGroupPosts(groupId);
+      
+      console.log(`✅ グループ投稿取得完了: ${posts.length}件`);
+      return posts;
+      
+    } catch (error) {
+      console.error('❌ グループ投稿取得エラー:', error);
+      return []; // エラーの場合は空配列を返す（安全）
+    }
+  }
+
+
   // 📁 UnifiedCoreSystem.ts
 
   static async updatePost(

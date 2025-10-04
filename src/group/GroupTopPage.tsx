@@ -671,63 +671,75 @@ const handleCheckInOut = async () => {
         </h1>
         
         {/* チェックイン・チェックアウトボタン */}
-        <button
-  onClick={handleCheckInOut}
-  disabled={isLoadingCheckInState || isProcessing}  // ← この行を追加
-  style={{
-    backgroundColor: isCheckedIn ? '#F6C8A6' : '#F0DB4F',
-    color: '#055A68',
-    border: 'none',
-    borderRadius: '30px',
+        {isLoadingCheckInState ? (
+  // ローディング中の表示
+  <div style={{ 
     padding: '12px 30px',
+    color: '#055A68',
     fontSize: '16px',
     fontWeight: 'bold',
-    cursor: isLoadingCheckInState || isProcessing ? 'not-allowed' : 'pointer',  // ← 修正
-    transition: 'all 0.3s ease',
-    boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    marginBottom: '0px',
-    opacity: isLoadingCheckInState || isProcessing ? 0.5 : 1,  // ← 追加
-  }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.15)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.1)';
-          }}
-        >
-          {/* アイコン */}
-          <svg 
-            width="20" 
-            height="20" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
-            strokeLinejoin="round"
-          >
-            {isCheckedIn ? (
-              // チェックアウトアイコン
-              <>
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <line x1="9" y1="9" x2="15" y2="15" />
-                <line x1="15" y1="9" x2="9" y2="15" />
-              </>
-            ) : (
-              // チェックインアイコン
-              <>
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <path d="M9 12l2 2 4-4" />
-              </>
-            )}
-          </svg>
-          {isCheckedIn ? 'Check-out' : 'Check-in'}
-        </button>
+    textAlign: 'center'
+  }}>
+    状態確認中...
+  </div>
+) : (
+  // 通常のボタン（既存のコード）
+  <button
+    onClick={handleCheckInOut}
+    disabled={isLoadingCheckInState || isProcessing}
+    style={{
+      backgroundColor: isCheckedIn ? '#F6C8A6' : '#F0DB4F',
+      color: '#055A68',
+      border: 'none',
+      borderRadius: '30px',
+      padding: '12px 30px',
+      fontSize: '16px',
+      fontWeight: 'bold',
+      cursor: isLoadingCheckInState || isProcessing ? 'not-allowed' : 'pointer',
+      transition: 'all 0.3s ease',
+      boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      marginBottom: '0px',
+      opacity: isLoadingCheckInState || isProcessing ? 0.5 : 1,
+    }}
+    onMouseOver={(e) => {
+      e.currentTarget.style.transform = 'translateY(-2px)';
+      e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.15)';
+    }}
+    onMouseOut={(e) => {
+      e.currentTarget.style.transform = 'translateY(0)';
+      e.currentTarget.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.1)';
+    }}
+  >
+    {/* アイコン */}
+    <svg 
+      width="20" 
+      height="20" 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    >
+      {isCheckedIn ? (
+        <>
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <line x1="9" y1="9" x2="15" y2="15" />
+          <line x1="15" y1="9" x2="9" y2="15" />
+        </>
+      ) : (
+        <>
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <path d="M9 12l2 2 4-4" />
+        </>
+      )}
+    </svg>
+    {isCheckedIn ? 'Check-out' : 'Check-in'}
+  </button>
+)}
       </div>
       
       {/* GroupFooterNavコンポーネントを使用（常に表示） */}
