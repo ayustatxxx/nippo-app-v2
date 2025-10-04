@@ -1486,7 +1486,7 @@ try {
     console.log(`📂 参加確認済みグループ "${group.name}" から投稿を取得`);
     
     try {
-      const groupPosts = await getGroupPosts(group.id);
+      const groupPosts = await UnifiedCoreSystem.getGroupPosts(group.id, userId);
       
       const postsWithGroupName = groupPosts.map(post => ({
         ...post,
@@ -1584,7 +1584,7 @@ const postPromises = userGroups.map(async (group) => {
   console.log(`📂 参加確認済みグループ "${group.name}" から投稿を取得`);
   
   try {
-    const groupPosts = await getGroupPosts(group.id);
+    const groupPosts = await UnifiedCoreSystem.getGroupPosts(group.id, userId);
     
     // グループ名を各投稿に追加
     const postsWithGroupName = groupPosts.map(post => ({
