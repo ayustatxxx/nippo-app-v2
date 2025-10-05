@@ -9,6 +9,17 @@ import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 import { DisplayNameResolver } from '../utils/displayNameResolver';  
 import { getUser } from '../firebase/firestore';
 import Header from '../components/Header';
+import { deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase/config';
+
+
+// グローバル関数の型定義
+declare global {
+  interface Window {
+    forceRefreshPosts?: () => void;
+    refreshArchivePage?: () => void;
+  }
+}
 
 
 // 投稿データにメモ情報を追加するための型拡張
@@ -397,7 +408,7 @@ const WorkTimePostCard: React.FC<{
 
   {/* 右側 - ボタン群 */}
   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-
+  {/* メモボタン（全員に表示） */}
   <button
     onClick={() => handleAddMemo(post.id)}
     style={{
@@ -413,46 +424,52 @@ const WorkTimePostCard: React.FC<{
     メモ
   </button>
 
+  {/* 詳細ボタン */}
+  <button
+    onClick={() => handleEditPost(post.id)}
+    style={{
+      padding: '0.4rem 1rem',
+      backgroundColor: 'rgb(0, 102, 114)',
+      color: '#F0DB4F',
+      border: 'none',
+      borderRadius: '20px',
+      fontSize: '0.75rem',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.3rem',
+    }}
+  >
+    詳細
+  </button>
 
-
-    {/* 詳細ボタン */}
-    <button
-      onClick={() => handleEditPost(post.id)}
-      style={{
-        padding: '0.4rem 1rem',
-        backgroundColor: 'rgb(0, 102, 114)',
-        color: '#F0DB4F',
-        border: 'none',
-        borderRadius: '20px',
-        fontSize: '0.75rem',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.3rem',
-      }}
-    >
-      詳細
-    </button>
-
-{/* 削除ボタン */}
-<button
-  onClick={() => onDelete(post.id)} 
-  style={{
-    padding: '0.4rem 1rem',
-    backgroundColor: 'rgb(0, 102, 114)',
-    color: '#F0DB4F',
-    border: 'none',
-    borderRadius: '20px',
-    fontSize: '0.75rem',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.3rem',
-  }}
->
-  削除
-</button>
-  </div>
+  {/* 削除ボタン（投稿者のみ表示） */}
+  {(() => {
+    const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+    const isAuthor = post.userId === currentUserId || 
+                     post.createdBy === currentUserId ||
+                     post.authorId === currentUserId;
+    return isAuthor ? (
+      <button
+        onClick={() => onDelete(post.id)}
+        style={{
+          padding: '0.4rem 1rem',
+          backgroundColor: 'rgb(0, 102, 114)',
+          color: '#F0DB4F',
+          border: 'none',
+          borderRadius: '20px',
+          fontSize: '0.75rem',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.3rem',
+        }}
+      >
+        削除
+      </button>
+    ) : null;
+  })()}
+</div>
 </div>
 
 
@@ -992,6 +1009,8 @@ const handleEditPost = (postId: string) => {
 };
 
 
+
+
 useEffect(() => {
   const fetchPosts = async () => {
     try {
@@ -1352,36 +1371,51 @@ setFilteredPosts(dateFiltered);
     setEndDate(null);
   };
 
-  const deletePostFromDB = (id: string): Promise<void> => {
-    return Promise.resolve();
-  };
-
+  
   const handleDelete = async (postId: string) => {
-    try {
-      if (!window.confirm('この投稿を削除してもよろしいですか？')) {
-        return;
-      }
+  console.log('🗑️ [削除デバッグ] handleDelete開始:', postId);
+  
+  const targetPost = posts.find(post => post.id === postId);
+  if (!targetPost) {
+    console.warn('⚠️ 投稿が見つかりません:', postId);
+    return;
+  }
 
-      await deletePostFromDB(postId);
+  const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+  const isAuthor = targetPost.userId === currentUserId || 
+                   targetPost.createdBy === currentUserId ||
+                   targetPost.authorId === currentUserId;
 
-      const updatedPosts = posts.filter((post) => post.id !== postId);
-      setPosts(updatedPosts);
-      setFilteredPosts(filteredPosts.filter((post) => post.id !== postId));
+  if (!isAuthor) {
+    alert('⚠️ 自分の投稿のみ削除できます');
+    return;
+  }
 
-      const newSelectedIds = new Set(selectedPostIds);
-      newSelectedIds.delete(postId);
-      setSelectedPostIds(newSelectedIds);
+  if (!window.confirm('この投稿を削除してもよろしいですか？')) {
+    return;
+  }
 
-      
+  try {
+    console.log('🗑️ [削除デバッグ] Firestore削除開始');
+    console.log('🗑️ [削除デバッグ] 削除パス: posts/' + postId);
+    
+    // 正しいパスで削除（groupsなし）
+    await deleteDoc(doc(db, 'posts', postId));
+    console.log('✅ [Archive] Firestore削除完了:', postId);
 
-      alert('✅ 投稿を削除しました');
-    } catch (error) {
-      console.error('投稿の削除に失敗しました', error);
-      alert('投稿の削除に失敗しました');
-    }
-  };
+    // ローカル状態を更新
+    setPosts(prev => prev.filter(post => post.id !== postId));
+    setFilteredPosts(prev => prev.filter(post => post.id !== postId));
 
-  // ステータス更新処理
+    alert('✅ 投稿を削除しました');
+  } catch (error) {
+    console.error('❌ [Archive] 削除エラー:', error);
+    alert('削除に失敗しました');
+  }
+};
+
+  
+
 // ステータス更新処理の修正版（デバッグログ強化 + Firestore直接更新）
 const handleStatusUpdate = async (postId: string, newStatus: string) => {
   try {
@@ -2830,27 +2864,8 @@ const PostDetailModal: React.FC<{
                       <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" />
                     </svg>
                   </div>
-                  <div
-  style={{ fontWeight: 'bold', fontSize: '0.95rem' }}
->
-  {(() => {
-    let username = post.username;
-    if (!username || username === 'undefined' || username.trim() === '') {
-      const currentUserId = localStorage.getItem("daily-report-user-id");
-      if (post.userId === currentUserId) {
-        const profileName = localStorage.getItem("daily-report-profile-name");
-        if (profileName && profileName !== "undefined" && profileName.trim()) {
-          username = profileName.trim();
-          console.log(`🔄 [Archive通常投稿修正] 投稿 ${post.id}: undefined → ${username}`);
-        } else {
-          username = localStorage.getItem("daily-report-username") || 'ユーザー';
-        }
-      } else {
-        username = 'ユーザー';
-      }
-    }
-    return username;
-  })()}
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>
+  {DisplayNameResolver.resolve(post)}
 </div>
                 </div>
 
@@ -3152,29 +3167,10 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
                 </div>
 
                 {/* 右側 - ボタン群 */}
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  {/* 詳細ボタン */}
-                  <button
-                    onClick={() => handleEditPost(post.id)}
-                    style={{
-                      padding: '0.4rem 1rem',
-                      backgroundColor: 'rgb(0, 102, 114)',
-                      color: '#F0DB4F',
-                      border: 'none',
-                      borderRadius: '20px',
-                      fontSize: '0.75rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.3rem',
-                    }}
-                  >
-                    詳細
-                  </button>
-
-  {/* 削除ボタン */}
+<div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+  {/* 詳細ボタン */}
   <button
-    onClick={() => handleDelete(post.id)}
+    onClick={() => handleEditPost(post.id)}
     style={{
       padding: '0.4rem 1rem',
       backgroundColor: 'rgb(0, 102, 114)',
@@ -3186,11 +3182,38 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
       display: 'flex',
       alignItems: 'center',
       gap: '0.3rem',
-    }} 
+    }}
   >
-    削除
+    詳細
   </button>
-                </div>
+
+  {/* 削除ボタン（投稿者のみ表示） */}
+  {(() => {
+    const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+    const isAuthor = post.userId === currentUserId || 
+                     post.createdBy === currentUserId ||
+                     post.authorId === currentUserId;
+    return isAuthor ? (
+      <button
+        onClick={() => handleDelete(post.id)}
+        style={{
+          padding: '0.4rem 1rem',
+          backgroundColor: 'rgb(0, 102, 114)',
+          color: '#F0DB4F',
+          border: 'none',
+          borderRadius: '20px',
+          fontSize: '0.75rem',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.3rem',
+        }}
+      >
+        削除
+      </button>
+    ) : null;
+  })()}
+</div>
               </div>
             </div>
           )
