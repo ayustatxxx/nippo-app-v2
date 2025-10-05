@@ -1162,6 +1162,16 @@ if (refreshedPosts && refreshedPosts.length > 0) {
   
   // ポーリング開始（1秒間隔）
   const pollingInterval = setInterval(checkForUpdates, 1000);
+
+  // 詳細モーダルからの削除イベントを監視
+const handleArchiveDelete = (event: CustomEvent) => {
+  const { postId } = event.detail;
+  console.log('🗑️ [ArchivePage] 詳細モーダルから削除イベント受信:', postId);
+  handleDelete(postId);
+};
+
+window.addEventListener('archiveDelete', handleArchiveDelete as EventListener);
+
   
   // クリーンアップ
   return () => {
@@ -1169,6 +1179,8 @@ if (refreshedPosts && refreshedPosts.length > 0) {
     window.removeEventListener('postsUpdated', handlePostsUpdate);
     window.removeEventListener('refreshPosts', handlePostsUpdate);
     clearInterval(pollingInterval);
+
+    window.removeEventListener('archiveDelete', handleArchiveDelete as EventListener);
     
     // グローバル関数のクリーンアップ
     if (window.refreshArchivePage) {
@@ -1375,23 +1387,11 @@ setFilteredPosts(dateFiltered);
   const handleDelete = async (postId: string) => {
   console.log('🗑️ [削除デバッグ] handleDelete開始:', postId);
   
-  const targetPost = posts.find(post => post.id === postId);
-  if (!targetPost) {
-    console.warn('⚠️ 投稿が見つかりません:', postId);
-    return;
-  }
-
   const currentUserId = localStorage.getItem('daily-report-user-id') || '';
-  const isAuthor = targetPost.userId === currentUserId || 
-                   targetPost.createdBy === currentUserId ||
-                   targetPost.authorId === currentUserId;
-
-  if (!isAuthor) {
-    alert('⚠️ 自分の投稿のみ削除できます');
-    return;
-  }
-
+  
+  // 投稿の検索をスキップして直接削除を試みる
   if (!window.confirm('この投稿を削除してもよろしいですか？')) {
+    console.log('🗑️ [削除デバッグ] ユーザーがキャンセル');
     return;
   }
 
@@ -1399,7 +1399,7 @@ setFilteredPosts(dateFiltered);
     console.log('🗑️ [削除デバッグ] Firestore削除開始');
     console.log('🗑️ [削除デバッグ] 削除パス: posts/' + postId);
     
-    // 正しいパスで削除（groupsなし）
+    // 直接削除（posts配列の検索なし）
     await deleteDoc(doc(db, 'posts', postId));
     console.log('✅ [Archive] Firestore削除完了:', postId);
 
@@ -2109,28 +2109,38 @@ const PostDetailModal: React.FC<{
       </button>
 
       <button
-        onClick={() => {
-          if (window.confirm('この投稿を削除してもよろしいですか？')) {
-            onClose();
-            const deleteEvent = new CustomEvent('deletePost', { 
-              detail: { postId: displayPost.id } 
-            });
-            window.dispatchEvent(deleteEvent);
-          }
-        }}
-        style={{
-          padding: '0.5rem 1.2rem',
-          backgroundColor: 'rgb(0, 102, 114)',
-          color: '#F0DB4F',
-          border: 'none',
-          borderRadius: '20px',
-          fontSize: '0.9rem',
-          cursor: 'pointer',
-          fontWeight: 'bold'
-        }}
-      >
-        削除
-      </button>
+  onClick={async () => {
+    // 確認ダイアログを削除（handleDeleteで確認する）
+    try {
+      console.log('🗑️ [DetailModal] 削除開始:', displayPost.id);
+      
+      // モーダルを閉じる
+      onClose();
+      
+      // 削除イベントを発火（handleDeleteが確認ダイアログを出す）
+      const deleteEvent = new CustomEvent('archiveDelete', { 
+        detail: { postId: displayPost.id } 
+      });
+      window.dispatchEvent(deleteEvent);
+      
+    } catch (error) {
+      console.error('❌ [DetailModal] 削除エラー:', error);
+      alert('削除に失敗しました');
+    }
+  }}
+  style={{
+    padding: '0.5rem 1.2rem',
+    backgroundColor: 'rgb(0, 102, 114)',
+    color: '#F0DB4F',
+    border: 'none',
+    borderRadius: '20px',
+    fontSize: '0.9rem',
+    cursor: 'pointer',
+    fontWeight: 'bold'
+  }}
+>
+  削除
+</button>
     </div>
   )}
 </div>
