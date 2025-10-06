@@ -2,12 +2,14 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import GroupFooterNav from '../components/GroupFooterNav';
 import React, { useEffect, useState, useRef } from 'react';
 import * as html2pdflib from 'html2pdf.js';
-import { Post } from '../types';
+import { Post, Memo } from '../types';
+import MemoModal, { MemoDisplay } from '../components/MemoModal';
 import ImageGalleryModal from '../components/ImageGalleryModal';
 import { getGroupPosts, markPostAsRead, getPostReadStatus } from "../utils/firestoreService";
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 import { DisplayNameResolver } from '../utils/displayNameResolver';  
 import { getUser } from '../firebase/firestore';
+import { MemoService } from '../utils/memoService';
 import Header from '../components/Header';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -907,43 +909,64 @@ const handleAskQuestion = async () => {
   }
 };
 
-// メモ追加ハンドラー
+// メモ追加ハンドラー（PostDetailPageと同じ実装）
 const handleAddMemo = (postId: string) => {
+  console.log('📝 [ArchivePage] メモ追加ボタンクリック:', postId);
+  
+  // 詳細モーダルを閉じる
+  setSelectedPostForDetail(null);
+  
+  // すぐにメモモーダルを開く（遅延なし）
   setSelectedPostForMemo(postId);
   setMemoContent('');
   setMemoModalOpen(true);
 };
 
-// メモ保存処理
-const saveMemo = async (postId: string, content: string) => {
-  if (!content.trim()) {
-    alert('メモ内容を入力してください');
+const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'createdBy' | 'createdByName' | 'postId'>) => {
+  if (!selectedPostForMemo) {
+    alert('投稿IDが見つかりません');
     return;
   }
-  
+
   try {
-    const currentUserId = localStorage.getItem('daily-report-user-id') || 'user';
-    const currentUsername = localStorage.getItem('daily-report-username') || 'ユーザー';
+    const currentUserId = localStorage.getItem("daily-report-user-id") || "admin_user";
     
-    const memo = {
-      id: `memo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      postId,
-      content: content.trim(),
-      createdBy: currentUserId,
-      createdByName: currentUsername,
+    const currentUser = await getUser(currentUserId);
+    const currentUsername = currentUser ? DisplayNameResolver.resolve(currentUser) : "ユーザー";
+
+    const newMemo = {
+      ...memoData,
+      id: `memo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      postId: selectedPostForMemo,
       createdAt: Date.now(),
-      status: 'active'
+      createdBy: currentUserId,
+      createdByName: currentUsername
     };
+
+    console.log('💾 [ArchivePage] 保存するメモデータ:', newMemo);
+
+    // メモモーダルを先に閉じてから保存処理を開始
+    setMemoModalOpen(false);
+    setMemoContent('');
     
-    // IndexedDBに保存
-    const request = indexedDB.open('daily-report-db');
-    // 【置き換え後】
-alert('メモを保存しました');
-setMemoModalOpen(false);
-setMemoContent('');
-setSelectedPostForMemo(null);
+    await MemoService.saveMemo(newMemo);
+    
+    console.log('✅ [ArchivePage] メモが正常に保存されました');
+    
+    // PostDetailPageに遷移（即座に）
+    const from = searchParams.get('from');
+    const params = new URLSearchParams();
+    params.set('from', 'archive');
+    params.set('groupId', groupId || '');
+    if (from) params.set('originalFrom', from);
+    
+    navigate(`/post/${selectedPostForMemo}?${params.toString()}`, { replace: true });
+    
+    // 状態をクリア
+    setSelectedPostForMemo(null);
+    
   } catch (error) {
-    console.error('メモ保存エラー:', error);
+    console.error('❌ [ArchivePage] メモの保存に失敗:', error);
     alert('メモの保存に失敗しました');
   }
 };
@@ -3776,61 +3799,17 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
   `}
 </style>
 
-{/* メモ作成モーダル */}
-{memoModalOpen && (
-  <div
-    style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 1000,
-      padding: '1rem',
-    }}
-    onClick={() => setMemoModalOpen(false)}
-  >
-    <div
-      style={{
-        backgroundColor: '#ffffff',
-        borderRadius: '12px',
-        width: '100%',
-        maxWidth: '400px',
-        padding: '1.5rem',
-        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <h3 style={{ color: '#055A68', margin: '0 0 1rem 0' }}>
-        メモを追加
-      </h3>
-      
-      <textarea
-       onChange={(e) => setMemoContent(e.target.value)}
-        placeholder="メモ内容を入力してください"
-        style={{
-          width: '100%',
-          height: '120px',
-          padding: '0.75rem',
-          border: '2px solid #ddd',
-          borderRadius: '8px',
-          fontSize: '0.9rem',
-          resize: 'vertical',
-          boxSizing: 'border-box',
-          fontFamily: 'inherit',
-          outline: 'none',
-          marginBottom: '1rem',
-        }}
-      />
-      
-
-    </div>
-  </div>
-)}
+{/* メモ作成モーダル（PostDetailPageと同じ実装） */}
+<MemoModal
+  isOpen={memoModalOpen}
+  onClose={() => {
+    setMemoModalOpen(false);
+    setMemoContent('');
+    setSelectedPostForMemo(null);
+  }}
+  onSave={handleSaveMemo}
+  postId={selectedPostForMemo || ''}
+/>
 
 {/* 投稿詳細モーダル */}
 {selectedPostForDetail && (
