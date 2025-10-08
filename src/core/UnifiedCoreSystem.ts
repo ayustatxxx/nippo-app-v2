@@ -9,6 +9,7 @@ import { FileValidator } from '../utils/fileValidation';
 
 // 既存高品質コンポーネントのインポート
 import { UserGroupResolver } from '../utils/userGroupResolver';
+import { getGroupPosts } from '../utils/firestoreService';
 
 /**
  * 統一コアシステム
@@ -124,26 +125,36 @@ if (postData.files && postData.files.length > 0) {
    * 統一投稿取得システム
    * UserGroupResolverの動的検索を活用
    */
-  static async getPost(postId: string, userId: string): Promise<Post | null> {
-    try {
-      console.log('🔍 UnifiedCoreSystem: 統一投稿取得開始', postId);
-
-      // UserGroupResolverによる動的検索
-      const post = await this.groupResolver.findPostInUserGroups(postId, userId);
+ static async getPost(postId: string, userId: string): Promise<Post | null> {
+  console.log('🔍 UnifiedCoreSystem: 統一投稿取得開始', postId);
+  
+  try {
+    const userGroups = await this.getUserGroups(userId);
+    
+    for (const group of userGroups) {
+      const posts = await getGroupPosts(group.id);
+      const post = posts.find(p => p.id === postId);
       
       if (post) {
-        console.log('✅ 投稿発見完了:', post.id);
+        console.log('✅ 投稿発見完了:', postId);
+        console.log('🔍 [getPost] 取得した画像枚数:', post.photoUrls?.length || 0);
+        
+        const dbUtil = DBUtil.getInstance();
+        await dbUtil.initDB();
+        await dbUtil.save(STORES.POSTS, post);
+        console.log('✅ [getPost] IndexedDB同期完了');
+        
         return post;
       }
-
-      console.log('⚠️ 投稿未発見:', postId);
-      return null;
-
-    } catch (error) {
-      console.error('❌ UnifiedCoreSystem: 投稿取得エラー', error);
-      return null;
     }
+    
+    console.warn('⚠️ 投稿が見つかりません:', postId);
+    return null;
+  } catch (error) {
+    console.error('❌ 投稿取得エラー:', error);
+    return null;
   }
+}
 
   /**
    * 統一グループ取得システム
@@ -220,7 +231,7 @@ if (postData.files && postData.files.length > 0) {
       throw new Error('ユーザー認証が必要です');
     }
 
-    // Step 2: 更新データ準備
+ // Step 2: 更新データ準備
 const updateData: any = {
   updatedAt: Date.now(),
   isEdited: true
@@ -262,46 +273,76 @@ if (updates.files && updates.files.length > 0) {
   }
 }
 
-// photoUrlsの結合処理
-if (newProcessedImages.length > 0) {
-  const existingPhotos = updates.photoUrls || [];
-  updateData.photoUrls = [...existingPhotos, ...newProcessedImages];
-  console.log('✅ [UpdatePost] 画像URL結合完了:', updateData.photoUrls.length, '枚');
-} else if (updates.photoUrls !== undefined) {
-  updateData.photoUrls = updates.photoUrls;
+// photoUrlsの更新処理
+if (updates.photoUrls !== undefined) {
+  updateData.photoUrls = [...updates.photoUrls, ...newProcessedImages];
+  console.log('✅ [UpdatePost] 画像URL更新完了:', updateData.photoUrls.length, '枚');
+  console.log('  - 既存画像:', updates.photoUrls.length, '枚');
+  console.log('  - 新規画像:', newProcessedImages.length, '枚');
+  
+  // 🔍 デバッグ：実際のURLを確認
+  console.log('🔍 [UpdatePost] 実際に保存する画像URL:');
+  updateData.photoUrls.forEach((url, index) => {
+    console.log(`  ${index + 1}. ${url.substring(0, 50)}...`);
+  });
+} else if (newProcessedImages.length > 0) {
+  updateData.photoUrls = newProcessedImages;
+  console.log('✅ [UpdatePost] 新規画像のみ:', newProcessedImages.length, '枚');
 }
 
 // Step 3: Firestoreで更新
-const { doc, updateDoc, getFirestore } = await import('firebase/firestore');
+const { doc, updateDoc, getDoc, getFirestore } = await import('firebase/firestore');
 const db = getFirestore();
 const postRef = doc(db, 'posts', postId);
 
+console.log('📡 [UpdatePost] Firestore更新データ:', {
+  photoUrlsLength: updateData.photoUrls?.length,
+  message: updateData.message?.substring(0, 50),
+  tags: updateData.tags
+});
+
 await updateDoc(postRef, updateData);
 console.log('✅ Firestore更新完了');
+
+// 🔍 デバッグ: 更新直後のFirestoreデータを確認
+const verifyDoc = await getDoc(postRef);
+if (verifyDoc.exists()) {
+  const verifyData = verifyDoc.data();
+  console.log('🔍 [Firestore検証] 更新直後のデータ:');
+  console.log('  - photoUrls枚数:', verifyData.photoUrls?.length || 0);
+  if (verifyData.photoUrls) {
+    verifyData.photoUrls.forEach((url: string, index: number) => {
+      console.log(`    ${index + 1}. ${url.substring(0, 50)}...`);
+    });
+  }
+} else {
+  console.error('❌ [Firestore検証] ドキュメントが見つかりません');
+}
 
 // Step 4: IndexedDB同期
 const dbUtil = DBUtil.getInstance();
 await dbUtil.initDB();
 const existingPost = await dbUtil.get(STORES.POSTS, postId);
-
 if (existingPost) {
   const currentPost = existingPost as Post;
   const updatedPost: Post = {
     ...currentPost,
     ...updateData,
+    photoUrls: updateData.photoUrls || currentPost.photoUrls,
     id: postId,
     updatedAt: updateData.updatedAt,
     isEdited: true
   };
   
+  console.log('🔍 [IndexedDB] 保存する画像枚数:', updatedPost.photoUrls.length);
+  
   await dbUtil.save(STORES.POSTS, updatedPost);
   console.log('✅ IndexedDB同期完了');
-
+  
   // Step 5: 全システム更新通知(直接実装)
   const updateFlag = Date.now().toString();
   localStorage.setItem('daily-report-posts-updated', updateFlag);
   localStorage.setItem('last-updated-group-id', updatedPost.groupId);
-
   const updateEvent = new CustomEvent('postsUpdated', {
     detail: {
       updatedPost: updatedPost,

@@ -943,26 +943,31 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
       createdByName: currentUsername
     };
 
-    console.log('💾 [ArchivePage] 保存するメモデータ:', newMemo);
-
-    // メモモーダルを先に閉じてから保存処理を開始
     setMemoModalOpen(false);
     setMemoContent('');
-    
+
     await MemoService.saveMemo(newMemo);
-    
     console.log('✅ [ArchivePage] メモが正常に保存されました');
-    
-    // PostDetailPageに遷移（即座に）
-    const from = searchParams.get('from');
-    const params = new URLSearchParams();
-    params.set('from', 'archive');
-    params.set('groupId', groupId || '');
-    if (from) params.set('originalFrom', from);
-    
-    navigate(`/post/${selectedPostForMemo}?${params.toString()}`, { replace: true });
-    
-    // 状態をクリア
+
+    // ⭐ シンプルにデータ再取得するだけ（メモが自動的に含まれる）
+    if (groupId) {
+      try {
+        const refreshedPosts = await getGroupPosts(groupId);
+        if (refreshedPosts && refreshedPosts.length > 0) {
+          setPosts(refreshedPosts);
+          setFilteredPosts(refreshedPosts);
+          
+          const updatedPost = refreshedPosts.find(p => p.id === selectedPostForMemo);
+          if (updatedPost) {
+            console.log('✅ [ArchivePage] メモ付き投稿で詳細モーダルを再表示');
+            setSelectedPostForDetail(updatedPost);
+          }
+        }
+      } catch (error) {
+        console.error('❌ [ArchivePage] データリフレッシュエラー:', error);
+      }
+    }
+
     setSelectedPostForMemo(null);
     
   } catch (error) {
@@ -2079,6 +2084,86 @@ const PostDetailModal: React.FC<{
                     ))}
                   </div>
                 )}
+
+
+                {/* メモ表示エリア - アクションボタンの前に追加 */}
+{(displayPost as PostWithMemos).memos && (displayPost as PostWithMemos).memos!.length > 0 && (
+  <div style={{
+    marginTop: '1.5rem',
+    paddingTop: '1rem',
+    borderTop: '1px solid #f0f0f0'
+  }}>
+    <div style={{
+      fontSize: '0.9rem',
+      color: '#055A68',
+      marginBottom: '0.8rem',
+      fontWeight: 'bold',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.5rem'
+    }}>
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#055A68"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="12" y1="18" x2="12" y2="12" />
+        <line x1="9" y1="15" x2="15" y2="15" />
+      </svg>
+      メモ ({(displayPost as PostWithMemos).memos!.length}件)
+    </div>
+    
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+      {(displayPost as PostWithMemos).memos!.map((memo) => (
+        <div
+          key={memo.id}
+          style={{
+            backgroundColor: '#f8f9fa',
+            padding: '1rem',
+            borderRadius: '8px',
+            borderLeft: '3px solid #055A68'
+          }}
+        >
+          <div style={{
+            color: '#333',
+            fontSize: '0.95rem',
+            lineHeight: '1.5',
+            marginBottom: '0.5rem',
+            whiteSpace: 'pre-wrap'
+          }}>
+            {memo.content}
+          </div>
+          
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.75rem',
+            color: '#666'
+          }}>
+            <span>{memo.createdByName}</span>
+            <span>{new Date(memo.createdAt).toLocaleDateString('ja-JP', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
+
     
           {/* アクションボタン - 権限制御付き */}
 <div style={{

@@ -108,6 +108,7 @@ export const getUserGroups = getGroups;
 
 // グループの投稿を取得する関数
 // utils/firestoreService.ts の getGroupPosts関数を以下に置き換え
+// グループの投稿を取得する関数（メモ情報を含む）
 export const getGroupPosts = async (groupId: string): Promise<any[]> => {
   try {
     console.log('🔍 [FirestoreService] グループ投稿取得開始:', groupId);
@@ -121,18 +122,42 @@ export const getGroupPosts = async (groupId: string): Promise<any[]> => {
     const querySnapshot = await getDocs(postsQuery);
     const posts: any[] = [];
     
+    // ⭐ メモコレクションを一度だけ取得（パフォーマンス最適化）
+    console.log('📝 [FirestoreService] メモ情報取得開始');
+    const memosRef = collection(db, 'memos');
+    const memosSnapshot = await getDocs(memosRef);
+    
+    // メモをpostIdでグループ化
+    const memosByPostId: { [key: string]: any[] } = {};
+    memosSnapshot.forEach(doc => {
+      const memoData = doc.data();
+      const postId = memoData.postId;
+      
+      if (postId) {
+        if (!memosByPostId[postId]) {
+          memosByPostId[postId] = [];
+        }
+        memosByPostId[postId].push({
+          id: doc.id,
+          ...memoData
+        });
+      }
+    });
+    
+    console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(memosByPostId).length, '投稿分');
+    
     querySnapshot.forEach((doc) => {
       const data = doc.data();
 
-        // 🔍 デバッグコード
-  console.log('🔍 [Firestore生データ確認]', {
-    投稿ID: doc.id,
-    生データ: data,
-    フィールド一覧: Object.keys(data),
-    userIdフィールド: data.userId,
-    authorIdフィールド: data.authorId,
-    readByフィールド: data.readBy
-  });
+      // 🔍 デバッグコード
+      console.log('🔍 [Firestore生データ確認]', {
+        投稿ID: doc.id,
+        生データ: data,
+        フィールド一覧: Object.keys(data),
+        userIdフィールド: data.userId,
+        authorIdフィールド: data.authorId,
+        readByフィールド: data.readBy
+      });
       
       // Timestamp型の安全な変換
       let createdAtTimestamp;
@@ -164,22 +189,34 @@ export const getGroupPosts = async (groupId: string): Promise<any[]> => {
         displayName = data.username;
       }
       
-      // Post型に変換
+      // ⭐ この投稿のメモを取得
+      const postMemos = memosByPostId[doc.id] || [];
+
+      // 🔍 デバッグ：生データを確認
+console.log('🔍 [getGroupPosts] 投稿ID:', doc.id);
+console.log('  - photoUrls:', data.photoUrls);
+console.log('  - photoUrls枚数:', data.photoUrls?.length || 0);
+console.log('  - images:', data.images);
+console.log('  - images枚数:', data.images?.length || 0);
+
+      
+      // Post型に変換（メモ情報を含む）
       const post = {
         id: doc.id,
         message: data.message || '',
-        photoUrls: [...(data.photoUrls || []), ...(data.images || [])],
+        photoUrls: data.photoUrls || data.images || [],
         tags: data.tags || [],
         userId: data.userId || data.createdBy || data.authorId || '',
-        authorId: data.authorId || data.userId || data.createdBy || '', // 追加
-        readBy: data.readBy || {}, // 追加
+        authorId: data.authorId || data.userId || data.createdBy || '',
+        readBy: data.readBy || {},
         username: displayName,
         groupId: data.groupId || groupId,
         status: data.status || '未確認',
         isWorkTimePost: data.isWorkTimePost || false,
         isEdited: data.isEdited || false,
         time: timeString,
-        timestamp: createdAtTimestamp
+        timestamp: createdAtTimestamp,
+        memos: postMemos // ⭐ メモ情報を追加
       };
       
       posts.push(post);
@@ -188,7 +225,7 @@ export const getGroupPosts = async (groupId: string): Promise<any[]> => {
     // JavaScript側でソート
     posts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     
-    console.log('✅ [FirestoreService] 投稿取得完了:', posts.length, '件');
+    console.log('✅ [FirestoreService] 投稿取得完了:', posts.length, '件（メモ情報含む）');
     return posts;
     
   } catch (error) {

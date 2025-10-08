@@ -210,70 +210,113 @@ useEffect(() => {
 
       
       // 新しい写真をBase64に変換（安全な処理）
-      let additionalPhotoUrls: string[] = [];
-      if (editedPhotos && editedPhotos.length > 0) {
-        const result = await validateAndProcess(editedPhotos);
-        
-        if (result.errors.length > 0) {
-          alert(`ファイルエラー:\\n${result.errors.join('\\n')}`);
-          return;
-        }
-        
-        if (result.validFiles.length > 0) {
-          try {
-            additionalPhotoUrls = await Promise.all(
-              result.validFiles.map(file => FileValidator.convertToBase64(file))
-            );
-            
-            // セキュリティログ
-            FileValidator.logSecurityEvent('files_uploaded', {
-              fileCount: result.validFiles.length,
-              totalSize: result.totalSize,
-              postId: post.id
-            });
-          } catch (conversionError) {
-            console.error('Base64変換エラー:', conversionError);
-            alert('画像の処理中にエラーが発生しました');
-            return;
-          }
-        }
-      }
+let additionalPhotoUrls: string[] = [];
+if (editedPhotos && editedPhotos.length > 0) {
+  console.log('🔍 [EditPage] 新規画像処理開始:', editedPhotos.length, '枚');
+  
+  const result = await validateAndProcess(editedPhotos);
+  
+  if (result.errors.length > 0) {
+    alert(`ファイルエラー:\n${result.errors.join('\n')}`);
+    return;
+  }
+  
+  if (result.validFiles.length > 0) {
+    try {
+      additionalPhotoUrls = await Promise.all(
+        result.validFiles.map(file => FileValidator.convertToBase64(file))
+      );
       
-      // 既存の写真から削除されたものを除外
-      const remainingPhotos = post.photoUrls.filter(url => !deletedPhotoUrls.includes(url));
+      console.log('✅ [EditPage] Base64変換完了:', additionalPhotoUrls.length, '枚');
       
-      // 🔒 セキュリティ強化: 入力値の最終検証
-      const sanitizedMessage = sanitizeInput(editedMessage).substring(0, 5000); // 最大5000文字
-      const validTags = editedTags.filter(tag => tag.length <= 50); // タグ長制限
-      
-      // 更新された投稿データ
-      const updatedPost: Post = {
-        ...post,
-        message: sanitizedMessage,
-        tags: validTags,
-        photoUrls: [...remainingPhotos, ...additionalPhotoUrls],
-        updatedAt: Date.now(),
-        isEdited: true
-      };
-      
-      // データベースに保存
-      const dbUtil = DBUtil.getInstance();
-      await dbUtil.initDB();
-      // ローカル保存（既存のオフライン機能維持）
+      // セキュリティログ
+      FileValidator.logSecurityEvent('files_uploaded', {
+        fileCount: result.validFiles.length,
+        totalSize: result.totalSize,
+        postId: post.id
+      });
+    } catch (conversionError) {
+      console.error('Base64変換エラー:', conversionError);
+      alert('画像の処理中にエラーが発生しました');
+      return;
+    }
+  }
+}
+
+// 既存の写真から削除されたものを除外
+const remainingPhotos = post.photoUrls.filter(url => !deletedPhotoUrls.includes(url));
+
+console.log('📊 [EditPage] 画像枚数デバッグ:');
+console.log('  - 元の画像:', post.photoUrls.length, '枚');
+console.log('  - 削除した画像:', deletedPhotoUrls.length, '枚');
+console.log('  - 残りの画像:', remainingPhotos.length, '枚');
+console.log('  - 新規画像(Base64):', additionalPhotoUrls.length, '枚');
+console.log('  - 新規画像(File):', editedPhotos ? editedPhotos.length : 0, '枚');
+
+// 🔒 セキュリティ強化: 入力値の最終検証
+const sanitizedMessage = sanitizeInput(editedMessage).substring(0, 5000);
+const validTags = editedTags.filter(tag => tag.length <= 50);
+
+// 更新されたデータ
+const updatedPost: Post = {
+  ...post,
+  message: sanitizedMessage,
+  tags: validTags,
+  photoUrls: [...remainingPhotos],  // ✅ 修正済み
+  updatedAt: Date.now(),
+  isEdited: true
+};
+
+console.log('📦 [EditPage] IndexedDB保存データ:');
+console.log('  - photoUrls枚数:', updatedPost.photoUrls.length);
+console.log('  - photoUrls:', updatedPost.photoUrls);
+
+// データベースに保存
+const dbUtil = DBUtil.getInstance();
+await dbUtil.initDB();
 await dbUtil.save(STORES.POSTS, updatedPost);
+
+console.log('✅ [EditPage] IndexedDB保存完了');
 
 // ハイブリッド同期に状態表示を追加
 setSyncStatus('online');
 try {
-  await UnifiedCoreSystem.updatePost(post.id, {
+  const updateData = {
     message: sanitizedMessage,
     tags: validTags,
-    photoUrls: [...remainingPhotos, ...additionalPhotoUrls],
+    photoUrls: [...remainingPhotos],  // ✅ 修正済み
     files: editedPhotos ? Array.from(editedPhotos) : undefined
-  });
+  };
+  
+  console.log('📡 [EditPage] UnifiedCoreSystem.updatePost呼び出し:');
+  console.log('  - photoUrls枚数:', updateData.photoUrls.length);
+  console.log('  - files枚数:', updateData.files ? updateData.files.length : 0);
+  
+  await UnifiedCoreSystem.updatePost(post.id, updateData);
   
   console.log('✅ EditPage: 投稿更新完了');
   setSyncStatus('completed');
+
+const userId = localStorage.getItem("daily-report-user-id");
+if (userId) {
+  console.log('🔍 [EditPage] 最新データ取得開始...');
+  const updatedPostData = await UnifiedCoreSystem.getPost(post.id, userId);
+  if (updatedPostData) {
+    console.log('🔄 [EditPage] 最新データを取得:', updatedPostData.photoUrls.length, '枚');
+    console.log('🔍 [EditPage] 取得した画像URL:');
+    updatedPostData.photoUrls.forEach((url, index) => {
+      console.log(`  ${index + 1}. ${url.substring(0, 50)}...`);
+    });
+    
+    setPost(updatedPostData);
+    setEditedMessage(updatedPostData.message || '');
+    setEditedTags(updatedPostData.tags || []);
+    setDeletedPhotoUrls([]);
+    setEditedPhotos(null);
+  } else {
+    console.error('❌ [EditPage] 最新データの取得に失敗');
+  }
+}
 } catch (syncError) {
   console.warn('⚠️ EditPage: 投稿更新失敗（ローカル保存は完了）:', syncError);
   setSyncStatus('completed');
