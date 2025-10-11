@@ -99,77 +99,78 @@ const MemoModal: React.FC<MemoModalProps> = ({ isOpen, onClose, onSave, postId }
       .map(tag => tag.startsWith('#') ? tag : `#${tag}`);
   };
 
-  // 🔒 セキュリティ強化: メモ保存処理
   const handleSave = async () => {
-    const sanitizedContent = sanitizeInput(content);
-    
-    if (!sanitizedContent.trim()) {
-      alert('メモの内容を入力してください');
-      return;
-    }
+  const sanitizedContent = sanitizeInput(content);
+  
+  if (!sanitizedContent.trim()) {
+    alert('メモの内容を入力してください');
+    return;
+  }
 
-    // 🔒 検証エラーがある場合は保存しない
-    if (validationErrors.length > 0) {
-      alert('ファイルエラーを解決してから保存してください。');
-      return;
-    }
+  if (validationErrors.length > 0) {
+    alert('ファイルエラーを解決してから保存してください。');
+    return;
+  }
 
-    setIsSubmitting(true);
+  setIsSubmitting(true);
 
-    try {
-      // 🔒 セキュリティ強化: 安全な画像処理
-      let imageUrls: string[] = [];
-      if (images && images.length > 0) {
-        const result = await validateAndProcess(images);
-        
-        if (result.errors.length > 0) {
-          alert(`ファイルエラー:\n${result.errors.join('\n')}`);
-          return;
-        }
-
-        if (result.validFiles.length > 0) {
-          try {
-            imageUrls = await Promise.all(
-              result.validFiles.map(file => FileValidator.convertToBase64(file))
-            );
-            
-            // セキュリティログ
-            FileValidator.logSecurityEvent('memo_images_uploaded', {
-              fileCount: result.validFiles.length,
-              totalSize: result.totalSize,
-              postId: postId
-            });
-          } catch (conversionError) {
-            console.error('Base64変換エラー:', conversionError);
-            alert('画像の処理中にエラーが発生しました');
-            return;
-          }
-        }
+  try {
+    let imageUrls: string[] = [];
+    if (images && images.length > 0) {
+      const result = await validateAndProcess(images);
+      
+      if (result.errors.length > 0) {
+        alert(`ファイルエラー:\n${result.errors.join('\n')}`);
+        setIsSubmitting(false);
+        return;
       }
 
-      const memoData = {
-        content: sanitizedContent.substring(0, 2000), // 🔒 最大2000文字
-        imageUrls,
-        tags: parseTags(tagInput)
-      };
-
-      onSave(memoData);
-      
-      // フォームリセット
-      setContent('');
-      setImages(null);
-      setImagePreviewUrls([]);
-      setTagInput('');
-      clearErrors();
-      onClose();
-    } catch (error) {
-      console.error('メモの保存に失敗:', error);
-      FileValidator.logSecurityEvent('memo_save_failed', { error, postId });
-      alert('メモの保存に失敗しました');
-    } finally {
-      setIsSubmitting(false);
+      if (result.validFiles.length > 0) {
+        try {
+          imageUrls = await Promise.all(
+            result.validFiles.map(file => FileValidator.convertToBase64(file))
+          );
+          
+          FileValidator.logSecurityEvent('memo_images_uploaded', {
+            fileCount: result.validFiles.length,
+            totalSize: result.totalSize,
+            postId: postId
+          });
+        } catch (conversionError) {
+          console.error('Base64変換エラー:', conversionError);
+          alert('画像の処理中にエラーが発生しました');
+          setIsSubmitting(false);
+          return;
+        }
+      }
     }
-  };
+
+    const memoData = {
+      content: sanitizedContent.substring(0, 2000),
+      imageUrls,
+      tags: parseTags(tagInput)
+    };
+
+    // ★ 変更点1: onSaveを呼ぶ（親コンポーネントで処理）
+    await onSave(memoData);
+    
+    // ★ 変更点2: フォームリセット（onClose()は削除）
+    setContent('');
+    setImages(null);
+    setImagePreviewUrls([]);
+    setTagInput('');
+    clearErrors();
+    
+    // ★ 変更点3: onClose()を削除（親コンポーネントで閉じる）
+    
+  } catch (error) {
+    console.error('メモの保存に失敗:', error);
+    FileValidator.logSecurityEvent('memo_save_failed', { error, postId });
+    alert('メモの保存に失敗しました');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const handleCancel = () => {
     setContent('');

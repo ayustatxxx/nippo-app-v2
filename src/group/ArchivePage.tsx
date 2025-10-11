@@ -704,6 +704,7 @@ const [selectedPostForMemo, setSelectedPostForMemo] = useState<string | null>(nu
 const [memoModalOpen, setMemoModalOpen] = useState(false);
 const [memoContent, setMemoContent] = useState('');
 
+
   // データ分析ボタンのハンドラー
 const handleDataAnalysis = async () => {
   try {
@@ -928,6 +929,10 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
     return;
   }
 
+  console.log('🔍 [handleSaveMemo] 受け取ったmemoData:', memoData);
+  console.log('🔍 [handleSaveMemo] imageUrlsの有無:', memoData.imageUrls);
+  console.log('🔍 [handleSaveMemo] imageUrlsの長さ:', memoData.imageUrls?.length);
+
   try {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "admin_user";
     
@@ -943,16 +948,19 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
       createdByName: currentUsername
     };
 
+    console.log('🔍 [handleSaveMemo] 保存するnewMemo:', newMemo);
+    console.log('🔍 [handleSaveMemo] newMemo.imageUrls:', newMemo.imageUrls);
+
     setMemoModalOpen(false);
     setMemoContent('');
 
     await MemoService.saveMemo(newMemo);
     console.log('✅ [ArchivePage] メモが正常に保存されました');
 
-    // ⭐ シンプルにデータ再取得するだけ（メモが自動的に含まれる）
     if (groupId) {
       try {
         const refreshedPosts = await getGroupPosts(groupId);
+        
         if (refreshedPosts && refreshedPosts.length > 0) {
           setPosts(refreshedPosts);
           setFilteredPosts(refreshedPosts);
@@ -960,7 +968,21 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
           const updatedPost = refreshedPosts.find(p => p.id === selectedPostForMemo);
           if (updatedPost) {
             console.log('✅ [ArchivePage] メモ付き投稿で詳細モーダルを再表示');
-            setSelectedPostForDetail(updatedPost);
+            console.log('🔍 [ArchivePage] updatedPost:', updatedPost);
+            console.log('🔍 [ArchivePage] updatedPost.memos:', updatedPost.memos);
+            if (updatedPost.memos && updatedPost.memos.length > 0) {
+              console.log('🔍 [ArchivePage] 最新メモ:', updatedPost.memos[0]);
+              console.log('🔍 [ArchivePage] 最新メモのimageUrls:', updatedPost.memos[0].imageUrls);
+            }
+            
+            // ⭐ 修正: モーダルを一度完全に閉じる
+            setSelectedPostForDetail(null);
+            
+            // ⭐ 100ミリ秒待ってから新しいデータで開く
+            setTimeout(() => {
+              setSelectedPostForDetail(updatedPost);
+              console.log('🎉 [ArchivePage] 詳細モーダルを新しいデータで再表示');
+            }, 100);
           }
         }
       } catch (error) {
@@ -2087,6 +2109,7 @@ const PostDetailModal: React.FC<{
 
 
                 {/* メモ表示エリア - アクションボタンの前に追加 */}
+{/* メモ表示エリア - MemoDisplayコンポーネントを使用 */}
 {(displayPost as PostWithMemos).memos && (displayPost as PostWithMemos).memos!.length > 0 && (
   <div style={{
     marginTop: '1.5rem',
@@ -2120,49 +2143,14 @@ const PostDetailModal: React.FC<{
       メモ ({(displayPost as PostWithMemos).memos!.length}件)
     </div>
     
+    {/* ⭐ ここを変更：MemoDisplayコンポーネントを使用 */}
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
       {(displayPost as PostWithMemos).memos!.map((memo) => (
-        <div
-          key={memo.id}
-          style={{
-            backgroundColor: '#f8f9fa',
-            padding: '1rem',
-            borderRadius: '8px',
-            borderLeft: '3px solid #055A68'
-          }}
-        >
-          <div style={{
-            color: '#333',
-            fontSize: '0.95rem',
-            lineHeight: '1.5',
-            marginBottom: '0.5rem',
-            whiteSpace: 'pre-wrap'
-          }}>
-            {memo.content}
-          </div>
-          
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            fontSize: '0.75rem',
-            color: '#666'
-          }}>
-            <span>{memo.createdByName}</span>
-            <span>{new Date(memo.createdAt).toLocaleDateString('ja-JP', {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}</span>
-          </div>
-        </div>
+        <MemoDisplay key={memo.id} memo={memo} />
       ))}
     </div>
   </div>
 )}
-
 
     
           {/* アクションボタン - 権限制御付き */}
@@ -3060,7 +3048,7 @@ const PostDetailModal: React.FC<{
                         fontWeight: '800',
                         cursor: 'pointer',
                       }}
-                      onClick={() => setSearchQuery(`#${tag}`)}
+                      onClick={() => setSearchQuery(tag)} 
                     >
                       {tag}
                     </span>
@@ -3895,6 +3883,8 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
   onSave={handleSaveMemo}
   postId={selectedPostForMemo || ''}
 />
+
+
 
 {/* 投稿詳細モーダル */}
 {selectedPostForDetail && (

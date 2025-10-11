@@ -12,6 +12,7 @@ import { UnifiedDataManager } from '../utils/unifiedDataManager';
 import { getDisplayNameSafe } from '../core/SafeUnifiedDataManager';
 import { getUser } from '../firebase/firestore';
 import MemoModal from '../components/MemoModal';
+import { MemoService } from '../utils/memoService'; 
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 
 
@@ -1241,6 +1242,137 @@ const PostDetailModal: React.FC<{
               </div>
             )}
 
+            {/* メモ表示エリア */}
+            {(() => {
+              // PostWithMemosとして型変換
+              const postWithMemos = displayPost as any;
+const memos = postWithMemos.memos || [];
+
+// ★ この2行を追加！
+const sortedMemos = [...memos].sort((a: any, b: any) => 
+  (b.createdAt || 0) - (a.createdAt || 0)
+);
+
+console.log('🔍 [PostDetailModal] メモ表示確認:', {
+  postId: displayPost.id,
+  memosCount: memos.length,
+  memos: memos
+});
+
+if (memos.length === 0) {
+  return null;
+}
+              
+              return (
+                <div style={{
+                  marginTop: '1.5rem',
+                  paddingTop: '1rem',
+                  borderTop: '1px solid #f0f0f0'
+                }}>
+                  <div style={{
+                    fontSize: '0.9rem',
+                    color: '#055A68',
+                    marginBottom: '0.8rem',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#055A68"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="12" y1="18" x2="12" y2="12" />
+                      <line x1="9" y1="15" x2="15" y2="15" />
+                    </svg>
+                    メモ ({memos.length}件)
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                    {sortedMemos.map((memo: any) => (
+                      <div key={memo.id} style={{
+                        backgroundColor: '#f8f9fa',
+                        padding: '0.8rem',
+                        borderRadius: '8px',
+                        border: '1px solid #e9ecef'
+                      }}>
+                        {/* メモ内容 */}
+                        <div style={{
+                          color: '#333',
+                          fontSize: '0.9rem',
+                          marginBottom: '0.5rem',
+                          whiteSpace: 'pre-wrap',
+                          lineHeight: '1.5'
+                        }}>
+                          {memo.content}
+                        </div>
+                        
+                        {/* メモ画像 */}
+                        {memo.imageUrls && memo.imageUrls.length > 0 && (
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                            gap: '0.5rem',
+                            marginTop: '0.5rem'
+                          }}>
+                            {memo.imageUrls.map((url: string, idx: number) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  aspectRatio: '1/1',
+                                  borderRadius: '6px',
+                                  overflow: 'hidden',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => {
+                                  setGalleryImages(memo.imageUrls);
+                                  setGalleryIndex(idx);
+                                  setGalleryOpen(true);
+                                }}
+                              >
+                                <img
+                                  src={url}
+                                  alt={`メモ画像 ${idx + 1}`}
+                                  style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover'
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* メモメタ情報 */}
+                        <div style={{
+                          marginTop: '0.5rem',
+                          paddingTop: '0.5rem',
+                          borderTop: '1px solid #e9ecef',
+                          fontSize: '0.75rem',
+                          color: '#6c757d',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span>{memo.createdByName || 'ユーザー'}</span>
+                          <span>{new Date(memo.createdAt).toLocaleString('ja-JP')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
          {/* アクションボタン - Home専用軽量版 */}
 <div style={{
   marginTop: '2rem',
@@ -1316,14 +1448,14 @@ const handleViewPostDetails = (postId: string, groupId: string) => {
   };
 
   const handleMemoClick = (post: Post) => {
+  console.log('📝 [HomePage] メモ追加ボタンクリック:', post.id);
+  
+ 
+  // すぐにメモモーダルを開く（遅延なし）
   setSelectedPostForMemo(post);
   setMemoModalOpen(true);
 };
 
-const handleMemoClose = () => {
-  setMemoModalOpen(false);
-  setSelectedPostForMemo(null);
-};
 
 
   // ★ 修正版：確実な初期化とリトライ機能付きデータロード ★
@@ -2317,15 +2449,70 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
   />
 )}
 
-    {/* メモモーダル */}
+ 
+{/* メモモーダル */}
 {memoModalOpen && selectedPostForMemo && (
 <MemoModal
   isOpen={memoModalOpen}
-  onClose={handleMemoClose}
+  onClose={() => {
+    console.log('❌ [HomePage] メモ追加をキャンセル');
+    setMemoModalOpen(false);
+    setSelectedPostForMemo(null);
+    console.log('✅ [HomePage] キャンセル処理完了');
+  }}
   postId={selectedPostForMemo?.id || ''}
-  onSave={() => {
-    // メモ保存後の処理
-    handleMemoClose();
+  onSave={async (memoData) => {
+    console.log('💾 [HomePage] メモ保存開始');
+    console.log('📝 [HomePage] メモデータ:', memoData);
+    
+    try {
+      const userId = localStorage.getItem("daily-report-user-id") || "";
+      const currentUser = await getUser(userId);
+      const displayName = currentUser ? DisplayNameResolver.resolve(currentUser) : "ユーザー";
+      
+      // メモデータを完全な形で作成
+      const newMemo = {
+        ...memoData,
+        id: `memo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        postId: selectedPostForMemo.id,
+        createdAt: Date.now(),
+        createdBy: userId,
+        createdByName: displayName
+      };
+      
+      console.log('📤 [HomePage] Firestoreに保存するメモ:', newMemo);
+      
+      // Firestoreに保存
+      await MemoService.saveMemo(newMemo);
+      
+      console.log('✅ [HomePage] メモ保存完了');
+      
+      // ★ 重要: メモモーダルを閉じる前に詳細モーダルのデータを更新
+      console.log('📥 [HomePage] 最新データを取得中...');
+      const updatedPost = await UnifiedCoreSystem.getPost(selectedPostForMemo.id, userId);
+      
+      if (updatedPost) {
+        console.log('✅ [HomePage] 最新データ取得成功');
+        console.log('📊 [HomePage] メモ件数:', updatedPost.memos?.length || 0);
+        
+        // ★ 先に詳細モーダルのデータを更新（これが重要！）
+        setSelectedPostForDetail(updatedPost);
+      }
+      
+      // ★ その後でメモモーダルを閉じる
+      setMemoModalOpen(false);
+      setSelectedPostForMemo(null);
+      
+      console.log('🎉 [HomePage] すべての更新処理完了');
+      
+    } catch (error) {
+      console.error('❌ [HomePage] メモ保存エラー:', error);
+      alert('メモの保存に失敗しました');
+      
+      // エラー時もモーダルを閉じる
+      setMemoModalOpen(false);
+      setSelectedPostForMemo(null);
+    }
   }}
 />
 )}
