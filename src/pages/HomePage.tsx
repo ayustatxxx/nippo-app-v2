@@ -2462,58 +2462,62 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
   }}
   postId={selectedPostForMemo?.id || ''}
   onSave={async (memoData) => {
-    console.log('💾 [HomePage] メモ保存開始');
-    console.log('📝 [HomePage] メモデータ:', memoData);
+  console.log('💾 [HomePage] メモ保存開始');
+  console.log('📝 [HomePage] メモデータ:', memoData);
+  
+  try {
+    const userId = localStorage.getItem("daily-report-user-id") || "";
+    const currentUser = await getUser(userId);
+    const displayName = currentUser ? DisplayNameResolver.resolve(currentUser) : "ユーザー";
     
-    try {
-      const userId = localStorage.getItem("daily-report-user-id") || "";
-      const currentUser = await getUser(userId);
-      const displayName = currentUser ? DisplayNameResolver.resolve(currentUser) : "ユーザー";
-      
-      // メモデータを完全な形で作成
-      const newMemo = {
-        ...memoData,
-        id: `memo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        postId: selectedPostForMemo.id,
-        createdAt: Date.now(),
-        createdBy: userId,
-        createdByName: displayName
+    // メモデータを完全な形で作成
+    const newMemo = {
+      ...memoData,
+      id: `memo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      postId: selectedPostForMemo.id,
+      createdAt: Date.now(),
+      createdBy: userId,
+      createdByName: displayName
+    };
+    
+    console.log('📤 [HomePage] Firestoreに保存するメモ:', newMemo);
+    
+    // ★ 変更点1: ローカルで即座にメモを追加（超高速！）
+    const currentPost = selectedPostForDetail;
+    if (currentPost) {
+      const updatedPost = {
+        ...currentPost,
+        memos: [...(currentPost.memos || []), newMemo]
       };
       
-      console.log('📤 [HomePage] Firestoreに保存するメモ:', newMemo);
-      
-      // Firestoreに保存
-      await MemoService.saveMemo(newMemo);
-      
-      console.log('✅ [HomePage] メモ保存完了');
-      
-      // ★ 重要: メモモーダルを閉じる前に詳細モーダルのデータを更新
-      console.log('📥 [HomePage] 最新データを取得中...');
-      const updatedPost = await UnifiedCoreSystem.getPost(selectedPostForMemo.id, userId);
-      
-      if (updatedPost) {
-        console.log('✅ [HomePage] 最新データ取得成功');
-        console.log('📊 [HomePage] メモ件数:', updatedPost.memos?.length || 0);
-        
-        // ★ 先に詳細モーダルのデータを更新（これが重要！）
-        setSelectedPostForDetail(updatedPost);
-      }
-      
-      // ★ その後でメモモーダルを閉じる
-      setMemoModalOpen(false);
-      setSelectedPostForMemo(null);
-      
-      console.log('🎉 [HomePage] すべての更新処理完了');
-      
-    } catch (error) {
-      console.error('❌ [HomePage] メモ保存エラー:', error);
-      alert('メモの保存に失敗しました');
-      
-      // エラー時もモーダルを閉じる
-      setMemoModalOpen(false);
-      setSelectedPostForMemo(null);
+      // 即座に画面更新
+      setSelectedPostForDetail(updatedPost);
+      console.log('⚡ [HomePage] 画面を即座に更新（超高速）');
     }
-  }}
+    
+    // ★ 変更点2: メモモーダルを即座に閉じる
+    setMemoModalOpen(false);
+    setSelectedPostForMemo(null);
+    
+    console.log('🎉 [HomePage] 画面更新完了（待ち時間なし）');
+    
+    // ★ 変更点3: Firestore保存はバックグラウンドで実行
+    MemoService.saveMemo(newMemo).then(() => {
+      console.log('✅ [HomePage] Firestore保存完了（バックグラウンド）');
+    }).catch(error => {
+      console.error('❌ [HomePage] Firestore保存エラー:', error);
+      // エラーが起きても画面は既に更新されている
+    });
+    
+  } catch (error) {
+    console.error('❌ [HomePage] メモ保存エラー:', error);
+    alert('メモの保存に失敗しました');
+    
+    // エラー時もモーダルを閉じる
+    setMemoModalOpen(false);
+    setSelectedPostForMemo(null);
+  }
+}}
 />
 )}
 

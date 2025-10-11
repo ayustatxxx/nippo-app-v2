@@ -412,7 +412,13 @@ const WorkTimePostCard: React.FC<{
   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
   {/* メモボタン（全員に表示） */}
   <button
-    onClick={() => handleAddMemo(post.id)}
+  onClick={(e) => {
+    console.log('🔴🔴🔴 [DEBUG] メモボタンがクリックされました！');
+    console.log('🔴 [DEBUG] イベント:', e);
+    console.log('🔴 [DEBUG] post.id:', post.id);
+    console.log('🔴 [DEBUG] handleAddMemo関数:', handleAddMemo);
+    handleAddMemo(post.id);
+  }}
     style={{
       padding: '0.4rem 1rem',
       backgroundColor: 'rgb(0, 102, 114)',
@@ -917,10 +923,12 @@ const handleAddMemo = (postId: string) => {
   // 詳細モーダルを閉じる
   setSelectedPostForDetail(null);
   
-  // すぐにメモモーダルを開く（遅延なし）
-  setSelectedPostForMemo(postId);
-  setMemoContent('');
-  setMemoModalOpen(true);
+  // 少し待ってからメモモーダルを開く
+  setTimeout(() => {
+    setSelectedPostForMemo(postId);
+    setMemoContent('');
+    setMemoModalOpen(true);
+  }, 100);
 };
 
 const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'createdBy' | 'createdByName' | 'postId'>) => {
@@ -929,13 +937,11 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
     return;
   }
 
-  console.log('🔍 [handleSaveMemo] 受け取ったmemoData:', memoData);
-  console.log('🔍 [handleSaveMemo] imageUrlsの有無:', memoData.imageUrls);
-  console.log('🔍 [handleSaveMemo] imageUrlsの長さ:', memoData.imageUrls?.length);
-
+  console.log('💾 [ArchivePage] メモ保存開始');
+  console.log('📝 [ArchivePage] メモデータ:', memoData);
+  
   try {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "admin_user";
-    
     const currentUser = await getUser(currentUserId);
     const currentUsername = currentUser ? DisplayNameResolver.resolve(currentUser) : "ユーザー";
 
@@ -948,17 +954,23 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
       createdByName: currentUsername
     };
 
-    console.log('🔍 [handleSaveMemo] 保存するnewMemo:', newMemo);
-    console.log('🔍 [handleSaveMemo] newMemo.imageUrls:', newMemo.imageUrls);
-
+    console.log('📤 [ArchivePage] Firestoreに保存するメモ:', newMemo);
+    
+    // メモモーダルを閉じる
     setMemoModalOpen(false);
     setMemoContent('');
-
-    await MemoService.saveMemo(newMemo);
-    console.log('✅ [ArchivePage] メモが正常に保存されました');
-
+    
+    // Firestore保存はバックグラウンドで実行
+    MemoService.saveMemo(newMemo).then(() => {
+      console.log('✅ [ArchivePage] Firestore保存完了（バックグラウンド）');
+    }).catch(error => {
+      console.error('❌ [ArchivePage] Firestore保存エラー:', error);
+    });
+    
+    // データを再取得して詳細モーダルを開く
     if (groupId) {
       try {
+        console.log('🔄 [ArchivePage] 投稿データを再取得中...');
         const refreshedPosts = await getGroupPosts(groupId);
         
         if (refreshedPosts && refreshedPosts.length > 0) {
@@ -968,20 +980,11 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
           const updatedPost = refreshedPosts.find(p => p.id === selectedPostForMemo);
           if (updatedPost) {
             console.log('✅ [ArchivePage] メモ付き投稿で詳細モーダルを再表示');
-            console.log('🔍 [ArchivePage] updatedPost:', updatedPost);
-            console.log('🔍 [ArchivePage] updatedPost.memos:', updatedPost.memos);
-            if (updatedPost.memos && updatedPost.memos.length > 0) {
-              console.log('🔍 [ArchivePage] 最新メモ:', updatedPost.memos[0]);
-              console.log('🔍 [ArchivePage] 最新メモのimageUrls:', updatedPost.memos[0].imageUrls);
-            }
             
-            // ⭐ 修正: モーダルを一度完全に閉じる
-            setSelectedPostForDetail(null);
-            
-            // ⭐ 100ミリ秒待ってから新しいデータで開く
+            // 詳細モーダルを再表示
             setTimeout(() => {
               setSelectedPostForDetail(updatedPost);
-              console.log('🎉 [ArchivePage] 詳細モーダルを新しいデータで再表示');
+              console.log('🎉 [ArchivePage] 詳細モーダル再表示完了');
             }, 100);
           }
         }
@@ -989,12 +992,16 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
         console.error('❌ [ArchivePage] データリフレッシュエラー:', error);
       }
     }
-
+    
     setSelectedPostForMemo(null);
     
   } catch (error) {
-    console.error('❌ [ArchivePage] メモの保存に失敗:', error);
+    console.error('❌ [ArchivePage] メモ保存エラー:', error);
     alert('メモの保存に失敗しました');
+    
+    setMemoModalOpen(false);
+    setMemoContent('');
+    setSelectedPostForMemo(null);
   }
 };
 
@@ -2108,7 +2115,8 @@ const PostDetailModal: React.FC<{
                 )}
 
 
-                {/* メモ表示エリア - アクションボタンの前に追加 */}
+
+{/* メモ表示エリア - MemoDisplayコンポーネントを使用 */}
 {/* メモ表示エリア - MemoDisplayコンポーネントを使用 */}
 {(displayPost as PostWithMemos).memos && (displayPost as PostWithMemos).memos!.length > 0 && (
   <div style={{
@@ -2143,11 +2151,13 @@ const PostDetailModal: React.FC<{
       メモ ({(displayPost as PostWithMemos).memos!.length}件)
     </div>
     
-    {/* ⭐ ここを変更：MemoDisplayコンポーネントを使用 */}
+    {/* ★ ここを変更：新しい順にソート ★ */}
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-      {(displayPost as PostWithMemos).memos!.map((memo) => (
-        <MemoDisplay key={memo.id} memo={memo} />
-      ))}
+      {[...(displayPost as PostWithMemos).memos!]
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .map((memo) => (
+          <MemoDisplay key={memo.id} memo={memo} />
+        ))}
     </div>
   </div>
 )}
@@ -3876,13 +3886,27 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
 <MemoModal
   isOpen={memoModalOpen}
   onClose={() => {
+    console.log('❌ [ArchivePage] メモモーダルをキャンセル');
     setMemoModalOpen(false);
     setMemoContent('');
+    
+    // キャンセル時は、元の投稿の詳細モーダルを再表示
+    if (selectedPostForMemo) {
+      const targetPost = posts.find(p => p.id === selectedPostForMemo);
+      if (targetPost) {
+        setTimeout(() => {
+          setSelectedPostForDetail(targetPost);
+          console.log('🔙 [ArchivePage] 詳細モーダルに戻る');
+        }, 100);
+      }
+    }
+    
     setSelectedPostForMemo(null);
   }}
   onSave={handleSaveMemo}
   postId={selectedPostForMemo || ''}
 />
+
 
 
 
