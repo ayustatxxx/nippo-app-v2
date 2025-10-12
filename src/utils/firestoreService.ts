@@ -128,21 +128,39 @@ export const getGroupPosts = async (groupId: string): Promise<any[]> => {
     const memosSnapshot = await getDocs(memosRef);
     
     // メモをpostIdでグループ化
-    const memosByPostId: { [key: string]: any[] } = {};
-    memosSnapshot.forEach(doc => {
-      const memoData = doc.data();
-      const postId = memoData.postId;
-      
-      if (postId) {
-        if (!memosByPostId[postId]) {
-          memosByPostId[postId] = [];
-        }
-        memosByPostId[postId].push({
-          id: doc.id,
-          ...memoData
-        });
-      }
+    // ⭐ 現在のユーザーIDを取得
+const currentUserId = localStorage.getItem("daily-report-user-id");
+console.log('👤 [FirestoreService] 現在のユーザーID:', currentUserId);
+
+// メモをpostIdでグループ化（⭐ 現在のユーザーのメモのみ）
+const memosByPostId: { [key: string]: any[] } = {};
+memosSnapshot.forEach(doc => {
+  const memoData = doc.data();
+  const postId = memoData.postId;
+  
+  // ⭐ 重要：現在のユーザーのメモのみ処理
+  if (postId && memoData.createdBy === currentUserId) {
+    if (!memosByPostId[postId]) {
+      memosByPostId[postId] = [];
+    }
+    memosByPostId[postId].push({
+      id: doc.id,
+      ...memoData
     });
+    
+    console.log('✅ [FirestoreService] ユーザーのメモを追加:', {
+      メモID: doc.id,
+      投稿ID: postId,
+      作成者: memoData.createdByName
+    });
+  } else if (postId && memoData.createdBy !== currentUserId) {
+    console.log('⏭️ [FirestoreService] 他ユーザーのメモをスキップ:', {
+      メモID: doc.id,
+      作成者: memoData.createdByName,
+      作成者ID: memoData.createdBy
+    });
+  }
+});
     
     console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(memosByPostId).length, '投稿分');
     
