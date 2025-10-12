@@ -503,6 +503,12 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
       setTimeout(() => {
         console.log('遷移前の最終更新イベント発火');
         window.dispatchEvent(new CustomEvent('postsUpdated'));
+        // ✅ この直前にログを追加
+  console.log('🔐 認証状態確認:', {
+    hasToken: !!localStorage.getItem('daily-report-user-token'),
+    hasUserId: !!localStorage.getItem('daily-report-user-id'),
+    timestamp: Date.now()
+  });
         navigate(`/group/${groupId}/archive`);
       }, 300);
       

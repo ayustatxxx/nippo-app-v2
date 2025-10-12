@@ -920,15 +920,18 @@ const handleAskQuestion = async () => {
 const handleAddMemo = (postId: string) => {
   console.log('📝 [ArchivePage] メモ追加ボタンクリック:', postId);
   
-  // 詳細モーダルを閉じる
+  // ⭐ 修正：モーダル状態を同時に更新（一瞬の表示を防ぐ）
+  // 1. メモモーダルの状態を先に設定
+  setSelectedPostForMemo(postId);
+  setMemoContent('');
+  
+  // 2. メモモーダルを開く（詳細モーダルより先に）
+  setMemoModalOpen(true);
+  
+  // 3. 詳細モーダルを閉じる（メモモーダルが開いた後）
   setSelectedPostForDetail(null);
   
-  // 少し待ってからメモモーダルを開く
-  setTimeout(() => {
-    setSelectedPostForMemo(postId);
-    setMemoContent('');
-    setMemoModalOpen(true);
-  }, 100);
+  console.log('✅ [ArchivePage] メモモーダルを開く');
 };
 
 const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'createdBy' | 'createdByName' | 'postId'>) => {
@@ -956,44 +959,47 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
 
     console.log('📤 [ArchivePage] Firestoreに保存するメモ:', newMemo);
     
-    // メモモーダルを閉じる
+    const currentPost = posts.find(p => p.id === selectedPostForMemo);
+    if (!currentPost) {
+      console.error('投稿が見つかりません');
+      return;
+    }
+    
+    const updatedPost = {
+      ...currentPost,
+      memos: [...(currentPost.memos || []), newMemo]
+    };
+    
+    console.log('⚡ [ArchivePage] 更新後の投稿:', {
+      postId: updatedPost.id,
+      memosCount: updatedPost.memos?.length || 0
+    });
+    
+    // ⭐ 修正1: 先に投稿リストを更新（同期的に）
+    setPosts(prevPosts => prevPosts.map(p => 
+      p.id === selectedPostForMemo ? updatedPost : p
+    ));
+    setFilteredPosts(prevPosts => prevPosts.map(p => 
+      p.id === selectedPostForMemo ? updatedPost : p
+    ));
+    
+    // ⭐ 修正2: メモモーダルを閉じる
     setMemoModalOpen(false);
     setMemoContent('');
+    setSelectedPostForMemo(null);
     
-    // Firestore保存はバックグラウンドで実行
+    // ⭐ 修正3: 詳細モーダルを開く（更新済みのリストから取得）
+    setSelectedPostForDetail(updatedPost);
+    
+    console.log('🎉 [ArchivePage] メモモーダルを閉じて詳細モーダルを再表示');
+    
+    // ⭐ 修正4: Firestore保存はバックグラウンドで（投稿リスト更新なし）
     MemoService.saveMemo(newMemo).then(() => {
       console.log('✅ [ArchivePage] Firestore保存完了（バックグラウンド）');
+      // setPosts/setFilteredPostsは削除（既に更新済み）
     }).catch(error => {
       console.error('❌ [ArchivePage] Firestore保存エラー:', error);
     });
-    
-    // データを再取得して詳細モーダルを開く
-    if (groupId) {
-      try {
-        console.log('🔄 [ArchivePage] 投稿データを再取得中...');
-        const refreshedPosts = await getGroupPosts(groupId);
-        
-        if (refreshedPosts && refreshedPosts.length > 0) {
-          setPosts(refreshedPosts);
-          setFilteredPosts(refreshedPosts);
-          
-          const updatedPost = refreshedPosts.find(p => p.id === selectedPostForMemo);
-          if (updatedPost) {
-            console.log('✅ [ArchivePage] メモ付き投稿で詳細モーダルを再表示');
-            
-            // 詳細モーダルを再表示
-            setTimeout(() => {
-              setSelectedPostForDetail(updatedPost);
-              console.log('🎉 [ArchivePage] 詳細モーダル再表示完了');
-            }, 100);
-          }
-        }
-      } catch (error) {
-        console.error('❌ [ArchivePage] データリフレッシュエラー:', error);
-      }
-    }
-    
-    setSelectedPostForMemo(null);
     
   } catch (error) {
     console.error('❌ [ArchivePage] メモ保存エラー:', error);
@@ -3887,24 +3893,26 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
   isOpen={memoModalOpen}
   onClose={() => {
     console.log('❌ [ArchivePage] メモモーダルをキャンセル');
+    
+    // ⭐ 修正：元の投稿を取得して詳細モーダルを再表示
+    const targetPostId = selectedPostForMemo;
+    
+    // メモモーダルを閉じる
     setMemoModalOpen(false);
     setMemoContent('');
+    setSelectedPostForMemo(null);
     
-    // キャンセル時は、元の投稿の詳細モーダルを再表示
-    if (selectedPostForMemo) {
-      const targetPost = posts.find(p => p.id === selectedPostForMemo);
+    // 詳細モーダルを開く（元の投稿で）
+    if (targetPostId) {
+      const targetPost = posts.find(p => p.id === targetPostId);
       if (targetPost) {
-        setTimeout(() => {
-          setSelectedPostForDetail(targetPost);
-          console.log('🔙 [ArchivePage] 詳細モーダルに戻る');
-        }, 100);
+        setSelectedPostForDetail(targetPost);
+        console.log('✅ [ArchivePage] 詳細モーダルに戻る');
       }
     }
-    
-    setSelectedPostForMemo(null);
   }}
-  onSave={handleSaveMemo}
   postId={selectedPostForMemo || ''}
+  onSave={handleSaveMemo}
 />
 
 
