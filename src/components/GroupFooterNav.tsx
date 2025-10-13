@@ -182,7 +182,7 @@ const GroupFooterNav: React.FC<GroupFooterNavProps> = ({
 <div style={{
   display: 'flex',
   justifyContent: 'space-between',
-  width: '60%',  // ← 80%から60%に変更（アイコンが近づく）
+  width: '58%',  // ← 80%から60%に変更（アイコンが近づく）
   maxWidth: '240px',  // ← 300pxから240pxに変更
 }}>
 
