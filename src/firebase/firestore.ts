@@ -31,6 +31,14 @@ export const COLLECTIONS = {
 // ユーザー情報を作成・更新
 export const saveUser = async (userId: string, userData: Partial<User>): Promise<void> => {
   try {
+    console.log('🔍 【firestore】saveUser開始');
+    console.log('🔍 【firestore】受信したuserData:', {
+      username: userData.username,
+      fullName: userData.fullName,
+      displayName: userData.displayName,
+      company: userData.company
+    });
+
     const userRef = doc(db, COLLECTIONS.USERS, userId);
     
     // 更新日時を追加
@@ -40,9 +48,15 @@ export const saveUser = async (userId: string, userData: Partial<User>): Promise
       // 新規作成の場合はcreatedAtも追加
       ...(userData.id ? {} : { createdAt: serverTimestamp() })
     };
+
+    console.log('🔍 【firestore】Firestoreに保存する直前のデータ:', {
+      username: userDataWithTimestamp.username,
+      fullName: userDataWithTimestamp.fullName,
+      displayName: userDataWithTimestamp.displayName
+    });
     
     await setDoc(userRef, userDataWithTimestamp, { merge: true });
-    console.log('✅ ユーザー情報を保存しました:', userId);
+    console.log('✅ 【firestore】Firestore保存完了:', userId);
   } catch (error) {
     console.error('❌ ユーザー保存エラー:', error);
     throw error;
@@ -91,38 +105,26 @@ export const getUser = async (userId: string): Promise<User | null> => {
       
       // ★ 確実にidを含むユーザーオブジェクトを作成 ★
       const user: User = {
-        id: userId, // ★ 確実にドキュメントIDを設定 ★
-        email: userData.email || '',
-        username: userData.username || userData.email?.split('@')[0] || 'user',
-        displayName: userData.displayName || userData.fullName || userData.username || 'ユーザー', 
-        role: userData.role || 'user',
-        active: userData.active !== undefined ? userData.active : true,
-        profileImage: userData.profileImage || '',
-        company: userData.company || '',
-        position: userData.position || '',
-        phone: userData.phone || '',
-        createdAt: convertTimestamp(userData.createdAt),
-        updatedAt: convertTimestamp(userData.updatedAt),
-        settings: userData.settings || {
-          notifications: true,
-          reportFrequency: 'daily',
-          theme: 'light'
-        }
-      };
-
-      // 🔥 ここに追加：ローカルストレージから最新のプロフィール情報を取得して上書き
-try {
-  const localUserData = localStorage.getItem("daily-report-user-data");
-  if (localUserData) {
-    const parsedLocalData = JSON.parse(localUserData);
-    if (parsedLocalData.id === userId && parsedLocalData.profileData?.fullName) {
-      console.log('🔄 ローカルストレージで最新のdisplayNameを上書き:', parsedLocalData.profileData.fullName);
-      user.displayName = parsedLocalData.profileData.fullName;
-    }
+  id: userId,
+  email: userData.email || '',
+  // ⭐ 修正：usernameとdisplayNameを独立させる
+  username: userData.username || userData.email?.split('@')[0] || 'user',
+  displayName: userData.displayName || 'ユーザー', // displayNameのみ参照
+  fullName: userData.fullName || '', // fullNameを追加
+  role: userData.role || 'user',
+  active: userData.active !== undefined ? userData.active : true,
+  profileImage: userData.profileImage || '',
+  company: userData.company || '',
+  position: userData.position || '',
+  phone: userData.phone || '',
+  createdAt: convertTimestamp(userData.createdAt),
+  updatedAt: convertTimestamp(userData.updatedAt),
+  settings: userData.settings || {
+    notifications: true,
+    reportFrequency: 'daily',
+    theme: 'light'
   }
-} catch (localError) {
-  console.warn('⚠️ ローカルストレージ上書き処理でエラー:', localError);
-}
+};
       
       console.log('✅ 構築したユーザーオブジェクト:', user);
       console.log('🔍 user.id:', user.id);

@@ -129,20 +129,37 @@ class UserSyncManager {
    * ユーザー情報の更新（Firestore + ローカル同期）
    */
   async updateUser(updates: Partial<User>): Promise<User | null> {
-    if (!this.currentUser) {
-      console.error('更新対象ユーザーなし');
-      return null;
-    }
+  if (!this.currentUser) {
+    console.error('更新対象ユーザーなし');
+    return null;
+  }
 
-    try {
-      console.log('ユーザー情報更新開始:', updates);
+  try {
+    console.log('🔍 【authUtil】updateUser開始');
+    console.log('🔍 【authUtil】受信したupdates:', updates);
+    console.log('🔍 【authUtil】現在のthis.currentUser:', {
+      username: this.currentUser.username,
+      fullName: this.currentUser.fullName,
+      displayName: this.currentUser.displayName
+    });
 
-      // Firestoreを更新（saveUser関数を使用）
-      await saveFirestoreUser(this.currentUser.id, {
-        ...this.currentUser,
-        ...updates,
-        updatedAt: Date.now()
-      });
+    // ⭐ マージ前のデータを確認
+    const mergedData = {
+      ...this.currentUser,
+      ...updates,
+      updatedAt: Date.now()
+    };
+
+    console.log('🔍 【authUtil】マージ後のデータ:', {
+      username: mergedData.username,
+      fullName: mergedData.fullName,
+      displayName: mergedData.displayName
+    });
+
+    // Firestoreを更新（saveUser関数を使用）
+    await saveFirestoreUser(this.currentUser.id, mergedData);
+    
+
 
       // 更新されたユーザー情報を再取得
       const updatedUser = await getFirestoreUser(this.currentUser.id);

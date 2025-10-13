@@ -64,29 +64,46 @@ const InvitePage: React.FC = () => {
 
   // グループに参加する処理
   const handleJoinGroup = async () => {
-    if (!currentUser || !group || !groupId) return;
+  if (!currentUser || !group || !groupId) return;
 
-    // 表示名の入力チェックを追加
-    if (!displayName.trim()) {
-      alert('ユーザー名を入力してください');
-      return;
-    }
+  // 表示名の入力チェックを追加
+  if (!displayName.trim()) {
+    alert('ユーザー名を入力してください');
+    return;
+  }
 
-    try {
-      setJoining(true);
+  try {
+    setJoining(true);
 
-      console.log('🚀 グループ参加処理開始:', {
-        userId: currentUser.id,
-        groupId: groupId,
-        groupName: group.name,
-        displayName: displayName.trim()
-      });
+    console.log('🚀 グループ参加処理開始:', {
+      userId: currentUser.id,
+      groupId: groupId,
+      groupName: group.name,
+      displayName: displayName.trim()
+    });
 
-      // ユーザーにdisplayNameを保存（将来実装予定）
-      // await updateUserDisplayName(currentUser.id, displayName.trim());
+    // ⭐ 修正1: displayNameを保存する処理を追加
+    console.log('💾 ユーザー表示名を保存:', displayName.trim());
+    
+    // Firestoreのユーザー情報を更新
+    const { doc, updateDoc } = await import('firebase/firestore');
+    const { db } = await import('../firebase/firestore');
+    
+    const userRef = doc(db, 'users', currentUser.id);
+    await updateDoc(userRef, {
+      displayName: displayName.trim(),
+      username: displayName.trim(), // usernameにも保存
+      updatedAt: Date.now()
+    });
+    
+    console.log('✅ ユーザー表示名の保存完了');
+    
+    // ⭐ 修正2: ローカルストレージにも保存
+    localStorage.setItem('daily-report-profile-name', displayName.trim());
+    localStorage.setItem('daily-report-username', displayName.trim());
 
-      // addUserToGroup 関数を呼び出し
-      const success = await addUserToGroup(groupId, currentUser.id);
+    // addUserToGroup 関数を呼び出し
+    const success = await addUserToGroup(groupId, currentUser.id);
 
       if (success) {
         // 成功メッセージを表示後、グループページに遷移

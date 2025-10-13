@@ -77,35 +77,44 @@ const ProfilePage: React.FC = () => {
   };
   
 
-
-  useEffect(() => {
-    const loadProfile = async () => {
-      console.log('📱 ProfilePage: データ読み込み開始');
+useEffect(() => {
+  const loadProfile = async () => {
+    console.log('📱 ProfilePage: データ読み込み開始');
+    
+    try {
+      // 新しいauthUtil.tsのgetCurrentUser関数を使用
+      const currentUser = await getCurrentUser();
       
-      try {
-        // 新しいauthUtil.tsのgetCurrentUser関数を使用
-        const currentUser = await getCurrentUser();
-        
-        if (currentUser) {
-          setUser(currentUser);
+      if (currentUser) {
+        setUser(currentUser);
 
-          // ProfilePage.tsx 48行目付近に追加
-console.log('🔍 currentUser全体:', currentUser);
-console.log('🔍 currentUser.profileData:', currentUser.profileData);
-console.log('🔍 currentUser.username:', currentUser.username);
-console.log('🔍 currentUser.fullName:', currentUser.fullName);
+        // ProfilePage.tsx 48行目付近に追加
+        console.log('🔍 currentUser全体:', currentUser);
+        console.log('🔍 currentUser.profileData:', currentUser.profileData);
+        console.log('🔍 currentUser.username:', currentUser.username);
+        console.log('🔍 currentUser.fullName:', currentUser.fullName);
+        console.log('🔍 currentUser.displayName:', currentUser.displayName);
 
-          // フォームデータを正しく設定
-          setFormData({
-            username: currentUser.username || currentUser.id || 'ユーザー',
-            fullName: currentUser.displayName || currentUser.fullName || currentUser.username || '', // ← 修正
-            email: currentUser.email || '',
-            company: currentUser.company || '',
-            position: currentUser.position || '',
-            phone: currentUser.phone || '',
-            notifications: currentUser.settings?.notifications ?? true,
-            reportFrequency: currentUser.settings?.reportFrequency || 'daily'
-          });
+        // ⭐ 修正：フォームデータを正しく設定
+        const newFormData = {
+          username: currentUser.username || '',
+          fullName: currentUser.fullName || '', // ⭐ fullNameのみを使用
+          email: currentUser.email || '',
+          company: currentUser.company || '',
+          position: currentUser.position || '',
+          phone: currentUser.phone || '',
+          notifications: currentUser.settings?.notifications ?? true,
+          reportFrequency: currentUser.settings?.reportFrequency || 'daily'
+        };
+
+        console.log('🎯 【初期化】formDataの設定値:', {
+          username: newFormData.username,
+          fullName: newFormData.fullName,
+          displayName: currentUser.displayName
+        });
+
+        setFormData(newFormData);
+ 
           
           // プロフィール画像の設定
           if (currentUser.profileImage) {
@@ -162,14 +171,21 @@ console.log('🔍 フォームデータの設定内容:', {
   // ProfilePage.tsx のsaveProfile関数を以下に置き換えてください：
 
   const saveProfile = async () => {
-    console.log('💾 saveProfile関数が呼ばれました');
-    
-    // デバッグ: 送信するデータを確認
-  console.log('📋 保存予定のformData:', {
+  console.log('💾 saveProfile関数が呼ばれました');
+  
+  // ⭐ 保存前のデータを確認
+  console.log('💾 【保存前】formData:', {
+    username: formData.username,
     fullName: formData.fullName,
-    company: formData.company, 
+    company: formData.company,
     position: formData.position,
     phone: formData.phone
+  });
+
+  console.log('💾 【保存前】現在のuser:', {
+    username: user?.username,
+    fullName: user?.fullName,
+    displayName: user?.displayName
   });
   
   // 重複実行防止
@@ -178,79 +194,103 @@ console.log('🔍 フォームデータの設定内容:', {
     return;
   }
     
-    if (!user) return;
+  if (!user) return;
   
-    try {
-      setSaving(true);
+  try {
+    setSaving(true);
+    
+    // ⭐ 送信するデータを準備
+    const updateData = {
+      username: formData.username.trim(),
+      displayName: formData.username.trim(),
+      fullName: formData.fullName.trim(),
+      company: formData.company.trim(),
+      position: formData.position.trim(),
+      phone: formData.phone.trim(),
+      email: formData.email.trim(),
+      profileImage: tempProfileImage || profileImage || '',
+      settings: {
+        notifications: formData.notifications,
+        reportFrequency: formData.reportFrequency,
+        theme: user.settings?.theme || 'light'
+      }
+    };
+
+    console.log('📤 【送信データ】updateData:', updateData);
+    
+    // 新しいauthUtil.tsのupdateCurrentUser関数を使用
+    const updatedUser = await updateCurrentUser(updateData);
+    
+   console.log('✅ 【保存後】updatedUser:', {
+  username: updatedUser?.username,
+  fullName: updatedUser?.fullName,
+  displayName: updatedUser?.displayName,
+  company: updatedUser?.company
+});
+
+console.log('🎯 【保存後】fullNameの値:', updatedUser?.fullName);
+console.log('🎯 【保存後】usernameの値:', updatedUser?.username);
+console.log('🎯 【保存後】displayNameの値:', updatedUser?.displayName);
+    
+    if (updatedUser) {
+      // UI状態を更新
+      setUser(updatedUser);
+      setEditMode(false);
+      setTempProfileImage(null);
       
-      // 新しいauthUtil.tsのupdateCurrentUser関数を使用
-      const updatedUser = await updateCurrentUser({
-        displayName: formData.fullName.trim(),
-        fullName: formData.fullName.trim(), 
-        company: formData.company.trim(),
-        position: formData.position.trim(),
-        phone: formData.phone.trim(),
-        email: formData.email.trim(),
-        profileImage: tempProfileImage || profileImage || '',
-        settings: {
-          notifications: formData.notifications,
-          reportFrequency: formData.reportFrequency,
-          theme: user.settings?.theme || 'light'
-        }
-      });
-      
-      if (updatedUser) {
-        // UI状態を更新
-        setUser(updatedUser);
-        setEditMode(false);
-        setTempProfileImage(null);
-        
-        // プロフィール画像の保存
-        if (tempProfileImage) {
-          setProfileImage(tempProfileImage);
-        }
-        
-        console.log('✅ プロフィール情報を保存しました:', updatedUser.displayName);
-        
-        // 成功メッセージ表示
-        alert('プロフィールを保存しました');
-      } else {
-        throw new Error('プロフィール更新に失敗しました');
+      // プロフィール画像の保存
+      if (tempProfileImage) {
+        setProfileImage(tempProfileImage);
       }
       
-    } catch (error) {
-      console.error('❌ プロフィール更新エラー:', error);
-      alert('プロフィールの保存に失敗しました。再度お試しください。');
-    } finally {
-      setSaving(false);
+      console.log('✅ プロフィール情報を保存しました:', updatedUser.displayName);
+      
+      // 成功メッセージ表示
+      alert('プロフィールを保存しました');
+    } else {
+      throw new Error('プロフィール更新に失敗しました');
     }
-  };
+    
+  } catch (error) {
+    console.error('❌ プロフィール更新エラー:', error);
+    alert('プロフィールの保存に失敗しました。再度お試しください。');
+  } finally {
+    setSaving(false);
+  }
+};
   
 const toggleEditMode = () => {
-  console.log('🔄 toggleEditMode関数が呼ばれました'); // ← この行を追加
-  console.log('🔄 編集モード切り替え前:', editMode); // ← この行を追加
-
-
+  console.log('📄 toggleEditMode関数が呼ばれました');
+  console.log('📄 編集モード切り替え前:', editMode);
   
   if (editMode) {
-    // 編集モードをキャンセルして元の値に戻す
+    // ⭐ 修正：キャンセル時に元の値に戻す（より確実に）
     if (user) {
       setFormData({
-        username: user.username,
-        fullName: user?.profileData?.fullName || '',
-        company: user?.profileData?.company || '',
-        position: user?.profileData?.position || '',
-        phone: user?.profileData?.phone || '',
+        username: user.username || '',
+        // ⭐ displayName → fullName → username の順で取得
+        fullName: user.displayName || user.fullName || user.username || '',
         email: user.email || '',
-        notifications: user?.settings?.notifications ?? true,
-        reportFrequency: user?.settings?.reportFrequency || 'daily'
+        // ⭐ user直下とprofileDataの両方をチェック
+        company: user.company || user.profileData?.company || '',
+        position: user.position || user.profileData?.position || '',
+        phone: user.phone || user.profileData?.phone || '',
+        notifications: user.settings?.notifications ?? true,
+        reportFrequency: user.settings?.reportFrequency || 'daily'
+      });
+      
+      console.log('🔄 キャンセル時のデータ復元:', {
+        fullName: user.displayName || user.fullName || user.username || '',
+        company: user.company || user.profileData?.company || '',
+        position: user.position || user.profileData?.position || '',
+        phone: user.phone || user.profileData?.phone || ''
       });
     }
     // 一時プロフィール画像もリセット
     setTempProfileImage(null);
   }
   setEditMode(!editMode);
-  console.log('🔄 編集モード切り替え後:', !editMode); 
+  console.log('📄 編集モード切り替え後:', !editMode); 
 };
 
 // ここに以下のuseEffectを追加してください
@@ -526,42 +566,44 @@ const handleLogout = () => {
 
        
 
-             {/* ユーザー名 - 編集モードでは編集可能に */}
-             {editMode && (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <input
-                      type="text"
-                      value={formData.fullName}
-                      onChange={(e) => setFormData({...formData, fullName: e.target.value})}
-                      placeholder="表示名を入力"
-                      style={{
-                        textAlign: 'center',
-                        padding: '0.5rem',
-                        fontSize: '1.6rem',
-                        fontWeight: '600',
-                        color: '#055A68',
-                        background: 'rgba(255, 255, 255, 0.5)',
-                        border: '1px solid #ddd',
-                        borderRadius: '8px',
-                        width: '100%',
-                        maxWidth: '250px'
-                      }}
-                    />
-                  </div>
-                )}
+            
+             {/* ⭐ 修正：画面上部の表示名（usernameを表示・編集） */}
+{editMode && (
+  <div style={{ marginBottom: '1rem' }}>
+    <input
+      type="text"
+      value={formData.username}
+      onChange={(e) => setFormData({...formData, username: e.target.value})}
+      placeholder="表示名を入力"
+      style={{
+        textAlign: 'center',
+        padding: '0.5rem',
+        fontSize: '1.6rem',
+        fontWeight: '600',
+        color: '#055A68',
+        background: 'rgba(255, 255, 255, 0.5)',
+        border: '1px solid #ddd',
+        borderRadius: '8px',
+        width: '100%',
+        maxWidth: '250px'
+      }}
+    />
+  </div>
+)}
 
                 {!editMode && (
-                  <h3 style={{ 
-                    margin: 0, 
-                    fontSize: '1.6rem', 
-                    color: '#055A68',
-                    fontWeight: '600',
-                    marginBottom: '0.5rem',
-                    textAlign: 'center'
-                  }}>
-                   {formData.fullName || user.profileData?.fullName || "未設定"}
-                  </h3>
-                )}
+<h3 style={{ 
+    margin: 0, 
+    fontSize: '1.6rem', 
+    color: '#055A68',
+    fontWeight: '600',
+    marginBottom: '0.5rem',
+    textAlign: 'center'
+  }}>
+   {/* ⭐ 修正：画面上部はusernameを表示 */}
+   {formData.username || user.username || "未設定"}
+  </h3>
+)}
                 
                 <div
                   style={{
@@ -995,29 +1037,30 @@ const handleLogout = () => {
                     </div>
 
                     {/* プロフィール情報表示 - カード形式 */}
-                    <div style={{
-                      backgroundColor: '#f9f9f9',
-                      padding: '1.5rem',
-                      borderRadius: '12px',
-                      marginBottom: '2rem'
-                    }}>
-                      {/* 各情報の表示 */}
-                      <div style={{ marginBottom: '1.5rem' }}>
-                        <div style={{ 
-                          fontSize: '0.85rem', 
-                          color: '#055A68', 
-                          opacity: 0.8,
-                          marginBottom: '0.4rem' 
-                        }}>
-                          氏名
-                        </div>
-                        <div style={{ 
-                          fontSize: '1.1rem',
-                          fontWeight: '500' 
-                        }}>
-                          {user?.displayName || user?.fullName || '未設定'}
-                        </div>
-                      </div>
+<div style={{
+  backgroundColor: '#f9f9f9',
+  padding: '1.5rem',
+  borderRadius: '12px',
+  marginBottom: '2rem'
+}}>
+  {/* 各情報の表示 */}
+  <div style={{ marginBottom: '1.5rem' }}>
+    <div style={{ 
+      fontSize: '0.85rem', 
+      color: '#055A68', 
+      opacity: 0.8,
+      marginBottom: '0.4rem' 
+    }}>
+      氏名
+    </div>
+    <div style={{ 
+      fontSize: '1.1rem',
+      fontWeight: '500' 
+    }}>
+      {/* ⭐ 修正：fullNameのみを表示 */}
+      {formData?.fullName || user?.fullName || '未設定'}
+    </div>
+  </div>
 
                       <div style={{ marginBottom: '1.5rem' }}>
                         <div style={{ 
