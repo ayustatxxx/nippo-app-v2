@@ -177,12 +177,12 @@ const GroupFooterNav: React.FC<GroupFooterNavProps> = ({
             transition: 'all 0.25s cubic-bezier(0.645, 0.045, 0.355, 1)'
           }}
         >
-          
+
           {/* アイコンコンテナ */}
 <div style={{
   display: 'flex',
   justifyContent: 'space-between',
-  width: '55%',  // ← 80%から55%に変更（アイコンが近づく）
+  width: '70%',  // ← 80%から55%に変更（アイコンが近づく）
   maxWidth: '240px',  // ← 300pxから240pxに変更
 }}>
 
