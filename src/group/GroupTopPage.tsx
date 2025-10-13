@@ -283,42 +283,30 @@ const checkTodayWorkTimePost = async (userId: string) => {
   }, [group.name]);
   
   const handleTabChange = (tab: 'post' | 'history' | 'members') => {
-    setActiveTab(tab);
-    
-    // 現在のURLパラメータを取得
-    const from = searchParams.get('from');
-    const postId = searchParams.get('postId');
-    
-    // デバッグ用 - ここを追加
-    console.log('=== handleTabChange実行 ===');
-    console.log('tab:', tab);
-    console.log('from:', from);
-    console.log('postId:', postId);
-    
-    // URLパラメータを保持したまま遷移
-    const params = new URLSearchParams();
-    if (from) params.set('from', from);
-    if (postId) params.set('postId', postId);
-    const paramString = params.toString() ? `?${params.toString()}` : '';
-    
-    // デバッグ用 - ここを追加
-    console.log('paramString:', paramString);
-    
-    switch(tab) {
-      case 'post':
-        console.log('遷移先:', `/group/${groupId}/post${paramString}`);
-        navigate(`/group/${groupId}/post${paramString}`);
-        break;
-      case 'history':
-        console.log('遷移先:', `/group/${groupId}/archive${paramString}`);
-        navigate(`/group/${groupId}/archive${paramString}`);
-        break;
-      case 'members':
-        console.log('遷移先:', `/group/${groupId}/members${paramString}`);
-        navigate(`/group/${groupId}/members${paramString}`);
-        break;
-    }
-  };
+  setActiveTab(tab);
+  
+  // ⭐ GroupTopから他のページへ移動する際は、fromパラメータを削除
+  // こうすることで、Archive/Members/Postから×で戻る際にGroupListに戻る
+  
+  console.log('=== handleTabChange実行 ===');
+  console.log('tab:', tab);
+  console.log('fromパラメータを削除して遷移します');
+  
+  switch(tab) {
+    case 'post':
+      console.log('遷移先:', `/group/${groupId}/post`);
+      navigate(`/group/${groupId}/post`);
+      break;
+    case 'history':
+      console.log('遷移先:', `/group/${groupId}/archive`);
+      navigate(`/group/${groupId}/archive`);
+      break;
+    case 'members':
+      console.log('遷移先:', `/group/${groupId}/members`);
+      navigate(`/group/${groupId}/members`);
+      break;
+  }
+};
 
       // 戻るボタンの処理
 const handleBack = () => {

@@ -214,6 +214,7 @@ const handleStatusUpdate = async (newStatus: string) => {
 } finally {
   setLoading(false);
 }
+
       
       // 投稿データ取得後にメモも取得
      if (postId) {
