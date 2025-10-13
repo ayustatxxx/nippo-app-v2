@@ -58,12 +58,12 @@ function PostPage() {
   
   // 🔒 セキュリティ強化: 入力値サニタイゼーション
   const sanitizeInput = useCallback((input: string): string => {
-    return input
-      .replace(/[<>]/g, '')
-      .replace(/javascript:/gi, '')
-      .replace(/on\w+=/gi, '')
-      .trim();
-  }, []);
+  return input
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '');
+    // .trim() を削除して改行を保持
+}, []);
   
   // 🔒 セキュリティ強化: タグの処理関数
   const parseTags = useCallback((input: string): string[] => {
