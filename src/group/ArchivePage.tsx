@@ -996,10 +996,25 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
     // ⭐ 修正4: Firestore保存はバックグラウンドで（投稿リスト更新なし）
     MemoService.saveMemo(newMemo).then(() => {
       console.log('✅ [ArchivePage] Firestore保存完了（バックグラウンド）');
+
+       // ⭐ ここから追加：HomePageに通知 ⭐
+  const updateFlag = `memo_saved_${Date.now()}`;
+  localStorage.setItem('daily-report-posts-updated', updateFlag);
+  localStorage.setItem('posts-need-refresh', updateFlag);
+  
+  // イベント発火
+  window.dispatchEvent(new Event('storage'));
+  window.dispatchEvent(new CustomEvent('refreshPosts'));
+  
+  console.log('📢 [ArchivePage] HomePageにメモ保存通知を送信');
+
+
       // setPosts/setFilteredPostsは削除（既に更新済み）
     }).catch(error => {
       console.error('❌ [ArchivePage] Firestore保存エラー:', error);
     });
+
+
     
   } catch (error) {
     console.error('❌ [ArchivePage] メモ保存エラー:', error);
@@ -1061,16 +1076,68 @@ const shouldShowExportButton = () => {
          filteredPosts.length > 0;     // 投稿がある時
 };
 
-// 詳細ボタンのハンドラー
-const handleEditPost = (postId: string) => {
+
+// ⭐ 投稿詳細を開く関数（メモ取得機能付き）
+const handleViewPostDetails = async (postId: string) => {
+  console.log('🔍 [ArchivePage] 投稿詳細を開く:', postId);
+  
   const targetPost = posts.find(post => post.id === postId);
-  if (targetPost) {
-    setSelectedPostForDetail(targetPost);
-  } else {
+  if (!targetPost) {
     console.warn('⚠️ 投稿が見つかりません:', postId);
+    return;
+  }
+  
+  // 🌟 メモをまだ取得していない、または空の場合のみ取得
+  const needsFetchMemos = !targetPost.memos || targetPost.memos.length === 0;
+  
+  if (needsFetchMemos) {
+    console.log('📝 [ArchivePage] この投稿のメモを取得中...');
+    
+    try {
+      const userId = localStorage.getItem("daily-report-user-id") || "";
+      
+      // MemoServiceを使ってメモを取得
+      const memosData = await MemoService.getPostMemosForUser(postId, userId);
+      
+      // 投稿にメモを追加
+      const postWithMemos = {
+        ...targetPost,
+        memos: memosData
+      };
+      
+      console.log(`✅ [ArchivePage] メモ取得完了: ${memosData.length}件`);
+      
+      // モーダルに表示
+      setSelectedPostForDetail(postWithMemos);
+      
+      // postsステートも更新（次回は取得不要）
+      setPosts(prevPosts => 
+        prevPosts.map(p => 
+          p.id === postId ? postWithMemos : p
+        )
+      );
+      setFilteredPosts(prevPosts => 
+        prevPosts.map(p => 
+          p.id === postId ? postWithMemos : p
+        )
+      );
+      
+    } catch (error) {
+      console.error('❌ [ArchivePage] メモ取得エラー:', error);
+      // エラーでもモーダルは開く（メモなしで）
+      setSelectedPostForDetail(targetPost);
+    }
+  } else {
+    console.log('✅ [ArchivePage] メモは既に取得済み:', targetPost.memos?.length, '件');
+    setSelectedPostForDetail(targetPost);
   }
 };
 
+
+// 詳細ボタンのハンドラー
+const handleEditPost = (postId: string) => {
+  handleViewPostDetails(postId);  // ⭐ 新しい関数を呼ぶだけ！
+};
 
 
 
@@ -1452,8 +1519,7 @@ setFilteredPosts(dateFiltered);
   
   const currentUserId = localStorage.getItem('daily-report-user-id') || '';
   
-  // 投稿の検索をスキップして直接削除を試みる
-  if (!window.confirm('この投稿を削除してもよろしいですか？')) {
+  if (!window.confirm('この投稿を削除してもよろしいですか?')) {
     console.log('🗑️ [削除デバッグ] ユーザーがキャンセル');
     return;
   }
@@ -1462,9 +1528,43 @@ setFilteredPosts(dateFiltered);
     console.log('🗑️ [削除デバッグ] Firestore削除開始');
     console.log('🗑️ [削除デバッグ] 削除パス: posts/' + postId);
     
-    // 直接削除（posts配列の検索なし）
+    // Firestoreから削除
     await deleteDoc(doc(db, 'posts', postId));
     console.log('✅ [Archive] Firestore削除完了:', postId);
+
+   
+
+    // ⭐ 修正1: HomePageのキャッシュを無効化
+if (window.forceRefreshPosts) {
+  window.forceRefreshPosts();
+  console.log('🔄 [Archive] HomePage.forceRefreshPosts()を実行');
+}
+
+// ⭐ 修正2: HomePageのリフレッシュ関数を直接呼び出す
+if (window.refreshHomePage) {
+  window.refreshHomePage();
+  console.log('🔄 [Archive] window.refreshHomePage()を実行');
+}
+
+// ⭐ 修正3: localStorageフラグ更新（数値のみ） ⭐
+const updateFlag = Date.now().toString();  // ← ✅ 数値のみ！
+localStorage.setItem('daily-report-posts-updated', updateFlag);
+localStorage.setItem('posts-need-refresh', 'true');  // ← ✅ 追加
+console.log('🔍 [デバッグ] localStorageに保存:', updateFlag);
+
+// ⭐ 修正4: CustomEventを発火
+window.dispatchEvent(new CustomEvent('refreshPosts', {
+  detail: { action: 'delete', postId }
+}));
+console.log('📢 [Archive] HomePageに削除通知を送信完了');
+
+// ⭐ さらに追加：念のため再通知 ⭐
+setTimeout(() => {
+  window.dispatchEvent(new CustomEvent('postsUpdated'));
+  window.dispatchEvent(new Event('storage'));
+  console.log('🔁 200ms後に再通知完了');
+}, 200);
+
 
     // ローカル状態を更新
     setPosts(prev => prev.filter(post => post.id !== postId));

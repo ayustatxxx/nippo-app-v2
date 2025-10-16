@@ -967,7 +967,9 @@ const [selectedPostForMemo, setSelectedPostForMemo] = useState<Post | null>(null
 
   // 既存の state 変数の後に追加
 const [selectedPostForDetail, setSelectedPostForDetail] = useState<Post | null>(null);
-  
+const [displayLimit, setDisplayLimit] = useState(10);
+const [hasMore, setHasMore] = useState(true);         // まだデータがあるか
+const [isLoadingMore, setIsLoadingMore] = useState(false);  // 追加読み込み中か  
 
 // PostDetailModal コンポーネント
 const PostDetailModal: React.FC<{
@@ -1433,9 +1435,63 @@ if (memos.length === 0) {
   };
 
   // 投稿の詳細ページをモーダルに
-const handleViewPostDetails = (postId: string, groupId: string) => {
+// 投稿の詳細ページをモーダルに（メモ取得機能付き）
+const handleViewPostDetails = async (postId: string, groupId: string) => {
+  console.log('🔍 [HomePage] 投稿詳細を開く:', postId);
+  
   const targetPost = posts.find(post => post.id === postId);
-  if (targetPost) {
+  if (!targetPost) {
+    console.error('❌ [HomePage] 投稿が見つかりません:', postId);
+    return;
+  }
+  
+  // 🌟 メモをまだ取得していない、または空の場合のみ取得
+  const needsFetchMemos = !targetPost.memos || targetPost.memos.length === 0;
+  
+  if (needsFetchMemos) {
+    console.log('📝 [HomePage] この投稿のメモを取得中...');
+    
+    try {
+      const userId = localStorage.getItem("daily-report-user-id") || "";
+      
+      // 🌟 メモだけを取得（MemoServiceを使用）
+      const memosData = await MemoService.getPostMemosForUser(postId, userId);
+      
+      // 投稿にメモを追加
+      const postWithMemos = {
+        ...targetPost,
+        memos: memosData
+      };
+      
+      console.log(`✅ [HomePage] メモ取得完了: ${memosData.length}件`);
+      
+      // モーダルに表示
+      setSelectedPostForDetail(postWithMemos);
+      
+      // 🌟 postsステートも更新（次回は取得不要）
+      setPosts(prevPosts => 
+        prevPosts.map(p => 
+          p.id === postId ? postWithMemos : p
+        )
+      );
+      setTimelineItems(prevItems => 
+        prevItems.map(item => 
+          'id' in item && item.id === postId ? postWithMemos : item
+        )
+      );
+      setFilteredItems(prevItems => 
+        prevItems.map(item => 
+          'id' in item && item.id === postId ? postWithMemos : item
+        )
+      );
+      
+    } catch (error) {
+      console.error('❌ [HomePage] メモ取得エラー:', error);
+      // エラーでもモーダルは開く（メモなしで）
+      setSelectedPostForDetail(targetPost);
+    }
+  } else {
+    console.log('✅ [HomePage] メモは既に取得済み:', targetPost.memos?.length, '件');
     setSelectedPostForDetail(targetPost);
   }
 };
@@ -1450,13 +1506,112 @@ const handleViewPostDetails = (postId: string, groupId: string) => {
   const handleMemoClick = (post: Post) => {
   console.log('📝 [HomePage] メモ追加ボタンクリック:', post.id);
   
- 
   // すぐにメモモーダルを開く（遅延なし）
   setSelectedPostForMemo(post);
   setMemoModalOpen(true);
 };
 
-
+// 次のデータを段階的に読み込む関数（6 → 12 → 15）
+const loadMorePosts = useCallback(async () => {
+  if (isLoadingMore || !hasMore) {
+    console.log('⏸️ 追加読み込みスキップ:', { isLoadingMore, hasMore });
+    return;
+  }
+  
+  try {
+    setIsLoadingMore(true);
+    
+    // 段階的読み込み：6 → 12 → 15
+    const getBatchSize = (currentLimit: number) => {
+      if (currentLimit === 6) {
+        console.log('📥 2回目の読み込み：12件追加');
+        return 12;
+      } else {
+        console.log('📥 3回目以降の読み込み：15件追加');
+        return 15;
+      }
+    };
+    
+    const batchSize = getBatchSize(displayLimit);
+    const newDisplayLimit = displayLimit + batchSize;
+    
+    console.log(`✨ 現在の表示件数: ${displayLimit}件`);
+    console.log(`➕ 追加する件数: ${batchSize}件`);
+    console.log(`📊 合計: ${newDisplayLimit}件になります`);
+    
+    const userId = localStorage.getItem("daily-report-user-id");
+    if (!userId) return;
+    
+    // 🌟 既存データで足りるかチェック
+    if (posts.length >= newDisplayLimit) {
+      setDisplayLimit(newDisplayLimit);
+      console.log(`✅ キャッシュから${batchSize}件を追加しました`);
+      setIsLoadingMore(false);
+      return;
+    }
+    
+    // 🌟 新しいデータが必要な場合のみ取得
+    console.log('🔄 新しいデータを取得します...');
+    
+    const allGroups = await UnifiedCoreSystem.getUserGroups(userId).catch(() => []);
+    
+    const userGroups = allGroups.filter(group => {
+      const isCreator = group.createdBy === userId || group.adminId === userId;
+      const isMember = group.members?.some(member => {
+        const memberId = typeof member === 'string' ? member : member.id;
+        return memberId === userId;
+      });
+      return isCreator || isMember;
+    });
+    
+    // 🌟 各グループから追加データを取得
+const postPromises = userGroups.map(async (group) => {
+  try {
+    const limitPerGroup = Math.ceil(newDisplayLimit / userGroups.length);
+    const groupPosts = await UnifiedCoreSystem.getGroupPosts(group.id, userId, limitPerGroup);
+    return groupPosts.map(post => ({
+      ...post,
+      groupName: group.name,
+      groupId: group.id,
+      memos: []  // 🌟 この行を追加
+    }));
+  } catch (error) {
+    console.error(`❌ グループ "${group.name}" の投稿取得エラー:`, error);
+    return [];
+  }
+});
+    
+    const postArrays = await Promise.all(postPromises);
+    const allPosts = postArrays.flat();
+    allPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    
+    if (allPosts.length <= posts.length) {
+      setHasMore(false);
+      console.log('✅ 全てのデータを読み込みました');
+    } else {
+  setPosts(allPosts);
+  setTimelineItems(allPosts);
+  setFilteredItems(allPosts);
+  
+  // 🌟 displayLimitが投稿数を超えないように制限
+  const actualLimit = Math.min(newDisplayLimit, allPosts.length);
+  setDisplayLimit(actualLimit);
+  
+  console.log(`✅ ${batchSize}件を追加しました（合計${allPosts.length}件中${actualLimit}件表示）`);
+  
+  // 🌟 全件表示したらhasMoreをfalseに
+  if (actualLimit >= allPosts.length) {
+    setHasMore(false);
+    console.log('✅ 全てのデータを表示しました');
+  }
+}
+    
+  } catch (error) {
+    console.error('❌ 追加読み込みエラー:', error);
+  } finally {
+    setIsLoadingMore(false);
+  }
+}, [isLoadingMore, hasMore, displayLimit, posts]);
 
   // ★ 修正版：確実な初期化とリトライ機能付きデータロード ★
   // ✅ 既存のuseEffectを以下に置き換え（894行目付近）
@@ -1520,29 +1675,53 @@ useEffect(() => {
     setLoading(true);
     console.log('🔍 ローディング状態をtrueに設定'); // 追加
    
-    // 既存のキャッシュチェックを強化
-    const CACHE_DURATION = isReturnMode ? 60000 : 30000;
-    console.log('🔍 キャッシュチェック開始'); // 追加
+   // ✅ キャッシュチェックを強化
+const CACHE_DURATION = isReturnMode ? 60000 : 30000;
+console.log('🔍 キャッシュチェック開始');
 
-    if (postsCache && postsCache.length > 0 && Date.now() - postsCacheTime < CACHE_DURATION) {
-      console.log('💾 キャッシュデータを使用:', postsCache.length, '件');
-      
-      if (isMounted) {
-        setPosts(postsCache);
-        setTimelineItems(postsCache);
-        setFilteredItems(postsCache);
-      }
-      
-      if (isReturnMode && isMounted) {
-        console.log('⚡ 復帰モード: 早期完了');
-        setLoading(false);
-        const endTime = performance.now();
-        console.log(`✅ 高速データロード完了: ${Math.round(endTime - startTime)}ms`);
-        return;
-      }
-    }
-    
-    console.log('🔍 キャッシュ未使用、通常処理を続行'); // 追加
+// ⭐ デバッグログ追加 ⭐
+const forceRefresh = localStorage.getItem('posts-need-refresh');
+const lastUpdate = localStorage.getItem('daily-report-posts-updated');
+const lastUpdateTime = lastUpdate ? parseInt(lastUpdate) : 0;
+const timeSinceUpdate = Date.now() - lastUpdateTime;
+
+// ⭐ デバッグ情報を出力 ⭐
+console.log('🔍 [デバッグ] forceRefresh:', forceRefresh);
+console.log('🔍 [デバッグ] lastUpdate:', lastUpdate);
+console.log('🔍 [デバッグ] lastUpdateTime:', lastUpdateTime);
+console.log('🔍 [デバッグ] timeSinceUpdate:', timeSinceUpdate);
+console.log('🔍 [デバッグ] 5秒以内か？:', timeSinceUpdate < 5000);
+console.log('🔍 [デバッグ] lastUpdate存在？:', !!lastUpdate);
+console.log('🔍 [デバッグ] 条件チェック:', forceRefresh || (lastUpdate && timeSinceUpdate < 5000));
+
+// 削除・追加から5秒以内、またはforceRefreshフラグがある場合はキャッシュをスキップ
+if (forceRefresh || (lastUpdate && timeSinceUpdate < 5000)) {
+  console.log('🔄 強制リフレッシュが必要：キャッシュをスキップ');
+  console.log(`⏱️ 最終更新からの経過時間: ${timeSinceUpdate}ms`);
+  localStorage.removeItem('posts-need-refresh');
+  postsCache = null;
+  postsCacheTime = 0;
+  console.log('🗑️ [デバッグ] キャッシュをクリアしました');
+  // キャッシュを使わず、下の処理に進む
+} else if (postsCache && postsCache.length > 0 && Date.now() - postsCacheTime < CACHE_DURATION) {
+  console.log('💾 キャッシュデータを使用:', postsCache.length, '件');
+  console.log('🔍 [デバッグ] キャッシュ使用条件満たしました');
+  
+  if (isMounted) {
+    setPosts(postsCache);
+    setTimelineItems(postsCache);
+    setFilteredItems(postsCache);
+    setLoading(false);
+    setIsAuthenticated(true);
+  }
+  
+  console.log('✅ キャッシュから高速ロード完了');
+  const endTime = performance.now();
+  console.log(`⚡ 高速データロード完了: ${Math.round(endTime - startTime)}ms`);
+  return;
+}
+
+console.log('🔍 キャッシュなし、通常処理を続行');
     
     // 認証確認
     const token = localStorage.getItem('daily-report-user-token');
@@ -1613,33 +1792,56 @@ let allPosts: Post[] = [];
 try {
   console.log('🔍 [Home] 参加確認済みグループの投稿のみ取得中...');
   
-  // 並列処理
-  const postPromises = userGroups.map(async (group) => {
-    console.log(`📂 参加確認済みグループ "${group.name}" から投稿を取得`);
-    
-    try {
-      const groupPosts = await UnifiedCoreSystem.getGroupPosts(group.id, userId);
-      
-      const postsWithGroupName = groupPosts.map(post => ({
-        ...post,
-        groupName: group.name,
-        groupId: group.id
-      }));
-      
-      console.log(`✅ グループ "${group.name}": ${groupPosts.length}件の投稿を取得`);
-      return postsWithGroupName;
-    } catch (error) {
-      console.error(`❌ グループ "${group.name}" の投稿取得エラー:`, error);
-      return [];
-    }
-  });
 
-  const postArrays = await Promise.all(postPromises);
-  allPosts = postArrays.flat();
-  
-  allPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-  
-  console.log('✅ [Home] 全投稿取得完了:', allPosts.length, '件');
+// ✅ 並列処理で各グループから取得
+const postPromises = userGroups.map(async (group) => {
+  console.log(`📂 参加確認済みグループ "${group.name}" から投稿を取得`);
+  try {
+    // ⭐ 汎用的な取得件数の計算（グループ数に応じて自動調整） ⭐
+    const INITIAL_MAX_TOTAL = 30;  // 初回：合計30件まで
+    const INITIAL_MIN_PER_GROUP = 2;  // 各グループ最低2件
+    const INITIAL_MAX_PER_GROUP = 6;  // 各グループ最大6件
+
+    const limitPerGroup = Math.max(
+      INITIAL_MIN_PER_GROUP,  // 最低2件は保証
+      Math.min(
+        INITIAL_MAX_PER_GROUP,  // 最大6件まで
+        Math.ceil(INITIAL_MAX_TOTAL / userGroups.length)  // グループ数で均等割り
+      )
+    );
+
+    console.log(`📊 [汎用ロード] グループ数: ${userGroups.length}, 各グループ: ${limitPerGroup}件取得`);
+
+    const groupPosts = await UnifiedCoreSystem.getGroupPosts(
+      group.id,
+      userId,
+      limitPerGroup,  // ← 動的に調整された件数
+    );
+    
+    const postsWithGroupName = groupPosts.map(post => ({
+      ...post,
+      groupName: group.name,
+      groupId: group.id,
+      memos: []  // 🌟 空配列で初期化
+    }));
+    
+    console.log(`✅ グループ "${group.name}": ${groupPosts.length}件の投稿を取得（メモなし）`);
+    return postsWithGroupName;
+  } catch (error) {
+    console.error(`❌ グループ "${group.name}" の投稿取得エラー:`, error);
+    return [];
+  }
+});
+
+const postArrays = await Promise.all(postPromises);
+allPosts = postArrays.flat();
+
+// 時系列ソート
+allPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+// ⭐ 最新10件を表示（汎用的） ⭐
+allPosts = allPosts.slice(0, 10);
+console.log(`✅ [Home] 初回データ取得完了: ${allPosts.length} 件（最新10件表示）`);
   
 } catch (error) {
   console.error('❌ [Home] 投稿取得エラー:', error);
@@ -1710,19 +1912,34 @@ const refreshData = async () => {
     try {
       console.log('🔍 [Home] 参加確認済みグループの投稿のみ取得中...');
       
-      // 参加確認済みグループからのみ投稿を取得
-      // 並列データ取得（最適化）
+// 参加確認済みグループからのみ投稿を取得
+// 並列データ取得（最適化）
 const postPromises = userGroups.map(async (group) => {
   console.log(`📂 参加確認済みグループ "${group.name}" から投稿を取得`);
-  
   try {
-    const groupPosts = await UnifiedCoreSystem.getGroupPosts(group.id, userId);
+    // ⭐ リフレッシュ時も汎用的な計算 ⭐
+    const REFRESH_MAX_TOTAL = 30;  // リフレッシュ：合計30件まで
+    const REFRESH_MIN_PER_GROUP = 2;  // 各グループ最低2件
+    const REFRESH_MAX_PER_GROUP = 6;  // 各グループ最大6件
+
+    const limitPerGroup = Math.max(
+      REFRESH_MIN_PER_GROUP,
+      Math.min(
+        REFRESH_MAX_PER_GROUP,
+        Math.ceil(REFRESH_MAX_TOTAL / userGroups.length)
+      )
+    );
+
+    console.log(`📊 [リフレッシュロード] グループ数: ${userGroups.length}, 各グループ: ${limitPerGroup}件取得`);
+
+    const groupPosts = await UnifiedCoreSystem.getGroupPosts(group.id, userId, limitPerGroup); 
     
     // グループ名を各投稿に追加
     const postsWithGroupName = groupPosts.map(post => ({
       ...post,
       groupName: group.name,
-      groupId: group.id
+      groupId: group.id,
+      memos: []
     }));
     
     console.log(`✅ グループ "${group.name}": ${groupPosts.length}件の投稿を取得`);
@@ -1810,26 +2027,58 @@ allPosts = postArrays.flat();
   };
 }, []); // 空の依存配列で1回のみ実行
 
+useEffect(() => {
+  const handleScroll = () => {
+    const scrollPosition = window.innerHeight + window.scrollY;
+    const bottomThreshold = document.body.offsetHeight - 500;
+    
+    // 🌟 デバッグログ追加
+    console.log('📏 スクロール位置:', scrollPosition, 'しきい値:', bottomThreshold);
+    
+    if (scrollPosition >= bottomThreshold) {
+      if (!isLoadingMore && hasMore && !loading) {
+        console.log('🔄 スクロール検知: 次のデータを自動読み込み');
+        loadMorePosts();
+      } else {
+        console.log('⏸️ 読み込みスキップ:', { isLoadingMore, hasMore, loading });
+      }
+    }
+  };
+  
+  window.addEventListener('scroll', handleScroll);
+  return () => window.removeEventListener('scroll', handleScroll);
+}, [isLoadingMore, hasMore, loading, loadMorePosts, posts]);  // ← 依存配列に追加
 
 
   // ★ 認証されていない場合のリダイレクト（別のuseEffect） ★
- useEffect(() => {
-  // 復帰モード中は認証チェックをスキップ
+useEffect(() => {
+  // 🌟 初期化中はチェックしない
+  if (!initializationRef.current) {
+    return;
+  }
+  
   const returnToDetail = sessionStorage.getItem('returnToDetail');
   
-if (!loading && !isAuthenticated && !returnToDetail) {
-  // 復帰処理が完了するまで少し待つ
-  const authCheckDelay = setTimeout(() => {
-    // 再度確認してからリダイレクト
-    const stillReturning = sessionStorage.getItem('returnToDetail');
-    if (!stillReturning && !isAuthenticated && !loading) {
-      console.log('🔄 ログインページにリダイレクト');
-      navigate('/login');
-    }
-  }, 2000); // 2秒の余裕
+  // 🌟 トークンの存在も確認
+  const token = localStorage.getItem('daily-report-user-token');
   
-  return () => clearTimeout(authCheckDelay);
-}
+  if (!loading && !isAuthenticated && !returnToDetail && !token) {
+    console.log('⚠️ 認証なし、3秒後にログインページへ');
+    
+    const authCheckDelay = setTimeout(() => {
+      const stillReturning = sessionStorage.getItem('returnToDetail');
+      const currentToken = localStorage.getItem('daily-report-user-token');
+      
+      if (!stillReturning && !isAuthenticated && !loading && !currentToken) {
+        console.log('🔄 ログインページにリダイレクト');
+        navigate('/login');
+      } else {
+        console.log('✅ 認証確認OK、リダイレクトキャンセル');
+      }
+    }, 3000);  // 🌟 2秒 → 3秒に延長
+    
+    return () => clearTimeout(authCheckDelay);
+  }
 }, [loading, isAuthenticated, navigate]);
 
  // グループTOPからの復帰処理
@@ -2428,109 +2677,146 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
             ) : (
               groupItemsByDate()
             )}
+          
+        {/* 🌟 追加読み込み中の表示 */}
+        {isLoadingMore && (
+          <div style={{
+            textAlign: 'center',
+            padding: '2rem',
+            color: '#055A68'
+          }}>
+            <div style={{
+              width: '30px',
+              height: '30px',
+              border: '3px solid rgba(5, 90, 104, 0.3)',
+              borderTop: '3px solid #055A68',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              margin: '0 auto'
+            }}></div>
+            <p style={{ marginTop: '1rem' }}>
+              次の{displayLimit === 6 ? '12' : '15'}件を読み込み中...
+            </p>
+          </div>
+        )}
+
+        {/* 全て読み込み完了の表示 */}
+        {!hasMore && filteredItems.length > 0 && (
+          <div style={{
+            textAlign: 'center',
+            padding: '2rem',
+            color: '#666',
+            fontSize: '0.9rem'
+          }}>
+            ✅ 全ての投稿を表示しました
           </div>
         )}
       </div>
-      
-      <ImageGalleryModal
-        images={galleryImages}
-        initialIndex={galleryIndex}
-        isOpen={galleryOpen}
-        onClose={() => setGalleryOpen(false)}
-      />
-
-      {/* 投稿詳細モーダル */}
-    {selectedPostForDetail && (
-  <PostDetailModal
-    post={selectedPostForDetail}
-    onClose={() => setSelectedPostForDetail(null)}
-    navigate={navigate}
-    onMemoClick={handleMemoClick}
-  />
-)}
-
- 
-{/* メモモーダル */}
-{memoModalOpen && selectedPostForMemo && (
-<MemoModal
-  isOpen={memoModalOpen}
-  onClose={() => {
-    console.log('❌ [HomePage] メモ追加をキャンセル');
-    setMemoModalOpen(false);
-    setSelectedPostForMemo(null);
-    console.log('✅ [HomePage] キャンセル処理完了');
-  }}
-  postId={selectedPostForMemo?.id || ''}
-  onSave={async (memoData) => {
-  console.log('💾 [HomePage] メモ保存開始');
-  console.log('📝 [HomePage] メモデータ:', memoData);
+    )}
+  </div>
   
-  try {
-    const userId = localStorage.getItem("daily-report-user-id") || "";
-    const currentUser = await getUser(userId);
-    const displayName = currentUser ? DisplayNameResolver.resolve(currentUser) : "ユーザー";
-    
-    // メモデータを完全な形で作成
-    const newMemo = {
-      ...memoData,
-      id: `memo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      postId: selectedPostForMemo.id,
-      createdAt: Date.now(),
-      createdBy: userId,
-      createdByName: displayName
-    };
-    
-    console.log('📤 [HomePage] Firestoreに保存するメモ:', newMemo);
-    
-    // ★ 変更点1: ローカルで即座にメモを追加（超高速！）
-    const currentPost = selectedPostForDetail;
-    if (currentPost) {
-      const updatedPost = {
-        ...currentPost,
-        memos: [...(currentPost.memos || []), newMemo]
-      };
-      
-      // 即座に画面更新
-      setSelectedPostForDetail(updatedPost);
-      console.log('⚡ [HomePage] 画面を即座に更新（超高速）');
-    }
-    
-    // ★ 変更点2: メモモーダルを即座に閉じる
-    setMemoModalOpen(false);
-    setSelectedPostForMemo(null);
-    
-    console.log('🎉 [HomePage] 画面更新完了（待ち時間なし）');
-    
-    // ★ 変更点3: Firestore保存はバックグラウンドで実行
-    MemoService.saveMemo(newMemo).then(() => {
-      console.log('✅ [HomePage] Firestore保存完了（バックグラウンド）');
-    }).catch(error => {
-      console.error('❌ [HomePage] Firestore保存エラー:', error);
-      // エラーが起きても画面は既に更新されている
-    });
-    
-  } catch (error) {
-    console.error('❌ [HomePage] メモ保存エラー:', error);
-    alert('メモの保存に失敗しました');
-    
-    // エラー時もモーダルを閉じる
-    setMemoModalOpen(false);
-    setSelectedPostForMemo(null);
-  }
-}}
-/>
-)}
+  <ImageGalleryModal
+    images={galleryImages}
+    initialIndex={galleryIndex}
+    isOpen={galleryOpen}
+    onClose={() => setGalleryOpen(false)}
+  />
+
+  {/* 投稿詳細モーダル */}
+  {selectedPostForDetail && (
+    <PostDetailModal
+      post={selectedPostForDetail}
+      onClose={() => setSelectedPostForDetail(null)}
+      navigate={navigate}
+      onMemoClick={handleMemoClick}
+    />
+  )}
+
+  {/* メモモーダル */}
+  {memoModalOpen && selectedPostForMemo && (
+    <MemoModal
+      isOpen={memoModalOpen}
+      onClose={() => {
+        console.log('❌ [HomePage] メモ追加をキャンセル');
+        setMemoModalOpen(false);
+        setSelectedPostForMemo(null);
+        console.log('✅ [HomePage] キャンセル処理完了');
+      }}
+      postId={selectedPostForMemo?.id || ''}
+      onSave={async (memoData) => {
+        console.log('💾 [HomePage] メモ保存開始');
+        console.log('📝 [HomePage] メモデータ:', memoData);
+        
+        try {
+          const userId = localStorage.getItem("daily-report-user-id") || "";
+          const currentUser = await getUser(userId);
+          const displayName = currentUser ? DisplayNameResolver.resolve(currentUser) : "ユーザー";
+          
+          // メモデータを完全な形で作成
+          const newMemo = {
+            ...memoData,
+            id: `memo_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            postId: selectedPostForMemo.id,
+            createdAt: Date.now(),
+            createdBy: userId,
+            createdByName: displayName
+          };
+          
+          console.log('📤 [HomePage] Firestoreに保存するメモ:', newMemo);
+          
+          // ★ 変更点1: ローカルで即座にメモを追加（超高速！）
+          const currentPost = selectedPostForDetail;
+          if (currentPost) {
+            const updatedPost = {
+              ...currentPost,
+              memos: [...(currentPost.memos || []), newMemo]
+            };
+            
+            // 即座に画面更新
+            setSelectedPostForDetail(updatedPost);
+            console.log('⚡ [HomePage] 画面を即座に更新（超高速）');
+          }
+          
+          // ★ 変更点2: メモモーダルを即座に閉じる
+          setMemoModalOpen(false);
+          setSelectedPostForMemo(null);
+          
+          console.log('🎉 [HomePage] 画面更新完了（待ち時間なし）');
+          
+          // ★ 変更点3: Firestore保存はバックグラウンドで実行
+          MemoService.saveMemo(newMemo).then(() => {
+            console.log('✅ [HomePage] Firestore保存完了（バックグラウンド）');
+          }).catch(error => {
+            console.error('❌ [HomePage] Firestore保存エラー:', error);
+            // エラーが起きても画面は既に更新されている
+          });
+          
+        } catch (error) {
+          console.error('❌ [HomePage] メモ保存エラー:', error);
+          alert('メモの保存に失敗しました');
+          
+          // エラー時もモーダルを閉じる
+          setMemoModalOpen(false);
+          setSelectedPostForMemo(null);
+        }
+      }}
+    />
+  )}
 
       <MainFooterNav />
     </div>
   );
 
   // タイムラインアイテムを日付ごとにグループ化して表示するヘルパー関数
-  function groupItemsByDate() {
-    // 日付ごとにグループ化
-    const groupedByDate: Record<string, TimelineItem[]> = {};
+function groupItemsByDate() {
+  // 🌟 ここで全体の表示件数を制限（重要！）
+  const limitedItems = filteredItems.slice(0, displayLimit);
+  console.log(`📊 表示制限適用: ${displayLimit}件 / 全${filteredItems.length}件`);
+  console.log(`🔍 [デバッグ] displayLimitの値: ${displayLimit}`);  // ← この行を追加
+  // 日付ごとにグループ化
+  const groupedByDate: Record<string, TimelineItem[]> = {};
+  limitedItems.forEach(item => { // ← filteredItems から limitedItems に変更
     
-    filteredItems.forEach(item => {
       // 日付部分を取得
       let date;
       if ('type' in item && item.type === 'alert') {
@@ -2570,7 +2856,7 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
           </h4>
           
           {/* その日のタイムラインアイテムを表示 */}
-          {itemsForDate.map(item => (
+          {itemsForDate.map(item => (  // ← .slice(0, displayLimit) を削除
             'type' in item && item.type === 'alert' ? (
               // アラートカード
               <AlertCard
@@ -2582,17 +2868,17 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
             ) : (
               // 投稿カード - 画像クリックハンドラーを追加
               <PostCard
-  key={item.id}
-  post={item as Post}
-  onViewDetails={handleViewPostDetails}
-  onImageClick={handleImageClick}
-  navigate={navigate}
-  onStatusUpdate={handleStatusUpdate}
-  getContainerStatusStyle={getContainerStatusStyle}
-  userRole={userRole}  
-  onMemoClick={handleMemoClick} 
-  onPlusButtonClick={(post) => setSelectedPostForDetail(post)}
-/>
+                key={item.id}
+                post={item as Post}
+                onViewDetails={handleViewPostDetails}
+                onImageClick={handleImageClick}
+                navigate={navigate}
+                onStatusUpdate={handleStatusUpdate}
+                getContainerStatusStyle={getContainerStatusStyle}
+                userRole={userRole}  
+                onMemoClick={handleMemoClick} 
+                onPlusButtonClick={(post) => setSelectedPostForDetail(post)}
+              />
             )
           ))}
         </div>
@@ -2611,6 +2897,10 @@ export const invalidatePostsCache = () => {
   console.log('🗑️ 投稿キャッシュを無効化');
   postsCache = null;
   postsCacheTime = 0;
+  
+  // ⭐ 追加：localStorageも強制クリア ⭐
+  localStorage.removeItem('home-posts-cache');
+  localStorage.removeItem('home-cache-time');
 };
 
 export const invalidateGroupsCache = () => {
@@ -2621,8 +2911,12 @@ export const invalidateGroupsCache = () => {
 
 export const forceRefreshPosts = () => {
   invalidatePostsCache();
-  // HomePage コンポーネントに更新を通知するためのイベント
+  
+  // ⭐ 追加：複数の通知を送信 ⭐
   window.dispatchEvent(new CustomEvent('postsUpdated'));
+  window.dispatchEvent(new Event('storage'));
+  
+  console.log('🔄 強制リフレッシュ実行');
 };
 
 

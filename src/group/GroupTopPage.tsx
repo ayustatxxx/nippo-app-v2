@@ -417,6 +417,27 @@ const handleCheckInOut = async () => {
         });
 
         console.log('✅ チェックイン投稿保存完了:', postId);
+
+// ⭐ ここから追加：HomePageとArchivePageに通知 ⭐
+const updateFlag = Date.now().toString();  // ← ✅ 数値のみ！
+localStorage.setItem('daily-report-posts-updated', updateFlag);
+localStorage.setItem('posts-need-refresh', 'true');  // ← ✅ 'true'に統一
+console.log('🔍 [デバッグ] チェックイン通知:', updateFlag);
+
+// イベント発火
+window.dispatchEvent(new Event('storage'));
+window.dispatchEvent(new CustomEvent('refreshPosts'));
+
+console.log('📢 [GroupTopPage] チェックイン通知を送信');
+
+
+// ⭐ さらに追加：HomePageのキャッシュを強制無効化 ⭐
+if (window.forceRefreshPosts) {
+  window.forceRefreshPosts();
+}
+window.dispatchEvent(new CustomEvent('postsUpdated'));
+
+
         
         // 状態を更新
         setIsCheckedIn(true);
@@ -460,6 +481,24 @@ const handleCheckInOut = async () => {
         });
 
         console.log('✅ チェックアウト投稿保存完了:', postId);
+
+// ⭐ ここから追加：HomePageとArchivePageに通知 ⭐
+const updateFlag = Date.now().toString();  // ← ✅ 数値のみ！
+localStorage.setItem('daily-report-posts-updated', updateFlag);
+localStorage.setItem('posts-need-refresh', 'true');  // ← ✅ 'true'に統一
+console.log('🔍 [デバッグ] チェックアウト通知:', updateFlag);
+
+// HomePageのキャッシュを強制無効化
+if (window.forceRefreshPosts) {
+  window.forceRefreshPosts();
+}
+
+// イベント発火
+window.dispatchEvent(new Event('storage'));
+window.dispatchEvent(new CustomEvent('postsUpdated'));
+window.dispatchEvent(new CustomEvent('refreshPosts'));
+
+console.log('📢 [GroupTopPage] チェックアウト通知を送信');
         
         // 状態をリセット
         setIsCheckedIn(false);

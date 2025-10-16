@@ -9,7 +9,8 @@ import {
   where, 
   orderBy,
   getFirestore, 
-  increment
+  increment,
+  limit as limitFirestore,
 } from 'firebase/firestore';
 
 // 既存のFirebase設定をimportで取得
@@ -106,29 +107,39 @@ export const updateGroupWithFirestore = async (groupId: string, updateData: any)
 export const getUserGroups = getGroups;
 
 
-// グループの投稿を取得する関数
+
 // utils/firestoreService.ts の getGroupPosts関数を以下に置き換え
 // グループの投稿を取得する関数（メモ情報を含む）
-export const getGroupPosts = async (groupId: string): Promise<any[]> => {
+export const getGroupPosts = async (groupId: string, limit?: number): Promise<any[]> => {
   try {
     console.log('🔍 [FirestoreService] グループ投稿取得開始:', groupId);
     
     // シンプルなクエリでFirestoreから取得
-    const postsQuery = query(
-      collection(db, 'posts'),
-      where('groupId', '==', groupId)
-    );
-    
-    const querySnapshot = await getDocs(postsQuery);
+    let postsQuery = query(
+  collection(db, 'posts'),
+  where('groupId', '==', groupId)
+);
+
+// 🌟 ここから追加
+if (limit) {
+  postsQuery = query(postsQuery, limitFirestore(limit));
+  console.log(`📊 取得件数を${limit}件に制限`);
+}
+// 🌟 ここまで追加
+
+const querySnapshot = await getDocs(postsQuery);
     const posts: any[] = [];
     
     // ⭐ メモコレクションを一度だけ取得（パフォーマンス最適化）
-    console.log('📝 [FirestoreService] メモ情報取得開始');
-    const memosRef = collection(db, 'memos');
-    const memosSnapshot = await getDocs(memosRef);
-    
-    // メモをpostIdでグループ化
-    // ⭐ 現在のユーザーIDを取得
+   // 🌟 HomePageの高速化：初回はメモ不要なのでコメントアウト
+/*
+// ⭐ メモコレクションを一度だけ取得（パフォーマンス最適化）
+console.log('📝 [FirestoreService] メモ情報取得開始');
+const memosRef = collection(db, 'memos');
+const memosSnapshot = await getDocs(memosRef);
+
+// メモをpostIdでグループ化
+// ⭐ 現在のユーザーIDを取得
 const currentUserId = localStorage.getItem("daily-report-user-id");
 console.log('👤 [FirestoreService] 現在のユーザーID:', currentUserId);
 
@@ -161,8 +172,9 @@ memosSnapshot.forEach(doc => {
     });
   }
 });
-    
-    console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(memosByPostId).length, '投稿分');
+
+console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(memosByPostId).length, '投稿分');
+*/
     
     querySnapshot.forEach((doc) => {
       const data = doc.data();
@@ -208,7 +220,7 @@ memosSnapshot.forEach(doc => {
       }
       
       // ⭐ この投稿のメモを取得
-      const postMemos = memosByPostId[doc.id] || [];
+      const postMemos: any[] = [];  // メモは空配列
 
       // 🔍 デバッグ：生データを確認
 console.log('🔍 [getGroupPosts] 投稿ID:', doc.id);

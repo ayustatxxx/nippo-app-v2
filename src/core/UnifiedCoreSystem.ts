@@ -182,8 +182,8 @@ if (postData.files && postData.files.length > 0) {
    * @param userId ユーザーID
    * @returns 投稿の配列
    */
-  static async getGroupPosts(groupId: string, userId: string): Promise<Post[]> {
-    console.log('🔍 UnifiedCoreSystem: グループ投稿取得開始', { groupId, userId });
+  static async getGroupPosts(groupId: string, userId: string, limit?: number): Promise<Post[]> {
+  console.log('🔍 UnifiedCoreSystem: グループ投稿取得開始', { groupId, userId, limit });
     
     try {
       // Step 1: 権限確認 - このユーザーはこのグループにアクセスできるか？
@@ -199,7 +199,7 @@ if (postData.files && postData.files.length > 0) {
       
       // Step 2: firestoreServiceから投稿を取得
       const { getGroupPosts } = await import('../utils/firestoreService');
-      const posts = await getGroupPosts(groupId);
+      const posts = await getGroupPosts(groupId, limit);
       
       console.log(`✅ グループ投稿取得完了: ${posts.length}件`);
       return posts;
