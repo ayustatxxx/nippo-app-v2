@@ -993,27 +993,22 @@ const handleSaveMemo = async (memoData: Omit<Memo, 'id' | 'createdAt' | 'created
     
     console.log('🎉 [ArchivePage] メモモーダルを閉じて詳細モーダルを再表示');
     
-    // ⭐ 修正4: Firestore保存はバックグラウンドで（投稿リスト更新なし）
-    MemoService.saveMemo(newMemo).then(() => {
-      console.log('✅ [ArchivePage] Firestore保存完了（バックグラウンド）');
-
-       // ⭐ ここから追加：HomePageに通知 ⭐
+   // ⭐ 修正4: Firestore保存はバックグラウンドで（投稿リスト更新なし）
+MemoService.saveMemo(newMemo).then(() => {
+  console.log('✅ [ArchivePage] Firestore保存完了（バックグラウンド）');
+  // ⭐ ここから追加：HomePageに通知 ⭐
   const updateFlag = `memo_saved_${Date.now()}`;
   localStorage.setItem('daily-report-posts-updated', updateFlag);
   localStorage.setItem('posts-need-refresh', updateFlag);
   
-  // イベント発火
-  window.dispatchEvent(new Event('storage'));
+  // HomePageに通知
   window.dispatchEvent(new CustomEvent('refreshPosts'));
   
+  // HomePageにメモ保存通知を送信
   console.log('📢 [ArchivePage] HomePageにメモ保存通知を送信');
-
-
-      // setPosts/setFilteredPostsは削除（既に更新済み）
-    }).catch(error => {
-      console.error('❌ [ArchivePage] Firestore保存エラー:', error);
-    });
-
+}).catch(error => {
+  console.error('❌ [ArchivePage] Firestore保存エラー:', error);
+});
 
     
   } catch (error) {
@@ -1211,15 +1206,14 @@ const interval = setInterval(() => {
 useEffect(() => {
   console.log('🎧 [ArchivePage] 投稿更新イベント監視を開始');
   
-  // グローバル関数の定義
-  window.refreshArchivePage = () => {
-    console.log('🔄 [ArchivePage] 手動リフレッシュ実行');
-    // データ再取得処理
-    const refreshData = async () => {
-      if (!groupId) return;
-      
-      try {
-        setLoading(true);
+// グローバル関数の定義
+window.refreshArchivePage = () => {
+  console.log('🔄 [ArchivePage] 手動リフレッシュ実行');
+  // データ再取得処理
+  const refreshData = async () => {
+    if (!groupId) return;
+    try {
+      setLoading(true);
         
         // 実際のFirestoreからデータを取得する処理をここに実装
         // 現在は空配列で初期化されているため、実際のAPI呼び出しに置き換える必要がある
@@ -1248,43 +1242,68 @@ if (refreshedPosts && refreshedPosts.length > 0) {
   };
   
   // PostPage.tsxからの更新イベント監視
-  const handlePostsUpdate = (event: any) => {
-    console.log('📢 [ArchivePage] 投稿更新イベントを受信:', event.detail);
+const handlePostsUpdate = (event: any) => {
+  console.log('📢 [ArchivePage] 投稿更新イベントを受信:', event.detail);
+  
+  // 該当するグループの投稿かチェック
+  if (event.detail && event.detail.newPost && event.detail.newPost.groupId === groupId) {
+    console.log('✅ [ArchivePage] 該当グループの投稿更新:', event.detail.newPost.groupId);
+    // データ再取得
+    if (window.refreshArchivePage) {
+      window.refreshArchivePage();
+    }
+  } else if (!event.detail) {
+    // 詳細情報がない場合は安全のため更新
+    console.log('🔄 [ArchivePage] 詳細不明のため安全のため更新');
     
-    // 該当するグループの投稿かチェック
-    if (event.detail && event.detail.newPost && event.detail.newPost.groupId === groupId) {
-      console.log('✅ [ArchivePage] 該当グループの投稿更新:', event.detail.newPost.groupId);
-      
-      // データ再取得
-      if (window.refreshArchivePage) {
-        window.refreshArchivePage();
-      }
-    } else if (!event.detail) {
-      // 詳細情報がない場合は安全のため更新
-      console.log('🔄 [ArchivePage] 詳細不明のため安全のため更新');
+    // ⭐ localStorageをチェックしてメモ保存かどうか確認 ⭐
+    const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
+    if (lastUpdate.startsWith('memo_saved')) {
+      console.log('🔄 [ArchivePage] メモ保存と判定：500ms後にリフレッシュ');
+      setTimeout(() => {
+        if (window.refreshArchivePage) {
+          window.refreshArchivePage();
+        }
+      }, 500);
+    } else {
+      // メモ以外はすぐにリフレッシュ
       if (window.refreshArchivePage) {
         window.refreshArchivePage();
       }
     }
-  };
+  }
+};
   
-  // localStorageフラグ監視（ポーリング方式）
-  let lastUpdateFlag = localStorage.getItem('daily-report-posts-updated') || '';
-  const checkForUpdates = () => {
-    const currentFlag = localStorage.getItem('daily-report-posts-updated') || '';
-    if (currentFlag !== lastUpdateFlag && currentFlag !== '') {
-      console.log('📱 [ArchivePage] localStorageフラグ変更を検知:', currentFlag);
-      lastUpdateFlag = currentFlag;
+// localStorageフラグ監視（ポーリング方式）
+let lastUpdateFlag = localStorage.getItem('daily-report-posts-updated') || '';
+const checkForUpdates = () => {
+  const currentFlag = localStorage.getItem('daily-report-posts-updated') || '';
+  if (currentFlag !== lastUpdateFlag && currentFlag !== '') {
+    console.log('📱 [ArchivePage] localStorageフラグ変更を検知:', currentFlag);
+    lastUpdateFlag = currentFlag;
+    
+    // グループIDチェック（localStorageに保存されている場合）
+    const storedGroupId = localStorage.getItem('last-updated-group-id');
+    if (!storedGroupId || storedGroupId === groupId) {
       
-      // グループIDチェック（localStorageに保存されている場合）
-      const storedGroupId = localStorage.getItem('last-updated-group-id');
-      if (!storedGroupId || storedGroupId === groupId) {
+      // ⭐ メモ保存の場合は少し待ってからリフレッシュ ⭐
+      if (currentFlag.startsWith('memo_saved')) {
+        console.log('🔄 [ArchivePage] メモ反映のため500ms後にリフレッシュ');
+        setTimeout(() => {
+          if (window.refreshArchivePage) {
+            window.refreshArchivePage();
+          }
+        }, 500);
+      } else {
+        // メモ以外はすぐにリフレッシュ
         if (window.refreshArchivePage) {
           window.refreshArchivePage();
         }
       }
+      
     }
-  };
+  }
+};
   
   // イベントリスナーの設定
   window.addEventListener('postsUpdated', handlePostsUpdate);
@@ -2430,19 +2449,21 @@ const PostDetailModal: React.FC<{
                   marginBottom: '0.2rem', // この行を追加
                 }}
                 onClick={() => {
-                  // URLパラメータを保持したまま戻る
-                  const from = searchParams.get('from');
-                  const postId = searchParams.get('postId');
-
-                  const params = new URLSearchParams();
-                  if (from) params.set('from', from);
-                  if (postId) params.set('postId', postId);
-                  const paramString = params.toString()
-                    ? `?${params.toString()}`
-                    : '';
-
-                  navigate(`/group/${groupId}${paramString}`);
-                }}
+  // ⭐ Homeページに戻る時、強制リフレッシュを指示 ⭐
+  localStorage.setItem('force-refresh-home', Date.now().toString());
+  console.log('🔄 [ArchivePage] Homeページの強制リフレッシュフラグを設定');
+  
+  // URLパラメータを保持したまま戻る
+  const from = searchParams.get('from');
+  const postId = searchParams.get('postId');
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (postId) params.set('postId', postId);
+  const paramString = params.toString()
+    ? `?${params.toString()}`
+    : '';
+  navigate(`/group/${groupId}${paramString}`);
+}}
               >
                 <svg
                   width="24"
@@ -3351,16 +3372,18 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
                   await markPostAsRead(post.id, currentUserId);
                   console.log('✅ 既読マーク完了:', post.id);
                   
-                  // 既読マーク後の状態更新処理
-                  if (window.refreshArchivePage) {
-                    window.refreshArchivePage();
-                  } else {
-                    const updatedPost = { ...post };
-                    if (!updatedPost.readBy) updatedPost.readBy = {};
-                    updatedPost.readBy[currentUserId] = Date.now();
-                    setPosts(prev => prev.map(p => p.id === post.id ? updatedPost : p));
-                    setFilteredPosts(prev => prev.map(p => p.id === post.id ? updatedPost : p));
-                  }
+            // 既読マーク後の状態更新処理
+if (window.refreshArchivePage) {
+  const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
+  if (lastUpdate.startsWith('memo_saved')) {
+    console.log('⏱️ [ArchivePage] メモ保存直後：1000ms待機してからリフレッシュ');
+    setTimeout(() => {
+      window.refreshArchivePage();
+    }, 1000);
+  } else {
+    window.refreshArchivePage();
+  }
+}
                   
                 } catch (error) {
                   console.error('❌ 既読マークエラー:', error);

@@ -342,7 +342,7 @@ useEffect(() => {
       )}
 
       {/* 写真のサムネイル表示 - 最大2段7枚+「+X」表示に変更 */}
-      {post.photoUrls && post.photoUrls.length > 0 && (
+      {((post.photoUrls && post.photoUrls.length > 0) || (post.images && post.images.length > 0)) && (
         <div
           style={{
             display: 'flex',
@@ -352,7 +352,7 @@ useEffect(() => {
           }}
         >
           {/* 写真サムネイル表示（最大7枚まで表示、8枚以上で+X表示） */}
-          {post.photoUrls.slice(0, Math.min(7, post.photoUrls.length)).map((url, index) => (
+          {(post.photoUrls || post.images || []).slice(0, Math.min(7, (post.photoUrls || post.images || []).length)).map((url, index) => (
             <div
               key={index}
               style={{
@@ -365,7 +365,7 @@ useEffect(() => {
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                onImageClick(url, post.photoUrls);
+                onImageClick(url, post.photoUrls || post.images || []);
               }}
             >
               <img
@@ -382,7 +382,7 @@ useEffect(() => {
           ))}
           
           {/* 8枚以上ある場合、最後の枠に+X表示 - こちらも詳細ページに遷移 */}
-          {post.photoUrls.length > 7 && (
+         {(post.photoUrls || post.images || []).length > 7 && (
   <div
     style={{
       width: 'calc((100% - 1.5rem) / 4)',
@@ -403,7 +403,7 @@ useEffect(() => {
   onPlusButtonClick(post);
 }}
   >
-    +{post.photoUrls.length - 7}
+    +{(post.photoUrls || post.images || []).length - 7}
   </div>
 )}
         </div>
@@ -411,7 +411,7 @@ useEffect(() => {
 
 
       {/* ← ここに区切り線を追加 */}
-{post.photoUrls && post.photoUrls.length > 0 && (
+{((post.photoUrls && post.photoUrls.length > 0) || (post.images && post.images.length > 0)) && (
   <div 
     style={{
       height: '1px',
@@ -760,15 +760,20 @@ const AlertCard: React.FC<AlertCardProps> = ({ alert, onContact, navigate }) => 
   );
 };
 
-// 3. ユーティリティ関数
 // 時間部分のみを抽出する関数
-const extractTime = (dateTimeStr: string): string => {
+const extractTime = (dateTimeStr: string | undefined): string => {
+  // dateTimeStrが無い場合は空文字を返す
+  if (!dateTimeStr || typeof dateTimeStr !== 'string') {
+    return '';
+  }
+  
   const parts = dateTimeStr.split('　');
   if (parts.length > 1) {
     return parts[1];
   }
   return dateTimeStr;
 };
+
 
 // 日本語形式の日付文字列からDateオブジェクトを作成する関数
 const parseDateString = (dateTimeStr: string): Date => {
@@ -1679,6 +1684,18 @@ useEffect(() => {
 const CACHE_DURATION = isReturnMode ? 60000 : 30000;
 console.log('🔍 キャッシュチェック開始');
 
+// ⭐ Archiveから戻ってきた時は強制リフレッシュ ⭐
+const forceRefreshHome = localStorage.getItem('force-refresh-home');
+if (forceRefreshHome) {
+  console.log('🔄 [HomePage] Archiveから戻ってきたため、キャッシュをクリア');
+  localStorage.removeItem('force-refresh-home');
+  localStorage.removeItem('posts-need-refresh');
+  localStorage.removeItem('daily-report-posts-updated');
+  postsCache = null;
+  postsCacheTime = 0;
+  console.log('🗑️ [HomePage] キャッシュをクリアして最新データを取得');
+}
+
 // ⭐ デバッグログ追加 ⭐
 const forceRefresh = localStorage.getItem('posts-need-refresh');
 const lastUpdate = localStorage.getItem('daily-report-posts-updated');
@@ -1793,55 +1810,26 @@ try {
   console.log('🔍 [Home] 参加確認済みグループの投稿のみ取得中...');
   
 
-// ✅ 並列処理で各グループから取得
-const postPromises = userGroups.map(async (group) => {
-  console.log(`📂 参加確認済みグループ "${group.name}" から投稿を取得`);
-  try {
-    // ⭐ 汎用的な取得件数の計算（グループ数に応じて自動調整） ⭐
-    const INITIAL_MAX_TOTAL = 30;  // 初回：合計30件まで
-    const INITIAL_MIN_PER_GROUP = 2;  // 各グループ最低2件
-    const INITIAL_MAX_PER_GROUP = 6;  // 各グループ最大6件
+// ⭐ 新しい効率的な取得方法 ⭐
+const groupIds = userGroups.map(g => g.id);
+console.log(`📊 [効率的ロード] ${groupIds.length}グループから最新20件を一括取得`);
 
-    const limitPerGroup = Math.max(
-      INITIAL_MIN_PER_GROUP,  // 最低2件は保証
-      Math.min(
-        INITIAL_MAX_PER_GROUP,  // 最大6件まで
-        Math.ceil(INITIAL_MAX_TOTAL / userGroups.length)  // グループ数で均等割り
-      )
-    );
+allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
+  groupIds,
+  20  // 表示する10件 + 予備10件
+);
 
-    console.log(`📊 [汎用ロード] グループ数: ${userGroups.length}, 各グループ: ${limitPerGroup}件取得`);
-
-    const groupPosts = await UnifiedCoreSystem.getGroupPosts(
-      group.id,
-      userId,
-      limitPerGroup,  // ← 動的に調整された件数
-    );
-    
-    const postsWithGroupName = groupPosts.map(post => ({
-      ...post,
-      groupName: group.name,
-      groupId: group.id,
-      memos: []  // 🌟 空配列で初期化
-    }));
-    
-    console.log(`✅ グループ "${group.name}": ${groupPosts.length}件の投稿を取得（メモなし）`);
-    return postsWithGroupName;
-  } catch (error) {
-    console.error(`❌ グループ "${group.name}" の投稿取得エラー:`, error);
-    return [];
-  }
+// グループ名を各投稿に追加
+allPosts = allPosts.map(post => {
+  const group = userGroups.find(g => g.id === post.groupId);
+  return {
+    ...post,
+    groupName: group?.name || 'グループ名なし',
+    memos: []  // 空配列で初期化
+  };
 });
 
-const postArrays = await Promise.all(postPromises);
-allPosts = postArrays.flat();
-
-// 時系列ソート
-allPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-// ⭐ 最新10件を表示（汎用的） ⭐
-allPosts = allPosts.slice(0, 10);
-console.log(`✅ [Home] 初回データ取得完了: ${allPosts.length} 件（最新10件表示）`);
+console.log(`✅ [Home] 効率的ロード完了: ${allPosts.length}件の投稿を取得`);
   
 } catch (error) {
   console.error('❌ [Home] 投稿取得エラー:', error);
@@ -1850,10 +1838,63 @@ console.log(`✅ [Home] 初回データ取得完了: ${allPosts.length} 件（�
 
 // 投稿データをセット
 if (isMounted) {
-  setPosts(allPosts);
+  // ⭐ Step 1: グループ名をマージ
+  const postsWithGroupNames = allPosts.map(post => {
+    const group = allGroups.find(g => g.id === post.groupId);
+    return {
+      ...post,
+      groupName: group?.name || '不明なグループ'
+    };
+  });
+  
+  console.log('✅ [Home] グループ名マージ完了:', postsWithGroupNames.length, '件');
+  
+  // ⭐ Step 2: ユーザー名と写真を追加マージ
+  const enrichedPosts = await Promise.all(
+    postsWithGroupNames.map(async (post) => {
+      try {
+        // ユーザー名を取得
+        let username = post.username || 'ユーザー';
+        if (post.authorId || post.userId || post.userID) {
+          const userId = post.authorId || post.userId || post.userID;
+          const displayName = await getDisplayNameSafe(userId);
+          if (displayName && displayName !== 'ユーザー') {
+            username = displayName;
+          }
+        }
+        
+        // 写真URLを確保（複数の可能性のあるフィールド名に対応）
+        const photos = post.photoUrls || post.images || [];
+        
+        return {
+          ...post,
+          username,
+          photoUrls: photos,  // ⭐ photoUrls に統一
+          images: photos      // ⭐ images も設定（互換性のため）
+        };
+      } catch (error) {
+        console.error('投稿データ補完エラー:', error);
+        return {
+          ...post,
+          username: post.username || 'ユーザー',
+          photoUrls: post.photoUrls || post.images || [],
+          images: post.photoUrls || post.images || []
+        };
+      }
+    })
+  );
+  
+  console.log('✅ [Home] ユーザー名・写真マージ完了:', enrichedPosts.length, '件');
+
+  // ⭐ 以下を追加 ⭐
+console.log('🔍 [デバッグ] 最初の投稿データ:', enrichedPosts[0]);
+console.log('🔍 [デバッグ] photoUrls:', enrichedPosts[0]?.photoUrls);
+console.log('🔍 [デバッグ] images:', enrichedPosts[0]?.images);
+  
+  setPosts(enrichedPosts);
   setGroups(allGroups);
-  setTimelineItems(allPosts);
-  setFilteredItems(allPosts);
+  setTimelineItems(enrichedPosts);
+  setFilteredItems(enrichedPosts);
   initializationRef.current = true;
 }
 
@@ -1912,47 +1953,28 @@ const refreshData = async () => {
     try {
       console.log('🔍 [Home] 参加確認済みグループの投稿のみ取得中...');
       
-// 参加確認済みグループからのみ投稿を取得
-// 並列データ取得（最適化）
-const postPromises = userGroups.map(async (group) => {
-  console.log(`📂 参加確認済みグループ "${group.name}" から投稿を取得`);
-  try {
-    // ⭐ リフレッシュ時も汎用的な計算 ⭐
-    const REFRESH_MAX_TOTAL = 30;  // リフレッシュ：合計30件まで
-    const REFRESH_MIN_PER_GROUP = 2;  // 各グループ最低2件
-    const REFRESH_MAX_PER_GROUP = 6;  // 各グループ最大6件
 
-    const limitPerGroup = Math.max(
-      REFRESH_MIN_PER_GROUP,
-      Math.min(
-        REFRESH_MAX_PER_GROUP,
-        Math.ceil(REFRESH_MAX_TOTAL / userGroups.length)
-      )
-    );
+      // ⭐ リフレッシュも効率的な取得方法を使用 ⭐
+const groupIds = userGroups.map(g => g.id);
+console.log(`📊 [リフレッシュロード] ${groupIds.length}グループから最新20件を一括取得`);
 
-    console.log(`📊 [リフレッシュロード] グループ数: ${userGroups.length}, 各グループ: ${limitPerGroup}件取得`);
+allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
+  groupIds,
+  20
+);
 
-    const groupPosts = await UnifiedCoreSystem.getGroupPosts(group.id, userId, limitPerGroup); 
-    
-    // グループ名を各投稿に追加
-    const postsWithGroupName = groupPosts.map(post => ({
-      ...post,
-      groupName: group.name,
-      groupId: group.id,
-      memos: []
-    }));
-    
-    console.log(`✅ グループ "${group.name}": ${groupPosts.length}件の投稿を取得`);
-    return postsWithGroupName;
-  } catch (error) {
-    console.error(`❌ グループ "${group.name}" の投稿取得エラー:`, error);
-    return [];
-  }
+// グループ名を各投稿に追加
+allPosts = allPosts.map(post => {
+  const group = userGroups.find(g => g.id === post.groupId);
+  return {
+    ...post,
+    groupName: group?.name || 'グループ名なし',
+    memos: []
+  };
 });
 
-// 全ての投稿を並列取得
-const postArrays = await Promise.all(postPromises);
-allPosts = postArrays.flat();
+console.log(`✅ [Home] リフレッシュ完了: ${allPosts.length}件の投稿を取得`);
+
       
       // 時系列でソート（新しい順）
       allPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -2818,14 +2840,25 @@ function groupItemsByDate() {
   limitedItems.forEach(item => { // ← filteredItems から limitedItems に変更
     
       // 日付部分を取得
-      let date;
-      if ('type' in item && item.type === 'alert') {
-        // アラートの場合は今日の日付を使用
-        date = formatDate(new Date());
-      } else {
-        // 投稿の場合は投稿日時から日付を取得
-        date = (item as Post).time.split('　')[0];
-      }
+let date;
+if ('type' in item && item.type === 'alert') {
+  // アラートの場合は今日の日付を使用
+  date = formatDate(new Date());
+} else {
+  // 投稿の場合は投稿日時から日付を取得
+  const post = item as Post;
+  if (post.time && typeof post.time === 'string') {
+    date = post.time.split('　')[0];
+  } else {
+    // timeフィールドがない場合はcreatedAtから生成
+    const postDate = post.createdAt 
+      ? (typeof post.createdAt === 'number' 
+          ? new Date(post.createdAt) 
+          : (post.createdAt as any).toDate?.() || new Date())
+      : new Date();
+    date = formatDate(postDate);
+  }
+}
       
       if (!groupedByDate[date]) {
         groupedByDate[date] = [];

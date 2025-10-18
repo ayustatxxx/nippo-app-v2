@@ -211,6 +211,87 @@ if (postData.files && postData.files.length > 0) {
   }
 
 
+  /**
+   * 複数グループから最新の投稿を効率的に取得
+   * @param groupIds グループIDの配列
+   * @param limit 取得件数（デフォルト20件）
+   * @returns 最新順にソートされた投稿
+   */
+  static async getLatestPostsFromMultipleGroups(
+    groupIds: string[],
+    limit: number = 20
+  ): Promise<Post[]> {
+    console.log(`🔍 [UnifiedCore] ${groupIds.length}グループから最新${limit}件を取得開始`);
+    
+    if (groupIds.length === 0) {
+      console.log('⚠️ [UnifiedCore] グループIDが空です');
+      return [];
+    }
+
+    try {
+      const allPosts: Post[] = [];
+      
+      // Firebaseの制限：where('groupId', 'in', ...) は最大10個まで
+      // グループを10個ずつに分割して取得
+      const batchSize = 10;
+      const batches = Math.ceil(groupIds.length / batchSize);
+      
+      console.log(`📦 [UnifiedCore] ${batches}バッチに分割して取得`);
+      
+      for (let i = 0; i < batches; i++) {
+        const start = i * batchSize;
+        const end = Math.min(start + batchSize, groupIds.length);
+        const batchGroupIds = groupIds.slice(start, end);
+        
+        console.log(`📦 [UnifiedCore] バッチ${i + 1}/${batches}: ${batchGroupIds.length}グループ`);
+        
+        // firestoreServiceから直接取得
+        const { collection, query, where, orderBy, limit: limitQuery, getDocs, getFirestore } = await import('firebase/firestore');
+        const db = getFirestore();
+        
+        const postsRef = collection(db, 'posts');
+        const q = query(
+          postsRef,
+          where('groupId', 'in', batchGroupIds),
+          orderBy('createdAt', 'desc'),
+          limitQuery(limit)
+        );
+        
+        const snapshot = await getDocs(q);
+        const posts = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt,
+          } as Post;
+        });
+        
+        console.log(`✅ [UnifiedCore] バッチ${i + 1}: ${posts.length}件取得`);
+        allPosts.push(...posts);
+      }
+      
+      // 全バッチの投稿を最新順にソート
+      allPosts.sort((a, b) => {
+        // createdAtをany型として扱うことで型エラーを回避
+        const aTime = (a.createdAt as any)?.toMillis?.() || (a.createdAt as any) || 0;
+        const bTime = (b.createdAt as any)?.toMillis?.() || (b.createdAt as any) || 0;
+        return (bTime as number) - (aTime as number);
+      });
+      
+      // 必要な件数だけ返す
+      const result = allPosts.slice(0, limit);
+      
+      console.log(`✅ [UnifiedCore] 最新${result.length}件を取得完了（全${allPosts.length}件から抽出）`);
+      return result;
+      
+    } catch (error) {
+      console.error('❌ [UnifiedCore] 投稿取得エラー:', error);
+      throw error;
+    }
+  }
+
+
   // 📁 UnifiedCoreSystem.ts
 
   static async updatePost(
