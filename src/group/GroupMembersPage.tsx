@@ -8,6 +8,7 @@ import { UserRole, ReportFrequency, GroupMember } from '../types/index';
 import { DisplayNameResolver } from '../utils/displayNameResolver';
 import { PermissionManager } from "../utils/permissionManager";
 import { getGroupMembersWithLatestProfile } from '../utils/firestoreService';
+import { updateMemberRole, removeMemberFromGroup } from '../utils/firestoreService';
 
 
 const GroupMembersPage: React.FC = () => {
@@ -62,6 +63,7 @@ const syncMemberWithLocalProfile = (member: User, currentUserId: string): User =
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
   const [isEditMode, setIsEditMode] = useState(false); // 全体の編集モード
+const [selectedMembersForDeletion, setSelectedMembersForDeletion] = useState<Set<string>>(new Set()); // ⭐ 追加
 
 
 // realMembers構築部分の完全書き換え（約115行目から）
@@ -310,41 +312,53 @@ const handleInvite = () => {
 };
 
   // メンバーの有効/無効を切り替える
-  const toggleMemberStatus = (memberId: string) => {
-    if (!userIsAdmin) return;
-
-    setMembers((prevMembers) =>
-      prevMembers.map((member) =>
-        member.id === memberId
-          ? { ...member, isActive: !member.isActive }
-          : member
-      )
-    );
-  };
+  // ✅ 追加（新しい関数）
+const toggleMemberForDeletion = (memberId: string) => {
+  setSelectedMembersForDeletion(prev => {
+    const newSet = new Set(prev);
+    if (newSet.has(memberId)) {
+      newSet.delete(memberId);
+    } else {
+      newSet.add(memberId);
+    }
+    return newSet;
+  });
+};
 
   // メンバーを管理者に昇格/降格させる
-  const toggleAdminStatus = (memberId: string) => {
-    if (!userIsAdmin) return;
+  // ✅ 修正後
+const toggleAdminStatus = async (memberId: string) => {
+  if (!userIsAdmin || !groupId) return;
 
+  const targetMember = members.find((m) => m.id === memberId);
+  if (!targetMember) return;
+  
+  const newStatus = !targetMember.isAdmin;
+
+  try {
+    // Firestoreに保存
+    await updateMemberRole(groupId, memberId, newStatus);
+    
+    // ローカル状態更新
     setMembers((prevMembers) =>
       prevMembers.map((member) =>
         member.id === memberId
-          ? { ...member, isAdmin: !member.isAdmin }
+          ? { ...member, isAdmin: newStatus, role: newStatus ? 'admin' : 'user' }
           : member
       )
     );
-
-    // 成功メッセージ
-    const targetMember = members.find((m) => m.id === memberId);
-    if (targetMember) {
-      const newStatus = !targetMember.isAdmin;
-      alert(
-        `✅ ${targetMember.username}さんを${
-          newStatus ? '管理者に昇格' : '一般メンバーに変更'
-        }しました`
-      );
-    }
-  };
+    
+    alert(
+      `✅ ${targetMember.username}さんを${
+        newStatus ? '管理者に昇格' : '一般メンバーに変更'
+      }しました`
+    );
+    
+  } catch (error) {
+    console.error('❌ 権限更新エラー:', error);
+    alert('権限の更新に失敗しました');
+  }
+};
 
   // 招待リンクをコピー
   const copyInviteLink = () => {
@@ -362,16 +376,57 @@ const handleInvite = () => {
 
   // 編集モードの切り替え
   const toggleEditMode = () => {
-    setIsEditMode(!isEditMode);
-  };
+  setIsEditMode(!isEditMode);
+  // 編集モードを終了する時は選択をクリア
+  if (isEditMode) {
+    setSelectedMembersForDeletion(new Set());
+  }
+};
 
-  // 選択したメンバーを削除する
-  const deleteMember = (memberId: string) => {
-    if (window.confirm('このメンバーを削除してもよろしいですか？')) {
-      setMembers((prevMembers) => prevMembers.filter((m) => m.id !== memberId));
+const handleUpdate = () => {
+  setIsEditMode(false);
+  setSelectedMembersForDeletion(new Set());
+  alert('✅ 変更を保存しました');
+};
+
+// ✅ 修正後（複数選択削除に対応）
+const deleteSelectedMembers = async () => {
+  if (selectedMembersForDeletion.size === 0) {
+    alert('削除するメンバーを選択してください');
+    return;
+  }
+
+  if (!groupId) return;
+  
+  const memberNames = Array.from(selectedMembersForDeletion)
+    .map(id => members.find(m => m.id === id)?.username)
+    .filter(Boolean)
+    .join('、');
+
+  if (window.confirm(`以下のメンバーをグループから削除してもよろしいですか?\n\n${memberNames}`)) {
+    try {
+      // 選択された全メンバーを削除
+      for (const memberId of selectedMembersForDeletion) {
+        await removeMemberFromGroup(groupId, memberId);
+      }
+      
+      // ローカル状態を更新
+      setMembers((prevMembers) => 
+        prevMembers.filter((m) => !selectedMembersForDeletion.has(m.id))
+      );
+      
+      // 選択をクリア
+      setSelectedMembersForDeletion(new Set());
+      
       alert('✅ メンバーを削除しました');
+      
+    } catch (error) {
+      console.error('❌ メンバー削除エラー:', error);
+      alert('メンバーの削除に失敗しました');
     }
-  };
+  }
+};
+
 
   return (
     <div
@@ -712,24 +767,46 @@ const handleInvite = () => {
                 </h3>
 
                 {userIsAdmin && (
-                  <button
-                    onClick={toggleEditMode}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      fontSize: '0.9rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      color: '#F0DB4F', // 両方とも黄色
-                      padding: '0.6rem 0', // 左右のパディングを削除
-                      fontWeight: 'bold',
-                      marginRight: '0.2rem',
-                    }}
-                  >
-                    {isEditMode ? 'キャンセル' : '編集する'}
-                  </button>
-                )}
+  <div style={{
+    display: 'flex',
+    gap: '1.5rem', 
+    alignItems: 'center'
+  }}>
+    {isEditMode && (
+      <button
+  onClick={handleUpdate}
+  style={{
+    background: 'none',
+    border: 'none',
+    fontSize: '0.9rem',
+    cursor: 'pointer',
+    color: '#F0DB4F',
+    padding: '0.6rem 0',
+    fontWeight: 'bold',
+    outline: 'none'  // ← 追加
+  }}
+>
+  更新
+</button>
+    )}
+    <button
+  onClick={toggleEditMode}
+  style={{
+    background: 'none',
+    border: 'none',
+    fontSize: '0.9rem',
+    cursor: 'pointer',
+    color: '#F0DB4F',
+    padding: '0.6rem 0',
+    fontWeight: 'bold',
+    marginRight: '0.2rem',
+    outline: 'none'  // ← 追加
+  }}
+>
+  {isEditMode ? 'キャンセル' : '編集する'}
+</button>
+  </div>
+)}
               </div>
 
               {/* メンバーリスト - 各メンバー表示 */}
@@ -845,38 +922,35 @@ const handleInvite = () => {
                             gap: '0.5rem',
                           }}
                         >
-                          {/* チェックボックス */}
-                          <input
-                            type="checkbox"
-                            checked={!member.isActive}
-                            onChange={() => toggleMemberStatus(member.id)}
-                            style={{
-                              width: '16px',
-                              height: '16px',
-                              accentColor: '#F0DB4F',
-                            }}
-                          />
+                         
 
                           {/* チェックされている場合のみ削除ボタンを表示 */}
-                          {!member.isActive && (
-                            <button
-                              onClick={() => deleteMember(member.id)}
-                              style={{
-                                padding: '0.4rem 1rem',
-                                backgroundColor: 'rgb(0, 102, 114)', // アーカイブページと同じ色
-                                color: '#F0DB4F', // 黄色文字
-                                border: 'none',
-                                borderRadius: '20px',
-                                fontSize: '0.75rem',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.3rem',
-                              }}
-                            >
-                              削 除
-                            </button>
-                          )}
+                         <div style={{
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+}}>
+  <input
+    type="checkbox"
+    checked={selectedMembersForDeletion.has(member.id)}
+    onChange={() => toggleMemberForDeletion(member.id)}
+    style={{
+      width: '16px',
+      height: '16px',
+      accentColor: '#F0DB4F',
+      cursor: 'pointer'
+    }}
+  />
+  <span style={{ 
+    color: '#ddd', 
+    fontSize: '0.8rem',
+    cursor: 'pointer'
+  }}
+  onClick={() => toggleMemberForDeletion(member.id)}
+  >
+    削除対象
+  </span>
+</div>
                         </div>
 
                         {/* 管理者昇格/降格ボタン */}
@@ -900,6 +974,50 @@ const handleInvite = () => {
               ))}
             </div>
           )}
+
+          {/* 選択削除ボタン */}
+{isEditMode && userIsAdmin && selectedMembersForDeletion.size > 0 && (
+  <div style={{
+    textAlign: 'center',
+    marginTop: '2rem',
+    paddingTop: '1rem',
+    borderTop: '1px solid #ffffff22'
+  }}>
+    <button
+      onClick={deleteSelectedMembers}
+      style={{
+        backgroundColor: '#d32f2f',
+        color: 'white',
+        border: 'none',
+        borderRadius: '20px',
+        padding: '0.75rem 2rem',
+        fontSize: '0.9rem',
+        fontWeight: 'bold',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        margin: '0 auto'
+      }}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="white"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+      </svg>
+      選択したメンバーを削除 ({selectedMembersForDeletion.size}人)
+    </button>
+  </div>
+)}
+
 
           {/* メンバーが見つからない場合 */}
           {!loading && members.length === 0 && (

@@ -966,8 +966,8 @@ const [selectedPostForMemo, setSelectedPostForMemo] = useState<Post | null>(null
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
   
 
   // 既存の state 変数の後に追加
@@ -1359,6 +1359,34 @@ if (memos.length === 0) {
                           </div>
                         )}
                         
+
+                        {/* ⭐ ここにタグ表示を追加 ⭐ */}
+{memo.tags && memo.tags.length > 0 && (
+  <div style={{
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.4rem',
+    marginTop: '0.5rem'
+  }}>
+    {memo.tags.map((tag: string, tagIndex: number) => (
+      <span
+        key={tagIndex}
+        style={{
+          backgroundColor: '#E6EDED',
+          color: '#055A68',
+          padding: '0.2rem 0.6rem',
+          borderRadius: '999px',
+          fontSize: '0.75rem',
+          fontWeight: '500',
+        }}
+      >
+        {tag}
+      </span>
+    ))}
+  </div>
+)}
+
+
                         {/* メモメタ情報 */}
                         <div style={{
                           marginTop: '0.5rem',
@@ -2229,103 +2257,196 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
 };
 
   // フィルター関数群
-  const filterByDate = (date: string | null) => {
-    setSelectedDate(date);
-    applyFilters(date, selectedGroup);
-  };
-  
-  const filterByGroup = (groupId: string | null) => {
-    setSelectedGroup(groupId);
-    applyFilters(selectedDate, groupId);
-  };
-  
-  const applyFilters = useCallback((date: string | null, groupId: string | null) => {
-    let filtered = [...timelineItems];
+const filterByDate = (date: string | null) => {
+  setSelectedDate(date);
+};
 
-    if (searchQuery.trim()) {
-      const keywords = searchQuery
-        .toLowerCase()
-        .split(/[\s,]+/)
-        .filter(Boolean);
+const filterByGroup = (groupId: string | null) => {
+  setSelectedGroup(groupId);
+};
 
-      const tagKeywords = keywords.filter((keyword) => keyword.startsWith('#'));
-      const textKeywords = keywords.filter((keyword) => !keyword.startsWith('#'));
-      
-      const allKeywords = [...textKeywords, ...tagKeywords.map(tag => tag.substring(1))];
-      
-      const scoredItems = filtered.map(item => ({
-        item: item,
-        score: calculateSearchScoreForHome(item, allKeywords)
-      }));
-      
-      filtered = scoredItems
-        .filter(scored => scored.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .map(scored => scored.item);
+const applyFilters = useCallback(() => {
+  let filtered = [...timelineItems];
+
+  // 検索クエリでフィルター
+  if (searchQuery.trim()) {
+    const keywords = searchQuery
+      .toLowerCase()
+      .split(/[\s,]+/)
+      .filter(Boolean);
+
+    const tagKeywords = keywords.filter((keyword) => keyword.startsWith('#'));
+    const textKeywords = keywords.filter((keyword) => !keyword.startsWith('#'));
+    
+    const allKeywords = [...textKeywords, ...tagKeywords.map(tag => tag.substring(1))];
+    
+    const scoredItems = filtered.map(item => ({
+      item: item,
+      score: calculateSearchScoreForHome(item, allKeywords)
+    }));
+    
+    filtered = scoredItems
+      .filter(scored => scored.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(scored => scored.item);
+  }
+  
+ // ⭐ 日付範囲フィルター（開始日・終了日）
+console.log('🔍 [日付フィルター] 開始:', { 
+  startDate, 
+  endDate, 
+  投稿数: filtered.length,
+  startDateType: typeof startDate,
+  endDateType: typeof endDate,
+  startDateLength: startDate?.length,
+  endDateLength: endDate?.length,
+  startDateValue: startDate,
+  endDateValue: endDate,
+  条件評価: !!(startDate || endDate),
+  startDate真偽値: !!startDate,
+  endDate真偽値: !!endDate
+});
+
+if (startDate || endDate) {
+  console.log('✅ 条件に入りました！');
+  
+  filtered = filtered.filter(item => {
+    console.log('🔍 [フィルター] アイテムをチェック中:', item);
+    
+    // アラートは除外
+    if ('type' in item && item.type === 'alert') {
+      console.log('⏭️ アラートをスキップ');
+      return true;
     }
     
-    if (startDate || endDate) {
-      filtered = filtered.filter(item => {
-        let itemDate;
+    try {
+      const post = item as Post;
+      
+      console.log('📋 投稿情報:', {
+        id: post.id,
+        timestamp: post.timestamp,
+        time: post.time,
+        timestampの型: typeof post.timestamp
+      });
+      
+      // timestampを使用（より確実）
+      if (post.timestamp) {
+        console.log('✅ timestampが存在します');
+        const itemDate = new Date(post.timestamp);
         
-        if ('type' in item && item.type === 'alert') {
-          itemDate = formatDate(new Date());
-        } else {
-          const timeStr = (item as Post).time;
-          const datePart = timeStr.split('　')[0];
-          const dateOnly = datePart.replace(/（.+）/, '').replace(/\s+/g, '');
-          itemDate = dateOnly.replace(/\//g, '-');
+        // ⭐ ログ: 各投稿の日付確認
+        console.log('📅 投稿日付:', {
+          投稿ID: post.id,
+          timestamp: post.timestamp,
+          日付: itemDate.toLocaleString('ja-JP'),
+          開始日: startDate,
+          終了日: endDate
+        });
+          
+          // 開始日でフィルター
+          if (startDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            if (itemDate < start) {
+              console.log('❌ 開始日より前 → 非表示');
+              return false;
+            }
+          }
+          
+          // 終了日でフィルター
+          if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            if (itemDate > end) {
+              console.log('❌ 終了日より後 → 非表示');
+              return false;
+            }
+          }
+          
+          console.log('✅ 範囲内 → 表示');
+          return true;
         }
         
+        // timestampが無い場合は文字列から日付を抽出
+        const timeStr = post.time;
+        if (!timeStr) return true;
+        
+        const datePart = timeStr.split('　')[0];
+        const dateOnly = datePart.replace(/（.+）/, '').replace(/\s+/g, '');
+        const itemDate = dateOnly.replace(/\//g, '-');
+        
+        console.log('📅 投稿日付（文字列）:', {
+          投稿ID: post.id,
+          time: timeStr,
+          抽出日付: itemDate,
+          開始日: startDate,
+          終了日: endDate
+        });
+        
+        // 開始日でフィルター
         if (startDate && itemDate < startDate) {
+          console.log('❌ 開始日より前 → 非表示');
           return false;
         }
         
+        // 終了日でフィルター
         if (endDate && itemDate > endDate) {
+          console.log('❌ 終了日より後 → 非表示');
           return false;
         }
         
+        console.log('✅ 範囲内 → 表示');
         return true;
-      });
-    }
+        
+      } catch (error) {
+        console.error('❌ 日付フィルターエラー:', error);
+        return true;
+      }
+    });
+  }
 
-    if (date) {
-      filtered = filtered.filter(item => {
-        if ('type' in item && item.type === 'alert') {
-          const today = formatDate(new Date());
-          return today === date;
-        } else {
-          return (item as Post).time.includes(date);
-        }
-      });
-    }
-    
-    if (groupId) {
-      filtered = filtered.filter(item => {
-        if ('type' in item && item.type === 'alert') {
-          return (item as AlertInfo).groupId === groupId;
-        } else {
-          return (item as Post).groupId === groupId;
-        }
-      });
-    }
-    
-    setFilteredItems(filtered);
-  }, [timelineItems, searchQuery, startDate, endDate]);
+  console.log('✅ [日付フィルター] 完了:', { 
+    残り投稿数: filtered.length 
+  });
 
+  // 特定日付でフィルター（カレンダー選択）
+  if (selectedDate) {
+    filtered = filtered.filter(item => {
+      if ('type' in item && item.type === 'alert') {
+        const today = formatDate(new Date());
+        return today === selectedDate;
+      } else {
+        return (item as Post).time.includes(selectedDate);
+      }
+    });
+  }
   
-  useEffect(() => {
-    applyFilters(selectedDate, selectedGroup);
-  }, [searchQuery, startDate, endDate, selectedDate, selectedGroup, timelineItems]);
+  // グループでフィルター
+  if (selectedGroup) {
+    filtered = filtered.filter(item => {
+      if ('type' in item && item.type === 'alert') {
+        return (item as AlertInfo).groupId === selectedGroup;
+      } else {
+        return (item as Post).groupId === selectedGroup;
+      }
+    });
+  }
   
+  setFilteredItems(filtered);
+}, [timelineItems, searchQuery, startDate, endDate, selectedDate, selectedGroup]);
 
-  const resetFilters = () => {
-    setSearchQuery('');
-    setStartDate('');
-    setEndDate('');
-    setSelectedDate(null);
-    setSelectedGroup(null);
-  };
+// applyFiltersを自動実行
+useEffect(() => {
+  applyFilters();
+}, [applyFilters]);
+
+const resetFilters = () => {
+  setSearchQuery('');
+  setStartDate('');
+  setEndDate('');
+  setSelectedDate(null);
+  setSelectedGroup(null);
+};
 
   const hasFilterConditions = selectedDate || selectedGroup || searchQuery || startDate || endDate;
   const filterBackgroundHeight = hasFilterConditions ? '470px' : '400px';

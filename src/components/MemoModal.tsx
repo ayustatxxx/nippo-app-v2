@@ -67,19 +67,24 @@ const MemoModal: React.FC<MemoModalProps> = ({ isOpen, onClose, onSave, postId }
  }, [images, postId]); // validateAndProcessを除去
 
   // 🔒 セキュリティ強化: 入力値サニタイゼーション
-  const sanitizeInput = (input: string): string => {
-    return input
-      .replace(/[<>]/g, '') // HTMLタグを除去
-      .replace(/javascript:/gi, '') // JavaScriptスキームを除去
-      .replace(/on\w+=/gi, '') // イベントハンドラを除去
-      .trim();
-  };
+const sanitizeInput = (input: string): string => {
+  return input
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '');
+    // .trim() を削除（改行を保持）
+};
 
   // 🔒 セキュリティ強化: コンテンツ入力処理
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const sanitized = sanitizeInput(e.target.value);
-    setContent(sanitized);
-  };
+  // 改行を保持しつつサニタイズ
+  const value = e.target.value;
+  const sanitized = value
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '');
+  setContent(sanitized);
+};
 
   // 🔒 セキュリティ強化: タグ入力処理
   const handleTagInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,7 +105,11 @@ const MemoModal: React.FC<MemoModalProps> = ({ isOpen, onClose, onSave, postId }
   };
 
   const handleSave = async () => {
-  const sanitizedContent = sanitizeInput(content);
+  // 前後の空白のみ削除、改行は保持
+  const sanitizedContent = content
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '');
   
   if (!sanitizedContent.trim()) {
     alert('メモの内容を入力してください');

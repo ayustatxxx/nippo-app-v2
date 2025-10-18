@@ -465,3 +465,97 @@ export const updatePostStatus = async (groupId: string, postId: string, status: 
     throw error;
   }
 };
+
+
+/**
+ * メンバーの管理者権限を更新
+ */
+export const updateMemberRole = async (
+  groupId: string,
+  memberId: string,
+  isAdmin: boolean
+): Promise<void> => {
+  try {
+    console.log('🔄 メンバー権限更新開始:', { groupId, memberId, isAdmin });
+    
+    const groupRef = doc(db, 'groups', groupId);
+    const groupDoc = await getDoc(groupRef);
+    
+    if (!groupDoc.exists()) {
+      throw new Error('グループが見つかりません');
+    }
+    
+    const groupData = groupDoc.data();
+    const members = groupData.members || [];
+    
+    // メンバーリストを更新
+    const updatedMembers = members.map((member: any) => {
+      const currentMemberId = typeof member === 'string' ? member : member.id;
+      
+      if (currentMemberId === memberId) {
+        // オブジェクト形式に変換して権限を更新
+        return {
+          ...(typeof member === 'object' ? member : { id: member }),
+          id: memberId,
+          isAdmin: isAdmin,
+          role: isAdmin ? 'admin' : 'user',
+          updatedAt: Date.now()
+        };
+      }
+      
+      return member;
+    });
+    
+    // Firestoreに保存
+    await updateDoc(groupRef, {
+      members: updatedMembers,
+      updatedAt: Date.now()
+    });
+    
+    console.log('✅ メンバー権限更新完了');
+    
+  } catch (error) {
+    console.error('❌ メンバー権限更新エラー:', error);
+    throw error;
+  }
+};
+
+/**
+ * グループからメンバーを削除
+ */
+export const removeMemberFromGroup = async (
+  groupId: string,
+  memberId: string
+): Promise<void> => {
+  try {
+    console.log('🗑️ メンバー削除開始:', { groupId, memberId });
+    
+    const groupRef = doc(db, 'groups', groupId);
+    const groupDoc = await getDoc(groupRef);
+    
+    if (!groupDoc.exists()) {
+      throw new Error('グループが見つかりません');
+    }
+    
+    const groupData = groupDoc.data();
+    const members = groupData.members || [];
+    
+    // メンバーリストから削除
+    const updatedMembers = members.filter((member: any) => {
+      const currentMemberId = typeof member === 'string' ? member : member.id;
+      return currentMemberId !== memberId;
+    });
+    
+    // Firestoreに保存
+    await updateDoc(groupRef, {
+      members: updatedMembers,
+      updatedAt: Date.now()
+    });
+    
+    console.log('✅ メンバー削除完了');
+    
+  } catch (error) {
+    console.error('❌ メンバー削除エラー:', error);
+    throw error;
+  }
+};

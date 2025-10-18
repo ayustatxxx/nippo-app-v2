@@ -96,23 +96,25 @@ export class MemoService {
 
   // メモ保存 - 統一パス版
   static saveMemo = withErrorHandling(
-    async (memo: Omit<Memo, 'id'>): Promise<void> => {
-      const newMemo = {
-        ...memo,
-        createdAt: Date.now()
-      };
-      
-      console.log('💾 [MemoService] メモ保存開始:', newMemo);
-      
-      // 統一されたメモ保存パス（グループに依存しない汎用パス）
-      const memosRef = collection(db, 'memos');
-      await addDoc(memosRef, newMemo);
-      
-      console.log('✅ [MemoService] メモ保存完了');
-    },
-    undefined,
-    'メモ保存に失敗しました'
-  );
+  async (memo: Omit<Memo, 'id'>): Promise<void> => {
+    const newMemo = {
+      ...memo,
+      createdAt: Date.now(),
+      tags: memo.tags || []  // ← 明示的に追加
+    };
+    
+    console.log('💾 [MemoService] メモ保存開始:', newMemo);
+    console.log('🏷️ [MemoService] タグ:', newMemo.tags);  // ← デバッグログ追加
+    
+    const memosRef = collection(db, 'memos');
+    await addDoc(memosRef, newMemo);
+    
+    console.log('✅ [MemoService] メモ保存完了');
+  },
+  undefined,
+  'メモ保存に失敗しました'
+);
+
    // 🌟 新しいメソッドを追加（ここから）
  /**
  * 特定の投稿のメモを取得する関数（ユーザー自身のメモのみ）
@@ -138,19 +140,20 @@ static getPostMemosForUser = withErrorHandling(
       memosSnapshot.forEach((doc) => {
         const memoData = doc.data();
         
-        // 🌟 自分のメモだけフィルタリング
-        if (memoData.createdBy === userId) {
-          const memo: Memo = {
-            id: doc.id,
-            postId: postId,
-            content: memoData.content || '',
-            imageUrls: memoData.imageUrls || [],
-            createdAt: memoData.createdAt || Date.now(),
-            createdBy: memoData.createdBy || userId,
-            createdByName: memoData.createdByName || 'ユーザー'
-          };
-          allMemos.push(memo);
-        }
+       // 🌟 自分のメモだけフィルタリング
+if (memoData.createdBy === userId) {
+  const memo: Memo = {
+    id: doc.id,
+    postId: postId,
+    content: memoData.content || '',
+    imageUrls: memoData.imageUrls || [],
+    createdAt: memoData.createdAt || Date.now(),
+    createdBy: memoData.createdBy || userId,
+    createdByName: memoData.createdByName || 'ユーザー',
+    tags: memoData.tags || []  // ⭐ この行を追加
+  };
+  allMemos.push(memo);
+}
       });
       
       // 🌟 クライアント側で新しい順にソート
@@ -191,19 +194,20 @@ export const getPostMemos = async (postId: string, userId: string): Promise<Memo
     const memos: Memo[] = [];
     
     memosSnapshot.forEach((doc) => {
-      const memoData = doc.data();
-      const memo: Memo = {
-        id: doc.id,
-        postId: postId,
-        content: memoData.content || '',
-        imageUrls: memoData.imageUrls || [],
-        createdAt: memoData.createdAt || Date.now(),
-        createdBy: memoData.createdBy || userId,
-        createdByName: memoData.createdByName || 'ユーザー'
-      };
-      memos.push(memo);
-      console.log('✅ [MemoService] メモを追加:', memo.id);
-    });
+  const memoData = doc.data();
+  const memo: Memo = {
+    id: doc.id,
+    postId: postId,
+    content: memoData.content || '',
+    imageUrls: memoData.imageUrls || [],
+    createdAt: memoData.createdAt || Date.now(),
+    createdBy: memoData.createdBy || userId,
+    createdByName: memoData.createdByName || 'ユーザー',
+    tags: memoData.tags || []  // ⭐ この行を追加
+  };
+  memos.push(memo);
+  console.log('✅ [MemoService] メモを追加:', memo.id);
+});
     
     console.log(`✅ [MemoService] メモ取得完了: ${memos.length}件`);
     return memos;
