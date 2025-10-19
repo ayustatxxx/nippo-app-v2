@@ -11,6 +11,20 @@ import { FileValidator } from '../utils/fileValidation';
 import { UserGroupResolver } from '../utils/userGroupResolver';
 import { getGroupPosts } from '../utils/firestoreService';
 
+// ⭐ Firestore のページネーション機能をインポート ⭐
+import { 
+  getFirestore, 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  limit as limitQuery,  // ⭐ 「as limitQuery」を追加！
+  getDocs,
+  startAfter,  // ← 「続きから」取得する機能
+  doc,         // ← ドキュメントを指定する機能
+  getDoc       // ← ドキュメントを取得する機能
+} from 'firebase/firestore';
+
 /**
  * 統一コアシステム
  * 既存の最高品質コンポーネントを統合し、統一APIを提供
@@ -610,6 +624,136 @@ if (existingPost) {
       lastActivity: new Date().toLocaleString('ja-JP')
     };
   }
+  /**
+ * ⭐ ページネーション対応版：複数グループから投稿を取得 ⭐
+ * 「続きから」データを取得する新機能
+ */
+static async getLatestPostsFromMultipleGroupsPaginated(
+  groupIds: string[],
+  limit: number = 20,
+  lastVisible: any = null  // ← 前回の最後の位置を覚えておく
+): Promise<{
+  posts: Post[];
+  lastVisible: any;
+  hasMore: boolean;
+}> {
+  console.log(`🔍 [Paginated] ${groupIds.length}グループから最新${limit}件を取得開始`);
+  
+  if (groupIds.length === 0) {
+    return { posts: [], lastVisible: null, hasMore: false };
+  }
+
+  try {
+    const db = getFirestore();
+    const allPosts: Post[] = [];
+    
+    // グループIDを10個ずつに分割（Firebaseの制限）
+    const batchSize = 10;
+    const batches: string[][] = [];
+    
+    for (let i = 0; i < groupIds.length; i += batchSize) {
+      batches.push(groupIds.slice(i, i + batchSize));
+    }
+    
+    console.log(`📦 [Paginated] ${batches.length}バッチに分割`);
+    
+    // 各バッチからデータを取得
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      
+      const postsRef = collection(db, 'posts');
+      
+      // ⭐ クエリを構築 ⭐
+      let q = query(
+  postsRef,
+  where('groupId', 'in', batch),
+  orderBy('createdAt', 'desc'),  // ⭐ createdAt に変更
+  limitQuery(limit * 2)
+);
+      
+      // ⭐ 前回の続きから取得（重要！）⭐
+      if (lastVisible) {
+  q = query(
+    postsRef,
+    where('groupId', 'in', batch),
+    orderBy('createdAt', 'desc'),  // ⭐ createdAt に変更
+    startAfter(lastVisible),
+    limitQuery(limit * 2)
+  );
+}
+      
+      const querySnapshot = await getDocs(q);
+      
+      // 取得したデータを配列に追加
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        allPosts.push({
+          id: doc.id,
+          groupId: data.groupId || '',
+          userId: data.userId || data.authorId || '',
+          message: data.message || '',
+          timestamp: data.timestamp || Date.now(),
+          time: data.time || '',
+          status: data.status || '未確認',
+          tags: data.tags || [],
+          photoUrls: data.photoUrls || data.images || [],
+          images: data.photoUrls || data.images || [],
+          username: data.username || 'ユーザー',
+          authorId: data.authorId || data.userId || '',
+          createdBy: data.createdBy || data.userId || '',
+          createdAt: data.createdAt || data.timestamp || Date.now(),
+          isEdited: data.isEdited || false,
+          readBy: data.readBy || [],
+          memos: []
+        } as Post);
+      });
+      
+      console.log(`✅ [Paginated] バッチ${i + 1}: ${querySnapshot.size}件取得`);
+    }
+    
+    // 時系列でソート
+    allPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    
+    // 指定件数だけ抽出
+    const limitedPosts = allPosts.slice(0, limit);
+    
+    // ⭐ 最後の位置を保存（次回のために）⭐
+    const newLastVisible = limitedPosts.length > 0 
+      ? await this.getDocumentSnapshot(limitedPosts[limitedPosts.length - 1].id)
+      : null;
+    
+    // まだデータがあるかチェック
+    const hasMore = allPosts.length > limit;
+    
+    console.log(`✅ [Paginated] ${limitedPosts.length}件取得完了`);
+    console.log(`📊 [Paginated] 続きあり: ${hasMore}`);
+    
+    return {
+      posts: limitedPosts,
+      lastVisible: newLastVisible,
+      hasMore: hasMore
+    };
+    
+  } catch (error) {
+    console.error('❌ [Paginated] エラー:', error);
+    return { posts: [], lastVisible: null, hasMore: false };
+  }
+}
+
+/**
+ * ⭐ ヘルパーメソッド：データの位置を記録 ⭐
+ */
+private static async getDocumentSnapshot(postId: string): Promise<any> {
+  try {
+    const db = getFirestore();
+    const docRef = doc(db, 'posts', postId);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? docSnap : null;
+  } catch (error) {
+    console.error('❌ スナップショット取得エラー:', error);
+    return null;
+  }
+}
 }
 
 // グローバル関数型定義（PostPage.tsxで使用されている関数）

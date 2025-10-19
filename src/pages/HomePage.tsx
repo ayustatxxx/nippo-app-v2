@@ -16,6 +16,7 @@ import { MemoService } from '../utils/memoService';
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 
 
+
 // ★自分の画像用の設定を追加★
 const MY_IMAGE_BASE_URL = 'https://ayustatxxx.github.io/my-construction-images/images/';
 
@@ -974,7 +975,9 @@ const [selectedPostForMemo, setSelectedPostForMemo] = useState<Post | null>(null
 const [selectedPostForDetail, setSelectedPostForDetail] = useState<Post | null>(null);
 const [displayLimit, setDisplayLimit] = useState(10);
 const [hasMore, setHasMore] = useState(true);         // まだデータがあるか
-const [isLoadingMore, setIsLoadingMore] = useState(false);  // 追加読み込み中か  
+const [isLoadingMore, setIsLoadingMore] = useState(false);  // 追加読み込み中か
+const [currentPage, setCurrentPage] = useState(1);         // 現在のページ番号  
+const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);  // ⭐ 栞を保存
 
 // PostDetailModal コンポーネント
 const PostDetailModal: React.FC<{
@@ -1544,107 +1547,124 @@ const handleViewPostDetails = async (postId: string, groupId: string) => {
   setMemoModalOpen(true);
 };
 
-// 次のデータを段階的に読み込む関数（6 → 12 → 15）
+// ⭐ 無限スクロール：本格版（ページネーション対応） ⭐
 const loadMorePosts = useCallback(async () => {
+  console.log('📥 [無限スクロール] 次の20件を取得開始');
+  
   if (isLoadingMore || !hasMore) {
-    console.log('⏸️ 追加読み込みスキップ:', { isLoadingMore, hasMore });
+    console.log('⏸️ 読み込みスキップ:', { isLoadingMore, hasMore });
     return;
   }
   
+  setIsLoadingMore(true);
+
   try {
-    setIsLoadingMore(true);
-    
-    // 段階的読み込み：6 → 12 → 15
-    const getBatchSize = (currentLimit: number) => {
-      if (currentLimit === 6) {
-        console.log('📥 2回目の読み込み：12件追加');
-        return 12;
-      } else {
-        console.log('📥 3回目以降の読み込み：15件追加');
-        return 15;
-      }
-    };
-    
-    const batchSize = getBatchSize(displayLimit);
-    const newDisplayLimit = displayLimit + batchSize;
-    
-    console.log(`✨ 現在の表示件数: ${displayLimit}件`);
-    console.log(`➕ 追加する件数: ${batchSize}件`);
-    console.log(`📊 合計: ${newDisplayLimit}件になります`);
-    
-    const userId = localStorage.getItem("daily-report-user-id");
-    if (!userId) return;
-    
-    // 🌟 既存データで足りるかチェック
-    if (posts.length >= newDisplayLimit) {
-      setDisplayLimit(newDisplayLimit);
-      console.log(`✅ キャッシュから${batchSize}件を追加しました`);
+    const userId = localStorage.getItem('daily-report-user-id');
+    if (!userId) {
+      console.log('❌ [無限スクロール] ユーザーIDなし');
       setIsLoadingMore(false);
       return;
     }
-    
-    // 🌟 新しいデータが必要な場合のみ取得
-    console.log('🔄 新しいデータを取得します...');
-    
-    const allGroups = await UnifiedCoreSystem.getUserGroups(userId).catch(() => []);
-    
-    const userGroups = allGroups.filter(group => {
-      const isCreator = group.createdBy === userId || group.adminId === userId;
-      const isMember = group.members?.some(member => {
-        const memberId = typeof member === 'string' ? member : member.id;
-        return memberId === userId;
-      });
-      return isCreator || isMember;
-    });
-    
-    // 🌟 各グループから追加データを取得
-const postPromises = userGroups.map(async (group) => {
-  try {
-    const limitPerGroup = Math.ceil(newDisplayLimit / userGroups.length);
-    const groupPosts = await UnifiedCoreSystem.getGroupPosts(group.id, userId, limitPerGroup);
-    return groupPosts.map(post => ({
-      ...post,
-      groupName: group.name,
-      groupId: group.id,
-      memos: []  // 🌟 この行を追加
-    }));
-  } catch (error) {
-    console.error(`❌ グループ "${group.name}" の投稿取得エラー:`, error);
-    return [];
-  }
-});
-    
-    const postArrays = await Promise.all(postPromises);
-    const allPosts = postArrays.flat();
-    allPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    
-    if (allPosts.length <= posts.length) {
+
+    const nextPage = currentPage + 1;
+    console.log(`📄 [無限スクロール] ページ ${nextPage} を取得中`);
+
+    // ユーザーのグループを取得
+    const userGroups = await UnifiedCoreSystem.getUserGroups(userId);
+    const groupIds = userGroups.map(g => g.id);
+
+    console.log(`🔍 [無限スクロール] ${groupIds.length}グループから取得`);
+
+    // ⭐ 新機能を使用：続きから取得！ ⭐
+    const result = await UnifiedCoreSystem.getLatestPostsFromMultipleGroupsPaginated(
+      groupIds,
+      20,
+      lastVisibleDoc  // ← 前回の栞を渡す
+    );
+
+    console.log(`✅ [無限スクロール] ${result.posts.length}件取得`);
+    console.log(`📊 [無限スクロール] 続きあり: ${result.hasMore}`);
+
+    if (result.posts.length === 0) {
+      console.log('🏁 [無限スクロール] これ以上データなし');
       setHasMore(false);
-      console.log('✅ 全てのデータを読み込みました');
     } else {
-  setPosts(allPosts);
-  setTimelineItems(allPosts);
-  setFilteredItems(allPosts);
+      console.log(`➕ [無限スクロール] ${result.posts.length}件を追加表示`);
+      
+
+   // ⭐ 重複チェック付きで既存データに追加 ⭐
+setPosts(prevPosts => {
+  // 既存の投稿IDを取得
+  const existingIds = new Set(prevPosts.map(p => p.id));
   
-  // 🌟 displayLimitが投稿数を超えないように制限
-  const actualLimit = Math.min(newDisplayLimit, allPosts.length);
-  setDisplayLimit(actualLimit);
+  // 新しい投稿のみをフィルター
+  const newPosts = result.posts.filter(post => !existingIds.has(post.id));
   
-  console.log(`✅ ${batchSize}件を追加しました（合計${allPosts.length}件中${actualLimit}件表示）`);
+  console.log(`🔍 [重複チェック] 既存: ${prevPosts.length}件, 新規: ${newPosts.length}件, 重複除外: ${result.posts.length - newPosts.length}件`);
   
-  // 🌟 全件表示したらhasMoreをfalseに
-  if (actualLimit >= allPosts.length) {
-    setHasMore(false);
-    console.log('✅ 全てのデータを表示しました');
+  return [...prevPosts, ...newPosts];
+});
+
+setTimelineItems(prevItems => {
+  const existingIds = new Set(prevItems.map(item => 'id' in item ? item.id : ''));
+  const newItems = result.posts.filter(post => !existingIds.has(post.id));
+  return [...prevItems, ...newItems];
+});
+
+setFilteredItems(prevItems => {
+  const existingIds = new Set(prevItems.map(item => 'id' in item ? item.id : ''));
+  const newItems = result.posts.filter(post => !existingIds.has(post.id));
+  return [...prevItems, ...newItems];
+});
+
+      
+      // ⭐ 栞を更新（次回のために）⭐
+      setLastVisibleDoc(result.lastVisible);
+      
+      // まだデータがあるかを更新
+      setHasMore(result.hasMore);
+      
+      // ページ番号を更新
+      setCurrentPage(nextPage);
+      
+      // displayLimitも増やす
+      setDisplayLimit(prev => prev + result.posts.length);
+      
+      console.log(`📊 [無限スクロール] 合計 ${posts.length + result.posts.length} 件表示中`);
+      console.log(`📊 [表示制限] displayLimitを更新しました`);
+    }
+
+} catch (error) {
+  console.error('❌ [無限スクロール] 読み込みエラー:', error);
+  
+  // ⭐ エラーの種類を判定 ⭐
+  let errorMessage = 'データの読み込みに失敗しました';
+  
+  if (error instanceof Error) {
+    if (error.message.includes('network')) {
+      errorMessage = 'ネットワークエラー：インターネット接続を確認してください';
+    } else if (error.message.includes('permission')) {
+      errorMessage = '権限エラー：アクセス権限がありません';
+    } else if (error.message.includes('quota')) {
+      errorMessage = '制限エラー：データ取得の上限に達しました';
+    }
   }
+  
+  console.log('📢 [エラー通知]', errorMessage);
+  
+  // ⭐ ユーザーに通知（オプション：アラート表示） ⭐
+  // alert(errorMessage); // ← コメントアウト：必要なら有効化
+  
+  // ⭐ リトライ可能にする ⭐
+  // エラーでもhasMoreをfalseにしない（再試行可能）
+  // setHasMore(false); // ← コメントアウト
+  
+  console.log('🔄 [リトライ] 再度スクロールすると再試行できます');
+} finally {
+  setIsLoadingMore(false);
 }
-    
-  } catch (error) {
-    console.error('❌ 追加読み込みエラー:', error);
-  } finally {
-    setIsLoadingMore(false);
-  }
-}, [isLoadingMore, hasMore, displayLimit, posts]);
+
+}, [currentPage, posts.length, isLoadingMore, hasMore, displayLimit, lastVisibleDoc, setPosts, setTimelineItems, setFilteredItems, setHasMore, setIsLoadingMore, setCurrentPage, setDisplayLimit, setLastVisibleDoc]);
 
   // ★ 修正版：確実な初期化とリトライ機能付きデータロード ★
   // ✅ 既存のuseEffectを以下に置き換え（894行目付近）
@@ -1709,48 +1729,55 @@ useEffect(() => {
     console.log('🔍 ローディング状態をtrueに設定'); // 追加
    
    // ✅ キャッシュチェックを強化
+// ✅ キャッシュチェックを強化・統合版
 const CACHE_DURATION = isReturnMode ? 60000 : 30000;
-console.log('🔍 キャッシュチェック開始');
+console.log('🔍 [HomePage] キャッシュチェック開始');
 
-// ⭐ Archiveから戻ってきた時は強制リフレッシュ ⭐
+// 🌟 Step 1: 強制リフレッシュフラグを統合チェック
+const forceRefresh = localStorage.getItem('posts-need-refresh');
 const forceRefreshHome = localStorage.getItem('force-refresh-home');
-if (forceRefreshHome) {
-  console.log('🔄 [HomePage] Archiveから戻ってきたため、キャッシュをクリア');
-  localStorage.removeItem('force-refresh-home');
+const lastUpdate = localStorage.getItem('daily-report-posts-updated');
+
+// デバッグ情報を出力
+console.log('🔍 [フラグ状態] posts-need-refresh:', forceRefresh);
+console.log('🔍 [フラグ状態] force-refresh-home:', forceRefreshHome);
+console.log('🔍 [フラグ状態] daily-report-posts-updated:', lastUpdate);
+
+// 🌟 Step 2: 強制リフレッシュが必要かチェック
+if (forceRefresh || forceRefreshHome) {
+  console.log('🔄 [HomePage] 強制リフレッシュフラグ検出：キャッシュクリア');
+  
+  // 全てのフラグをクリア
   localStorage.removeItem('posts-need-refresh');
+  localStorage.removeItem('force-refresh-home');
   localStorage.removeItem('daily-report-posts-updated');
+  
   postsCache = null;
   postsCacheTime = 0;
-  console.log('🗑️ [HomePage] キャッシュをクリアして最新データを取得');
+  
+  console.log('✅ [HomePage] キャッシュクリア完了（フラグベース）');
+}
+// 🌟 Step 3: 5秒ルールチェック
+else if (lastUpdate) {
+  const lastUpdateTime = parseInt(lastUpdate);
+  const timeSinceUpdate = Date.now() - lastUpdateTime;
+  
+  console.log(`⏱️ [5秒ルール] 最終更新からの経過: ${timeSinceUpdate}ms`);
+  
+  if (timeSinceUpdate < 5000) {
+    console.log('🔄 [HomePage] 5秒以内の更新：キャッシュクリア');
+    
+    postsCache = null;
+    postsCacheTime = 0;
+    
+    console.log('✅ [HomePage] キャッシュクリア完了（5秒ルール）');
+  }
 }
 
-// ⭐ デバッグログ追加 ⭐
-const forceRefresh = localStorage.getItem('posts-need-refresh');
-const lastUpdate = localStorage.getItem('daily-report-posts-updated');
-const lastUpdateTime = lastUpdate ? parseInt(lastUpdate) : 0;
-const timeSinceUpdate = Date.now() - lastUpdateTime;
-
-// ⭐ デバッグ情報を出力 ⭐
-console.log('🔍 [デバッグ] forceRefresh:', forceRefresh);
-console.log('🔍 [デバッグ] lastUpdate:', lastUpdate);
-console.log('🔍 [デバッグ] lastUpdateTime:', lastUpdateTime);
-console.log('🔍 [デバッグ] timeSinceUpdate:', timeSinceUpdate);
-console.log('🔍 [デバッグ] 5秒以内か？:', timeSinceUpdate < 5000);
-console.log('🔍 [デバッグ] lastUpdate存在？:', !!lastUpdate);
-console.log('🔍 [デバッグ] 条件チェック:', forceRefresh || (lastUpdate && timeSinceUpdate < 5000));
-
-// 削除・追加から5秒以内、またはforceRefreshフラグがある場合はキャッシュをスキップ
-if (forceRefresh || (lastUpdate && timeSinceUpdate < 5000)) {
-  console.log('🔄 強制リフレッシュが必要：キャッシュをスキップ');
-  console.log(`⏱️ 最終更新からの経過時間: ${timeSinceUpdate}ms`);
-  localStorage.removeItem('posts-need-refresh');
-  postsCache = null;
-  postsCacheTime = 0;
-  console.log('🗑️ [デバッグ] キャッシュをクリアしました');
-  // キャッシュを使わず、下の処理に進む
-} else if (postsCache && postsCache.length > 0 && Date.now() - postsCacheTime < CACHE_DURATION) {
-  console.log('💾 キャッシュデータを使用:', postsCache.length, '件');
-  console.log('🔍 [デバッグ] キャッシュ使用条件満たしました');
+// 🌟 Step 4: キャッシュ使用チェック
+if (postsCache && postsCache.length > 0 && Date.now() - postsCacheTime < CACHE_DURATION) {
+  console.log('💾 [HomePage] キャッシュデータを使用:', postsCache.length, '件');
+  console.log(`⏰ [キャッシュ有効期限] あと${Math.round((CACHE_DURATION - (Date.now() - postsCacheTime)) / 1000)}秒`);
   
   if (isMounted) {
     setPosts(postsCache);
@@ -2076,6 +2103,7 @@ console.log(`✅ [Home] リフレッシュ完了: ${allPosts.length}件の投稿
     }
   };
 }, []); // 空の依存配列で1回のみ実行
+
 
 useEffect(() => {
   const handleScroll = () => {
@@ -2822,38 +2850,77 @@ const resetFilters = () => {
             )}
           
         {/* 🌟 追加読み込み中の表示 */}
-        {isLoadingMore && (
-          <div style={{
-            textAlign: 'center',
-            padding: '2rem',
-            color: '#055A68'
-          }}>
-            <div style={{
-              width: '30px',
-              height: '30px',
-              border: '3px solid rgba(5, 90, 104, 0.3)',
-              borderTop: '3px solid #055A68',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-              margin: '0 auto'
-            }}></div>
-            <p style={{ marginTop: '1rem' }}>
-              次の{displayLimit === 6 ? '12' : '15'}件を読み込み中...
-            </p>
-          </div>
-        )}
+        {/* ⭐ 改善版：追加読み込み中の表示 ⭐ */}
+{isLoadingMore && (
+  <div style={{
+    textAlign: 'center',
+    padding: '2rem',
+    color: '#055A68',
+    backgroundColor: '#E6EDED',
+    borderRadius: '12px',
+    margin: '1rem 0',
+    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)'
+  }}>
+    <div style={{
+      width: '40px',
+      height: '40px',
+      border: '4px solid rgba(5, 90, 104, 0.2)',
+      borderTop: '4px solid #055A68',
+      borderRadius: '50%',
+      animation: 'spin 0.8s linear infinite',
+      margin: '0 auto'
+    }}></div>
+    <p style={{ 
+      marginTop: '1rem',
+      fontSize: '0.95rem',
+      fontWeight: '500',
+      color: '#055A68'
+    }}>
+      📥 続きを読み込んでいます...
+    </p>
+    <p style={{
+      marginTop: '0.5rem',
+      fontSize: '0.8rem',
+      color: '#066878',
+      opacity: 0.8
+    }}>
+      現在 {posts.length} 件を表示中
+    </p>
+  </div>
+)}
 
-        {/* 全て読み込み完了の表示 */}
-        {!hasMore && filteredItems.length > 0 && (
-          <div style={{
-            textAlign: 'center',
-            padding: '2rem',
-            color: '#666',
-            fontSize: '0.9rem'
-          }}>
-            ✅ 全ての投稿を表示しました
-          </div>
-        )}
+        {/* ⭐ 改善版：全て読み込み完了の表示 ⭐ */}
+{!hasMore && filteredItems.length > 0 && !isLoadingMore && (
+  <div style={{
+    textAlign: 'center',
+    padding: '1.5rem',
+    margin: '1rem 0',
+    backgroundColor: '#E6EDED',
+    borderRadius: '12px',
+    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)'
+  }}>
+    <div style={{
+      fontSize: '2rem',
+      marginBottom: '0.5rem'
+    }}>
+      🎉
+    </div>
+    <div style={{
+      color: '#055A68',
+      fontSize: '1rem',
+      fontWeight: '600',
+      marginBottom: '0.5rem'
+    }}>
+      全ての投稿を表示しました
+    </div>
+    <div style={{
+      color: '#066878',
+      fontSize: '0.85rem'
+    }}>
+      合計 {posts.length} 件の投稿
+    </div>
+  </div>
+)}
       </div>
     )}
   </div>
