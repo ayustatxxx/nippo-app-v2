@@ -402,7 +402,7 @@ return (
   </h2>
   
   {/* ゴミ箱アイコン - 管理者の場合のみ表示 */}
-  {(isUserAdmin || hasAnyManagedGroups(currentUser?.id || '', groups)) && !showCreateForm && (
+ {!loading && hasAnyManagedGroups(currentUser?.id || '', groups) && !showCreateForm && (
   <button
     onClick={() => {
       setShowTrashMode(!showTrashMode);
@@ -444,7 +444,7 @@ return (
 </div>
 
         {/* 管理者の場合のみ表示されるグループ作成ボタン */}
-       {(isUserAdmin || hasAnyManagedGroups(currentUser?.id || '', groups)) && !showCreateForm && (
+      {!loading && (isUserAdmin || hasAnyManagedGroups(currentUser?.id || '', groups)) && !showCreateForm && (
   <div style={{ 
     marginBottom: '2rem', 
     display: showTrashMode ? 'none' : 'block' 
