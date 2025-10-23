@@ -900,124 +900,127 @@ const deleteSelectedMembers = async () => {
                   </div>
 
                   {/* 編集モードでのみ表示する管理オプション */}
-                  {isEditMode &&
-                    userIsAdmin &&
-                    member.id !== currentUser?.id && (
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          borderTop: '1px solid #ffffff22',
-                          paddingTop: '0.5rem',
-                          marginTop: '0.5rem',
-                        }}
-                      >
-                        {/* チェックボックスと削除ボタンのコンテナ */}
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                          }}
-                        >
-                         
+{isEditMode &&
+  userIsAdmin &&
+  member.id !== currentUser?.id && (
+    <div
+      style={{
+        marginTop: '1rem',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderTop: '1px solid #ffffff22',
+        paddingTop: '0.75rem',
+      }}
+    >
+      {/* 左側: チェックボックスと削除ボタン */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '0.5rem' 
+      }}>
+        {/* チェックボックス */}
+        <input
+          type="checkbox"
+          checked={selectedMembersForDeletion.has(member.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+          onChange={(e) => {
+            e.stopPropagation();
+            toggleMemberForDeletion(member.id);
+          }}
+          style={{
+            width: '18px',
+            height: '18px',
+            accentColor: '#F0DB4F',
+            cursor: 'pointer',
+          }}
+        />
+        
+        {/* チェックされた場合のみ削除ボタンを表示 */}
+        {selectedMembersForDeletion.has(member.id) && (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              
+              const memberName = member.username;
+              if (window.confirm(`${memberName}さんをグループから削除してもよろしいですか?`)) {
+                try {
+                  console.log('🗑️ 削除処理開始:', member.id);
+                  
+                  if (!groupId) {
+                    console.error('❌ groupIdが存在しません');
+                    return;
+                  }
+                  
+                  await removeMemberFromGroup(groupId, member.id);
+                  
+                  // ローカル状態を更新
+                  setMembers((prevMembers) => 
+                    prevMembers.filter((m) => m.id !== member.id)
+                  );
+                  
+                  // 選択を解除
+                  setSelectedMembersForDeletion(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(member.id);
+                    return newSet;
+                  });
+                  
+                  alert(`✅ ${memberName}さんを削除しました`);
+                  console.log('✅ 削除処理完了');
+                  
+                } catch (error) {
+                  console.error('❌ メンバー削除エラー:', error);
+                  alert('メンバーの削除に失敗しました');
+                }
+              }
+            }}
+            style={{
+              padding: '0.4rem 1rem',
+              backgroundColor: '#ff6b6b',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '20px',
+              fontSize: '0.75rem',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+            }}
+          >
+            削除
+          </button>
+        )}
+      </div>
 
-                          {/* チェックされている場合のみ削除ボタンを表示 */}
-                         <div style={{
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.5rem',
-}}>
-  <input
-    type="checkbox"
-    checked={selectedMembersForDeletion.has(member.id)}
-    onChange={() => toggleMemberForDeletion(member.id)}
-    style={{
-      width: '16px',
-      height: '16px',
-      accentColor: '#F0DB4F',
-      cursor: 'pointer'
-    }}
-  />
-  <span style={{ 
-    color: '#ddd', 
-    fontSize: '0.8rem',
-    cursor: 'pointer'
-  }}
-  onClick={() => toggleMemberForDeletion(member.id)}
-  >
-    削除対象
-  </span>
-</div>
-                        </div>
-
-                        {/* 管理者昇格/降格ボタン */}
-                        <button
-                          onClick={() => toggleAdminStatus(member.id)}
-                          style={{
-                            backgroundColor: 'rgb(0, 102, 114)',
-                            color: '#F0DB4F',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '0.3rem 0.6rem',
-                            fontSize: '0.8rem',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {member.isAdmin ? '管理者から外す' : '管理者にする'}
-                        </button>
-                      </div>
-                    )}
+      {/* 右側: 管理者昇格/降格ボタン */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleAdminStatus(member.id);
+        }}
+        style={{
+          padding: '0.4rem 1rem',
+          backgroundColor: 'rgb(0, 102, 114)',
+          color: '#F0DB4F',
+          border: 'none',
+          borderRadius: '20px',
+          fontSize: '0.75rem',
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+          fontWeight: 'bold',
+        }}
+      >
+        {member.isAdmin ? '管理者から外す' : '管理者にする'}
+      </button>
+    </div>
+  )}
                 </div>
               ))}
             </div>
           )}
 
-          {/* 選択削除ボタン */}
-{isEditMode && userIsAdmin && selectedMembersForDeletion.size > 0 && (
-  <div style={{
-    textAlign: 'center',
-    marginTop: '2rem',
-    paddingTop: '1rem',
-    borderTop: '1px solid #ffffff22'
-  }}>
-    <button
-      onClick={deleteSelectedMembers}
-      style={{
-        backgroundColor: '#d32f2f',
-        color: 'white',
-        border: 'none',
-        borderRadius: '20px',
-        padding: '0.75rem 2rem',
-        fontSize: '0.9rem',
-        fontWeight: 'bold',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        margin: '0 auto'
-      }}
-    >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="white"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <polyline points="3 6 5 6 21 6"></polyline>
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-      </svg>
-      選択したメンバーを削除 ({selectedMembersForDeletion.size}人)
-    </button>
-  </div>
-)}
-
+          
 
           {/* メンバーが見つからない場合 */}
           {!loading && members.length === 0 && (

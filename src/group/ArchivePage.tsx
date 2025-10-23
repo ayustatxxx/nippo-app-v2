@@ -1472,14 +1472,138 @@ if (textKeywords.length > 0 || tagKeywords.length > 0) {
 console.log('🔍 [検索デバッグ] 優先度付き検索後の結果数:', combinedFiltered.length);
 
 // 日付フィルター
-const dateFiltered = combinedFiltered.filter(post => {
-  const postDate = new Date(post.timestamp);
-  const isInDateRange = (!startDate || postDate >= startDate) && 
-                       (!endDate || postDate <= endDate);
-  return isInDateRange;
-});
+// ⭐⭐⭐ 日付フィルターの正しい実装（修正版） ⭐⭐⭐
+if (startDate || endDate) {
+  console.log('📅 [日付フィルター] 開始:', { 
+    startDate, 
+    endDate,
+    投稿数: combinedFiltered.length  // HomePage: filtered.length
+  });
+  
+  combinedFiltered = combinedFiltered.filter(post => {  // HomePage: filtered = filtered.filter
+    try {
+      // timestampを使用（最も確実）
+      if (post.timestamp) {
+        const postDate = new Date(post.timestamp);
+        
+        console.log('📅 投稿日付チェック:', {
+          投稿ID: post.id,
+          timestamp: post.timestamp,
+          日付JST: postDate.toLocaleString('ja-JP'),
+          日付のみ: postDate.toLocaleDateString('ja-JP'),
+          開始日: startDate,
+          終了日: endDate
+        });
+        
+        // ⭐ 日付のみを比較（時刻を無視） ⭐
+        const postDateOnly = new Date(
+          postDate.getFullYear(),
+          postDate.getMonth(),
+          postDate.getDate()
+        );
+        
+        // 開始日でフィルター
+        if (startDate) {
+          const start = new Date(startDate);
+          const startDateOnly = new Date(
+            start.getFullYear(),
+            start.getMonth(),
+            start.getDate()
+          );
+          
+          console.log('🔍 比較（開始日）:', {
+            投稿日: postDateOnly.toLocaleDateString('ja-JP'),
+            開始日: startDateOnly.toLocaleDateString('ja-JP'),
+            判定: postDateOnly >= startDateOnly ? '✅' : '❌'
+          });
+          
+          if (postDateOnly < startDateOnly) {
+            console.log('❌ 開始日より前 → 非表示');
+            return false;
+          }
+        }
+        
+        // 終了日でフィルター
+        if (endDate) {
+          const end = new Date(endDate);
+          const endDateOnly = new Date(
+            end.getFullYear(),
+            end.getMonth(),
+            end.getDate()
+          );
+          
+          console.log('🔍 比較（終了日）:', {
+            投稿日: postDateOnly.toLocaleDateString('ja-JP'),
+            終了日: endDateOnly.toLocaleDateString('ja-JP'),
+            判定: postDateOnly <= endDateOnly ? '✅' : '❌'
+          });
+          
+          if (postDateOnly > endDateOnly) {
+            console.log('❌ 終了日より後 → 非表示');
+            return false;
+          }
+        }
+        
+        console.log('✅ 範囲内 → 表示');
+        return true;
+      }
+      
+      // timestampがない場合はcreatedAtを使用
+      if (post.createdAt) {
+        let postDate: Date;
+        
+        if (typeof post.createdAt === 'number') {
+          postDate = new Date(post.createdAt);
+        } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
+          postDate = (post.createdAt as any).toDate();
+        } else {
+          postDate = new Date();
+        }
+        
+        // 日付のみを比較
+        const postDateOnly = new Date(
+          postDate.getFullYear(),
+          postDate.getMonth(),
+          postDate.getDate()
+        );
+        
+        if (startDate) {
+          const start = new Date(startDate);
+          const startDateOnly = new Date(
+            start.getFullYear(),
+            start.getMonth(),
+            start.getDate()
+          );
+          if (postDateOnly < startDateOnly) return false;
+        }
+        
+        if (endDate) {
+          const end = new Date(endDate);
+          const endDateOnly = new Date(
+            end.getFullYear(),
+            end.getMonth(),
+            end.getDate()
+          );
+          if (postDateOnly > endDateOnly) return false;
+        }
+        
+        return true;
+      }
+      
+      // どちらもない場合は表示（安全策）
+      console.warn('⚠️ timestampとcreatedAtがありません:', post.id);
+      return true;
+      
+    } catch (error) {
+      console.error('❌ 日付フィルターエラー:', error);
+      return true;
+    }
+  });
+  
+  console.log('✅ [日付フィルター] 完了:', { 残り投稿数: combinedFiltered.length });  // HomePage: filtered.length
+}
 
-setFilteredPosts(dateFiltered);
+setFilteredPosts(combinedFiltered);  // HomePage: setFilteredItems(filtered);
 }, [searchQuery, posts, startDate, endDate, selectAll]);
     
 
