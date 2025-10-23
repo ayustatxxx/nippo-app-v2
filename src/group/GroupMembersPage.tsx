@@ -931,11 +931,18 @@ const deleteSelectedMembers = async () => {
             toggleMemberForDeletion(member.id);
           }}
           style={{
-            width: '18px',
-            height: '18px',
-            accentColor: '#F0DB4F',
-            cursor: 'pointer',
-          }}
+  width: '18px',
+  height: '18px',
+  minWidth: '18px',
+  minHeight: '18px',
+  accentColor: '#F0DB4F',
+  cursor: 'pointer',
+  border: '2px solid #F0DB4F',
+  borderRadius: '4px',
+  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  appearance: 'auto',
+  WebkitAppearance: 'checkbox',
+}}
         />
         
         {/* チェックされた場合のみ削除ボタンを表示 */}
