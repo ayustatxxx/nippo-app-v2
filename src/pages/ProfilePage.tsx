@@ -499,7 +499,7 @@ const handleLogout = () => {
                   onChange={handleImageChange}
                 />
                 
-                {/* アバター表示 - 編集モードでは変更可能に */}
+                {/* ここはコメントアウト  アバター表示 - 編集モードでは変更可能に */}
                 <div 
                   className="profile-image-container"
                   style={{
@@ -539,7 +539,7 @@ const handleLogout = () => {
                     </svg>
                   )}
                   
-                  {/* 編集モードの場合、画像アップロードボタンを表示 */}
+                  {/* 編集モードの場合、画像アップロードボタンを表示 
                   {editMode && (
                     <div 
                       className="upload-overlay"
@@ -561,7 +561,7 @@ const handleLogout = () => {
                         <line x1="23" y1="11" x2="17" y2="11" />
                       </svg>
                     </div>
-                  )}
+                  )}*/}
                 </div>
 
        
