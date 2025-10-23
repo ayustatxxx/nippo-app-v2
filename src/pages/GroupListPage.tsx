@@ -1227,10 +1227,18 @@ return (
         setSelectedDeleteGroups(newSelected);
       }}
       style={{
-        width: '18px',
-        height: '18px',
-        accentColor: '#055A68',
-      }}
+  width: '18px',
+  height: '18px',
+  minWidth: '18px',
+  minHeight: '18px',
+  accentColor: '#055A68',
+  cursor: 'pointer',
+  border: '2px solid #055A68',
+  borderRadius: '4px',
+  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  appearance: 'auto',
+  WebkitAppearance: 'checkbox',
+}}
     />
   </div>
 ) : (
@@ -1529,10 +1537,18 @@ return (
       setSelectedGroupId(selectedGroupId === group.id ? null : group.id);
     }}
     style={{
-      width: '18px',
-      height: '18px',
-      accentColor: '#055A68',
-    }}
+  width: '18px',
+  height: '18px',
+  minWidth: '18px',
+  minHeight: '18px',
+  accentColor: '#055A68',
+  cursor: 'pointer',
+  border: '2px solid #055A68',
+  borderRadius: '4px',
+  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  appearance: 'auto',
+  WebkitAppearance: 'checkbox',
+}}
   />
   
   {/* チェックされた場合のみ編集ボタンを隣に表示 */}
