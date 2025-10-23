@@ -140,6 +140,8 @@ try {
   
 // 実際の権限状態を確認して適切なroleを渡す
 const adminStatus = await isAdmin();
+console.log('🔍 管理者判定:', adminStatus, 'ユーザーID:', user.id);
+setIsUserAdmin(adminStatus);
 const actualRole = adminStatus ? "admin" : "user";
 const realGroups = await getGroups(user.id, actualRole);
 console.log("【デバッグ】実際のグループを取得:", realGroups.length, "件");
@@ -400,7 +402,7 @@ return (
   </h2>
   
   {/* ゴミ箱アイコン - 管理者の場合のみ表示 */}
-  {isUserAdmin && !showCreateForm && (
+  {(isUserAdmin || hasAnyManagedGroups(currentUser?.id || '', groups)) && !showCreateForm && (
   <button
     onClick={() => {
       setShowTrashMode(!showTrashMode);
@@ -442,7 +444,7 @@ return (
 </div>
 
         {/* 管理者の場合のみ表示されるグループ作成ボタン */}
-        {!showCreateForm && (
+       {(isUserAdmin || hasAnyManagedGroups(currentUser?.id || '', groups)) && !showCreateForm && (
   <div style={{ 
     marginBottom: '2rem', 
     display: showTrashMode ? 'none' : 'block' 
@@ -476,7 +478,7 @@ return (
 )}
 
         {/* グループ作成フォーム */}
-        {isUserAdmin && showCreateForm && (
+       {(isUserAdmin || hasAnyManagedGroups(currentUser?.id || '', groups)) && showCreateForm && (
           <div
             style={{
               backgroundColor: '#1e1e2f',
@@ -1321,7 +1323,7 @@ return (
 
 
         {/* グループ一覧 - フォームが表示されていない場合のみ表示 */}
-        {!showCreateForm && !loading && !showTrashMode && groups.filter(group => !group.isDeleted).length > 0 && (
+       {!showCreateForm && !loading && !showTrashMode && (
   <div style={{ marginBottom: '2rem' }}>
           
           <div style={{ 
@@ -1331,7 +1333,13 @@ return (
   marginBottom: '2rem', 
   color: '#055A68' 
 }}>
- <span>現在 {groups.filter(group => !group.isDeleted).length}件のグループに参加</span>
+<div style={{ 
+  marginBottom: '1.5rem', 
+  color: '#055A68',
+  fontSize: '0.9rem'
+}}>
+  現在 {groups.filter(group => !group.isDeleted).length}件のグループに参加
+</div>
   
   {/* 管理者の場合のみボタン表示 */}
   {hasAnyManagedGroups(currentUser?.id || '', groups) && (
