@@ -45,7 +45,7 @@ export class UnifiedDataManager {
       console.log('🔍 UnifiedDataManager: ユーザー取得開始');
       
       // 1. Firebase認証確認
-      const firebaseUser = getFirebaseUser();
+      const firebaseUser = await getFirebaseUser();
       if (!firebaseUser) {
         console.log('❌ Firebase認証ユーザーなし');
         return null;
