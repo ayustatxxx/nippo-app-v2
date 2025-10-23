@@ -43,7 +43,7 @@ const hasRequiredFields = !!(
     const checkAuth = async () => {
       try {
         // Firebase認証チェック
-        const user = getCurrentUser();
+       const user = await getCurrentUser();
         
         if (user) {
           console.log('✅ 認証済みユーザー:', user.email);

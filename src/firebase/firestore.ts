@@ -31,6 +31,12 @@ export const COLLECTIONS = {
 // ユーザー情報を作成・更新
 export const saveUser = async (userId: string, userData: Partial<User>): Promise<void> => {
   try {
+    // ★ userIdのバリデーション追加
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      console.error('❌ saveUser: 無効なuserId:', userId);
+      throw new Error('Invalid userId provided to saveUser');
+    }
+    
     console.log('🔍 【firestore】saveUser開始');
     console.log('🔍 【firestore】受信したuserData:', {
       username: userData.username,
@@ -66,6 +72,12 @@ export const saveUser = async (userId: string, userData: Partial<User>): Promise
 // 修正版getUser関数
 export const getUser = async (userId: string): Promise<User | null> => {
   try {
+    // userIdのバリデーション
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      console.error('❌ 無効なuserId:', userId);
+      return null;
+    }
+    
     const userRef = doc(db, COLLECTIONS.USERS, userId);
     const userSnap = await getDoc(userRef);
     
@@ -135,10 +147,11 @@ export const getUser = async (userId: string): Promise<User | null> => {
       console.log('⚠️ ユーザーが見つかりません:', userId);
       return null;
     }
-  } catch (error) {
-    console.error('❌ ユーザー取得エラー:', error);
-    throw error;
-  }
+ } catch (error) {
+  console.error('❌ ユーザー取得エラー:', error);
+  console.error('エラー詳細:', JSON.stringify(error, null, 2));
+  return null; // エラー時はnullを返す（throwしない）
+}
 };
 
 

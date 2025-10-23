@@ -104,9 +104,16 @@ export const onAuthStateChange = (callback: (user: User | null) => void) => {
   return onAuthStateChanged(auth, callback);
 };
 
-// 現在のユーザーを取得
-export const getCurrentUser = () => {
-  return auth.currentUser;
+
+// 現在のユーザーを取得（Promise版）
+export const getCurrentUser = (): Promise<User | null> => {
+  return new Promise((resolve) => {
+    // Firebaseの初期化が完了するまで待つ
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe(); // 監視を即座に解除
+      resolve(user);
+    });
+  });
 };
 
 // ユーザープロフィールを取得
@@ -138,16 +145,16 @@ export const testFirebaseFirestoreIntegration = async () => {
     }
     
     // 2. 現在のFirebaseユーザーを確認
-    const currentUser = getCurrentUser();
-    if (currentUser) {
-      console.log('✅ 現在のFirebaseユーザー:', currentUser.email);
-      
-      // 3. Firestoreにユーザープロフィールのテスト作成
-      const userProfile = await createUserProfile(currentUser, {
-        username: currentUser.displayName || 'テストユーザー',
-        company: 'テスト会社',
-        position: 'テスト職位'
-      });
+const currentUser = await getCurrentUser();
+if (currentUser) {
+  console.log('✅ 現在のFirebaseユーザー:', currentUser.email);
+  
+  // 3. Firestoreにユーザープロフィールのテスト作成
+  const userProfile = await createUserProfile(currentUser, {
+    username: currentUser.displayName || 'テストユーザー',
+    company: 'テスト会社',
+    position: 'テスト職位'
+  });
       
       console.log('✅ Firestoreユーザープロフィール作成完了:', userProfile.username);
       console.log('🎉 Firebase + Firestore統合テスト成功！');

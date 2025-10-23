@@ -70,7 +70,7 @@ class UserSyncManager {
       console.log('ユーザー同期開始');
 
       // Step 1: Firebase認証ユーザー取得
-      const firebaseUser = getFirebaseCurrentUser();
+      const firebaseUser = await getFirebaseCurrentUser();
       if (!firebaseUser) {
         console.log('Firebase認証なし - ローカルデータクリア');
         this.clearAllData();
