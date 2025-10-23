@@ -57,7 +57,6 @@ export const getGroups = async (userId: string, userRole: string): Promise<any[]
     const groupsRef = collection(db, 'groups');
     const q = query(
       groupsRef,
-      where('isDeleted', '==', false), 
       orderBy('createdAt', 'desc')
     );
     
