@@ -60,10 +60,27 @@ class UserSyncManager {
    * Firebase → Firestore → localStorage の順で確実に同期
    */
   async syncUser(): Promise<User | null> {
-    if (this.syncInProgress) {
-      // 同期中の場合は現在のユーザーを返却
-      return this.currentUser;
-    }
+  // ★ 修正：同期中の場合は、完了を待つ
+  if (this.syncInProgress) {
+    console.log('🔄 既に同期中... 完了を待機');
+    // 100msごとにチェックして、同期完了を待つ
+    return new Promise((resolve) => {
+      const checkInterval = setInterval(() => {
+        if (!this.syncInProgress) {
+          clearInterval(checkInterval);
+          console.log('✅ 同期完了を確認、ユーザーデータを返却');
+          resolve(this.currentUser);
+        }
+      }, 100);
+      
+      // タイムアウト（10秒）
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        console.warn('⚠️ 同期タイムアウト');
+        resolve(this.currentUser);
+      }, 10000);
+    });
+  }
 
     try {
       this.syncInProgress = true;

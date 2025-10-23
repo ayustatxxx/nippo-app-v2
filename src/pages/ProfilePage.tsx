@@ -12,6 +12,7 @@ const ProfilePage: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // ★ 追加
   
   // プロフィール写真関連の状態
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -80,6 +81,7 @@ const ProfilePage: React.FC = () => {
 useEffect(() => {
   const loadProfile = async () => {
     console.log('📱 ProfilePage: データ読み込み開始');
+    setIsLoading(true); // ★ 1つ目：ここに追加！
     
     try {
       // 新しいauthUtil.tsのgetCurrentUser関数を使用
@@ -115,45 +117,47 @@ useEffect(() => {
 
         setFormData(newFormData);
  
-          
-          // プロフィール画像の設定
-          if (currentUser.profileImage) {
-            setProfileImage(currentUser.profileImage);
-          }
-          
-          console.log('✅ 同期されたユーザーデータを読み込み完了');
-          // この下に追加
-console.log('🔍 読み込まれたユーザーデータ詳細:', {
-  user_id: currentUser?.id,
-  user_email: currentUser?.email,
-  user_displayName: currentUser?.displayName,
-  user_fullName: currentUser?.fullName,
-  user_company: currentUser?.company,
-  user_position: currentUser?.position,
-  user_phone: currentUser?.phone,
-  profileData: currentUser?.profileData,
-  settings: currentUser?.settings,
-  全体のcurrentUser: currentUser
-});
-
-console.log('🔍 Firestoreの生データ確認:', JSON.stringify(currentUser, null, 2));
-
-console.log('🔍 フォームデータの設定内容:', {
-  formData_fullName: currentUser.displayName || currentUser.fullName || '',
-  formData_company: currentUser.company || '',
-  formData_position: currentUser.position || '',
-  formData_phone: currentUser.phone || ''
-});
-        } else {
-          console.log('⚠️ ユーザーデータが取得できませんでした');
+        // プロフィール画像の設定
+        if (currentUser.profileImage) {
+          setProfileImage(currentUser.profileImage);
         }
-      } catch (error) {
-        console.error('❌ プロフィールロードエラー:', error);
+        
+        console.log('✅ 同期されたユーザーデータを読み込み完了');
+        
+        // この下に追加
+        console.log('🔍 読み込まれたユーザーデータ詳細:', {
+          user_id: currentUser?.id,
+          user_email: currentUser?.email,
+          user_displayName: currentUser?.displayName,
+          user_fullName: currentUser?.fullName,
+          user_company: currentUser?.company,
+          user_position: currentUser?.position,
+          user_phone: currentUser?.phone,
+          profileData: currentUser?.profileData,
+          settings: currentUser?.settings,
+          全体のcurrentUser: currentUser
+        });
+
+        console.log('🔍 Firestoreの生データ確認:', JSON.stringify(currentUser, null, 2));
+
+        console.log('🔍 フォームデータの設定内容:', {
+          formData_fullName: currentUser.displayName || currentUser.fullName || '',
+          formData_company: currentUser.company || '',
+          formData_position: currentUser.position || '',
+          formData_phone: currentUser.phone || ''
+        });
+      } else {
+        console.log('⚠️ ユーザーデータが取得できませんでした');
       }
-    };
-  
-    loadProfile();
-  }, []);
+    } catch (error) {
+      console.error('❌ プロフィールロードエラー:', error);
+    } finally {  // ★ 2つ目：finally を追加！
+      setIsLoading(false);  // ★ 3つ目：ここに追加！
+    }
+  };
+
+  loadProfile();
+}, []);
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
