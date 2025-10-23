@@ -400,7 +400,7 @@ return (
   </h2>
   
   {/* ゴミ箱アイコン - 管理者の場合のみ表示 */}
-  {hasAnyManagedGroups(currentUser?.id || '', groups) && !showCreateForm && (
+  {isUserAdmin && !showCreateForm && (
   <button
     onClick={() => {
       setShowTrashMode(!showTrashMode);
