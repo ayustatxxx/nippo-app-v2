@@ -2279,11 +2279,32 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
       } : post
     );
     
+    // ⭐ ArchivePageと同じ方式で更新
     setPosts(updatedPosts);
     setTimelineItems(updatedPosts);
-// setFilteredItems(updatedPosts); // ← コメントアウト
+    
+    // ⭐ filteredItemsも同じパターンで更新（ArchivePageのsetFilteredPostsと同じ）
+    setFilteredItems(filteredItems.map(item => {
+      // アラートの場合はそのまま返す
+      if ('type' in item && item.type === 'alert') {
+        return item;
+      }
+      
+      // 投稿の場合のみ更新
+      const post = item as Post;
+      if (post.id === postId) {
+        return {
+          ...post,
+          status: newStatus as '未確認' | '確認済み',
+          statusUpdatedAt: Date.now(),
+          statusUpdatedBy: currentUserId
+        };
+      }
+      return post;
+    }));
     
     console.log('✅ [HomePage] ステータス更新完了:', newStatus);
+    console.log('✅ [HomePage] filteredItemsも更新完了（ArchivePageスタイル）');
     
   } catch (error) {
     console.error('❌ [HomePage] ステータス更新エラー:', error);
