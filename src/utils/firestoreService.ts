@@ -55,20 +55,35 @@ export const getGroups = async (userId: string, userRole: string): Promise<any[]
     console.log('🔥 グループ一覧取得開始');
     
     const groupsRef = collection(db, 'groups');
-    const q = query(
-      groupsRef,
-      orderBy('createdAt', 'desc')
-    );
-    
-    const querySnapshot = await getDocs(q);
-    const groups: any[] = [];
-    
-    querySnapshot.forEach((doc) => {
+const q = query(
+  groupsRef,
+  orderBy('createdAt', 'desc')
+);
+
+const querySnapshot = await getDocs(q);
+const groups: any[] = [];
+
+querySnapshot.forEach((doc) => {
+  const groupData = doc.data();
+  
+  // システム管理者：全グループを追加
+  // 一般ユーザー：自分が参加しているグループだけ追加
+  if (userRole === 'admin') {
+    groups.push({
+      id: doc.id,
+      ...groupData
+    });
+  } else {
+    // members配列に自分のidが含まれているか確認
+    const isMember = groupData.members?.some((member: any) => member.id === userId);
+    if (isMember) {
       groups.push({
         id: doc.id,
-        ...doc.data()
+        ...groupData
       });
-    });
+    }
+  }
+});
     
     console.log('✅ グループ一覧取得完了:', groups.length, '件');
     return groups;
