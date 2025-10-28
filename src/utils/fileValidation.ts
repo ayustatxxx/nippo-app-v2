@@ -186,15 +186,16 @@ export class FileValidator {
       return sum + actualSize;
     }, 0);
     
-    const maxTotalSize = 0.7 * 1024 * 1024; // 0.7MB（Base64で約0.93MB、余裕を持って）
+    const maxTotalSize = 0.6 * 1024 * 1024; // 0.6MB（Base64で約0.8MB）
+    const maxSizeMB = 0.6;
     const totalSizeMB = Math.round(totalSize / (1024 * 1024) * 10) / 10;
     
     if (totalSize > maxTotalSize) {
       return {
-        isValid: false,
-        totalSizeMB,
-        error: `圧縮後の合計ファイルサイズが上限を超えています: ${totalSizeMB}MB > 20MB\n画像の枚数を減らすか、画質を下げて再度お試しください。`
-      };
+  isValid: false,
+  totalSizeMB: totalSizeMB,
+  error: `圧縮後の合計ファイルサイズが上限を超えています: ${totalSizeMB}MB > ${maxSizeMB}MB\n画像の枚数を減らすか、画質を下げて再度お試しください。`
+};
     }
     
     return {
@@ -210,7 +211,7 @@ public static async convertToBase64(file: File): Promise<string> {
   try {
     // 画像ファイルの場合は圧縮を実行
     if (file.type.startsWith('image/')) {
-      return await this.compressImage(file, 850, 0.35);
+      return await this.compressImage(file, 800, 0.3);
     }
     
     // 画像以外はそのまま変換（将来的な拡張対応）
