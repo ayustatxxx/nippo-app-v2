@@ -231,7 +231,7 @@ if (editedPhotos && editedPhotos.length > 0) {
       const remainingPhotos = post.photoUrls.filter(url => !deletedPhotoUrls.includes(url));
       const allPhotos = [...remainingPhotos, ...additionalPhotoUrls];
       
-      const sizeCheck = FileValidator.checkCompressedTotalSize(allPhotos);
+      const sizeCheck = FileValidator.checkCompressedTotalSize(allPhotos, result.validFiles);
       if (!sizeCheck.isValid) {
         alert(sizeCheck.error);
         console.error('❌ [EditPage] 圧縮後のサイズチェックエラー:', sizeCheck.totalSizeMB, 'MB');

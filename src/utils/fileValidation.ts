@@ -172,7 +172,7 @@ export class FileValidator {
    * @param base64Images Base64形式の画像配列
    * @returns チェック結果
    */
-  public static checkCompressedTotalSize(base64Images: string[]): {
+  public static checkCompressedTotalSize(base64Images: string[], originalFiles: File[]): {
     isValid: boolean;
     totalSizeMB: number;
     error?: string;
@@ -186,16 +186,21 @@ export class FileValidator {
       return sum + actualSize;
     }, 0);
     
-    const maxTotalSize = 0.6 * 1024 * 1024; // 0.6MB（Base64で約0.8MB）
-    const maxSizeMB = 0.6;
-    const totalSizeMB = Math.round(totalSize / (1024 * 1024) * 10) / 10;
+    const maxTotalSize = 0.85 * 1024 * 1024; // 0.85MB
+const maxSizeMB = 0.85;
+const totalSizeMB = Math.round(totalSize / (1024 * 1024) * 10) / 10;
     
     if (totalSize > maxTotalSize) {
-      return {
-  isValid: false,
-  totalSizeMB: totalSizeMB,
-  error: `圧縮後の合計ファイルサイズが上限を超えています: ${totalSizeMB}MB > ${maxSizeMB}MB\n画像の枚数を減らすか、画質を下げて再度お試しください。`
-};
+  // 元のファイルサイズを計算
+  const originalTotalSize = originalFiles.reduce((sum, file) => sum + file.size, 0);
+  const originalSizeMB = Math.round(originalTotalSize / (1024 * 1024) * 10) / 10;
+  
+  return {
+    isValid: false,
+    totalSizeMB: totalSizeMB,
+    error: `選択した画像が大きすぎます\n元のサイズ: ${originalSizeMB}MB\n画像の枚数を減らすか、サイズの小さい画像を選択してください。`
+  };
+
     }
     
     return {
