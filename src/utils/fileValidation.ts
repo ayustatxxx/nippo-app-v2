@@ -186,7 +186,7 @@ export class FileValidator {
       return sum + actualSize;
     }, 0);
     
-    const maxTotalSize = 20 * 1024 * 1024; // 20MB
+    const maxTotalSize = 0.7 * 1024 * 1024; // 0.7MB（Base64で約0.93MB、余裕を持って）
     const totalSizeMB = Math.round(totalSize / (1024 * 1024) * 10) / 10;
     
     if (totalSize > maxTotalSize) {
@@ -210,7 +210,7 @@ public static async convertToBase64(file: File): Promise<string> {
   try {
     // 画像ファイルの場合は圧縮を実行
     if (file.type.startsWith('image/')) {
-      return await this.compressImage(file, 960, 0.4);
+      return await this.compressImage(file, 850, 0.35);
     }
     
     // 画像以外はそのまま変換（将来的な拡張対応）
