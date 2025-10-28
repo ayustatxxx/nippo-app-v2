@@ -16,7 +16,7 @@ export class FileValidator {
     'image/webp'
   ];
   
-  private static readonly MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  private static readonly MAX_FILE_SIZE = 7 * 1024 * 1024; // 7MB
   private static readonly MAX_FILES = 10; // 最大ファイル数
   
   // ファイル名の危険な文字をサニタイズ
@@ -78,7 +78,7 @@ export class FileValidator {
       const sizeMB = Math.round(file.size / (1024 * 1024) * 10) / 10;
       return { 
         isValid: false, 
-        error: `ファイルサイズが大きすぎます。${sizeMB}MB > 5MB制限` 
+        error: `ファイルサイズが大きすぎます。${sizeMB}MB > 7MB制限`
       };
     }
     
@@ -152,24 +152,65 @@ export class FileValidator {
       }
     }
     
-    // 合計サイズチェック（20MB制限）
+   // 合計サイズチェック（20MB制限）← 圧縮前チェックは不要なため削除
+    // 理由：圧縮後にPostPage/EditPageでチェックするため
+    /*
     const maxTotalSize = 20 * 1024 * 1024;
     if (totalSize > maxTotalSize) {
       const sizeMB = Math.round(totalSize / (1024 * 1024) * 10) / 10;
       errors.push(`合計ファイルサイズが上限を超えています: ${sizeMB}MB > 20MB`);
       return { validFiles: [], errors, totalSize };
     }
+    */
     
     return { validFiles, errors, totalSize };
   }
+
+
+  /**
+   * 圧縮後のBase64データの合計サイズをチェックする
+   * @param base64Images Base64形式の画像配列
+   * @returns チェック結果
+   */
+  public static checkCompressedTotalSize(base64Images: string[]): {
+    isValid: boolean;
+    totalSizeMB: number;
+    error?: string;
+  } {
+    // Base64文字列のサイズを計算（バイト単位）
+    const totalSize = base64Images.reduce((sum, base64) => {
+      // Base64のdata:image/jpeg;base64, プレフィックスを除外
+      const base64Data = base64.split(',')[1] || base64;
+      // Base64は元のバイト数の約1.33倍なので、実際のサイズに変換
+      const actualSize = (base64Data.length * 3) / 4;
+      return sum + actualSize;
+    }, 0);
+    
+    const maxTotalSize = 20 * 1024 * 1024; // 20MB
+    const totalSizeMB = Math.round(totalSize / (1024 * 1024) * 10) / 10;
+    
+    if (totalSize > maxTotalSize) {
+      return {
+        isValid: false,
+        totalSizeMB,
+        error: `圧縮後の合計ファイルサイズが上限を超えています: ${totalSizeMB}MB > 20MB\n画像の枚数を減らすか、画質を下げて再度お試しください。`
+      };
+    }
+    
+    return {
+      isValid: true,
+      totalSizeMB
+    };
+  }
   
+
 
   // 画像のBase64変換（圧縮対応版に更新）
 public static async convertToBase64(file: File): Promise<string> {
   try {
     // 画像ファイルの場合は圧縮を実行
     if (file.type.startsWith('image/')) {
-      return await this.compressImage(file, 1280, 0.5);
+      return await this.compressImage(file, 960, 0.4);
     }
     
     // 画像以外はそのまま変換（将来的な拡張対応）

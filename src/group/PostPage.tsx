@@ -353,16 +353,26 @@ if (photos && photos.length > 0) {
       
       // 🆕 バッチ処理で画像を圧縮
       photoUrls = await FileValidator.processFilesInBatches(result.validFiles, 2);
+
+      // ✨ 圧縮後の合計サイズチェック
+      const sizeCheck = FileValidator.checkCompressedTotalSize(photoUrls);
+      if (!sizeCheck.isValid) {
+        alert(sizeCheck.error);
+        console.error('❌ 圧縮後のサイズチェックエラー:', sizeCheck.totalSizeMB, 'MB');
+        return;
+      }
+      
+      console.log(`✅ 画像処理完了: ${photoUrls.length}枚（合計${sizeCheck.totalSizeMB}MB）`);
       
       FileValidator.logSecurityEvent('files_uploaded', {
         fileCount: result.validFiles.length,
         totalOriginalSize: result.validFiles.reduce((sum, file) => sum + file.size, 0),
-        totalCompressedSize: photoUrls.reduce((sum, url) => sum + url.length * 0.75, 0),
-        compressionRatio: Math.round((1 - photoUrls.reduce((sum, url) => sum + url.length * 0.75, 0) / result.validFiles.reduce((sum, file) => sum + file.size, 0)) * 100),
+        totalCompressedSize: sizeCheck.totalSizeMB * 1024 * 1024,
+        totalCompressedSizeMB: sizeCheck.totalSizeMB,
+        compressionRatio: Math.round((1 - (sizeCheck.totalSizeMB * 1024 * 1024) / result.validFiles.reduce((sum, file) => sum + file.size, 0)) * 100),
         groupId: groupId
       });
       
-      console.log(`✅ 画像処理完了: ${photoUrls.length}枚`);
     } catch (conversionError) {
       console.error('画像処理エラー:', conversionError);
       alert('画像の処理中にエラーが発生しました。画像サイズを確認して再度お試しください。');

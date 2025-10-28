@@ -227,12 +227,28 @@ if (editedPhotos && editedPhotos.length > 0) {
         result.validFiles.map(file => FileValidator.convertToBase64(file))
       );
       
+      // ✨ 既存写真と新規写真を合わせた合計サイズチェック
+      const remainingPhotos = post.photoUrls.filter(url => !deletedPhotoUrls.includes(url));
+      const allPhotos = [...remainingPhotos, ...additionalPhotoUrls];
+      
+      const sizeCheck = FileValidator.checkCompressedTotalSize(allPhotos);
+      if (!sizeCheck.isValid) {
+        alert(sizeCheck.error);
+        console.error('❌ [EditPage] 圧縮後のサイズチェックエラー:', sizeCheck.totalSizeMB, 'MB');
+        return;
+      }
+      
       console.log('✅ [EditPage] Base64変換完了:', additionalPhotoUrls.length, '枚');
+      console.log(`✅ 合計サイズ: ${sizeCheck.totalSizeMB}MB（既存${remainingPhotos.length}枚 + 新規${additionalPhotoUrls.length}枚）`);
       
       // セキュリティログ
       FileValidator.logSecurityEvent('files_uploaded', {
         fileCount: result.validFiles.length,
         totalSize: result.totalSize,
+        totalCompressedSize: sizeCheck.totalSizeMB * 1024 * 1024,
+        totalCompressedSizeMB: sizeCheck.totalSizeMB,
+        existingPhotos: remainingPhotos.length,
+        newPhotos: additionalPhotoUrls.length,
         postId: post.id
       });
     } catch (conversionError) {
