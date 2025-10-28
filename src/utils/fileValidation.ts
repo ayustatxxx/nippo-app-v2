@@ -186,8 +186,8 @@ export class FileValidator {
       return sum + actualSize;
     }, 0);
     
-    const maxTotalSize = 0.85 * 1024 * 1024; // 0.85MB
-const maxSizeMB = 0.85;
+    const maxTotalSize = 0.68 * 1024 * 1024; // 0.68MB
+const maxSizeMB = 0.68;
 const totalSizeMB = Math.round(totalSize / (1024 * 1024) * 10) / 10;
     
     if (totalSize > maxTotalSize) {
@@ -216,7 +216,7 @@ public static async convertToBase64(file: File): Promise<string> {
   try {
     // 画像ファイルの場合は圧縮を実行
     if (file.type.startsWith('image/')) {
-      return await this.compressImage(file, 800, 0.3);
+      return await this.compressImage(file, 720, 0.27);
     }
     
     // 画像以外はそのまま変換（将来的な拡張対応）
@@ -257,7 +257,7 @@ public static async convertToBase64(file: File): Promise<string> {
   }
 
   // 画像圧縮機能（PostPageから移植）
-  public static async compressImage(file: File, maxWidth: number = 960, quality: number = 0.4): Promise<string> {
+  public static async compressImage(file: File, maxWidth: number = 720, quality: number = 0.27): Promise<string> {
     return new Promise((resolve, reject) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
