@@ -666,47 +666,48 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
       </div>
       
 
-      {/* グループアイコンと名前 */}
+      {/* {/* グループアイコンと名前 */}
 <div
   style={{
     position: 'absolute',
-    top: backgroundHeight,
+    top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     zIndex: 10,
-    width: '85%',
+    width: '90%',
     maxWidth: '400px',
+    marginTop: '60px',
   }}
 >
-  {/* グループアイコン (正円) - 境界線上に固定 */}
+  {/* グループアイコン (正円) */}
   <div
     style={{
-      width: '140px',
-      height: '140px',
+      width: '150px',
+      height: '150px',
       borderRadius: '50%',
       backgroundImage: 'url(https://placehold.jp//ffffff/400x400.png?text=Group)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
-      marginBottom: '20px',
+      marginBottom: '15px',
       border: '4px solid white',
-      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
       flexShrink: 0,
     }}
   />
   
-  {/* グループ名 - 白背景内に配置 */}
+  {/* グループ名 */}
   <h1
     ref={groupNameRef}
     style={{
       color: '#2d6a7e',
-      fontSize: nameTruncated ? '24px' : '26px',
+      fontSize: '22px',
       fontWeight: 'bold',
-      lineHeight: '1.3',
+      lineHeight: '1.4',
       margin: '0 0 20px 0',
-      padding: '0 10px',
+      padding: '0 15px',
       width: '100%',
       maxWidth: '270px',
       textAlign: 'center',
@@ -724,7 +725,6 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
   
   {/* チェックイン・チェックアウトボタン */}
   {isLoadingCheckInState ? (
-    // ローディング中の表示
     <div style={{ 
       padding: '12px 30px',
       color: '#055A68',
@@ -735,7 +735,6 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
       状態確認中...
     </div>
   ) : (
-    // 通常のボタン（既存のコード）
     <button
       onClick={handleCheckInOut}
       disabled={isLoadingCheckInState || isProcessing}
@@ -765,7 +764,6 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
         e.currentTarget.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.1)';
       }}
     >
-      {/* アイコン */}
       <svg 
         width="20" 
         height="20" 
