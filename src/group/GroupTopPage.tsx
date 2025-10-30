@@ -14,6 +14,9 @@ const GroupTopPage: React.FC = () => {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+   // 🎯 環境判定（本番 or テスト）
+  const isTestEnvironment = import.meta.env.MODE !== 'production';
   
   // グループ名の表示制限を追跡するための参照
   const groupNameRef = useRef<HTMLHeadingElement>(null);
@@ -692,12 +695,14 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
           }}
         />
         
-        {/* グループ名 */}
-        <h1
+
+// グループ名の表示を1行変更（697行目あたり）
+<h1
   ref={groupNameRef}
   style={groupNameStyle}
 >
-  🧪テスト {group.name}
+  {isTestEnvironment && '🧪テスト '}
+  {group.name}
 </h1>
         
         {/* チェックイン・チェックアウトボタン */}
