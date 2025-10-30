@@ -671,7 +671,7 @@ const bottomBackgroundTop = '65vh';
 <div
   style={{
     position: 'absolute',
-    top: '65vh',
+    top: 'calc(65vh + 45px)',
     left: '50%',
     transform: 'translate(-50%, -50%)',
     display: 'flex',
