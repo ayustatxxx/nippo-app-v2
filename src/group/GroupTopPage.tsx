@@ -671,7 +671,7 @@ const bottomBackgroundTop = '65vh';
 <div
   style={{
     position: 'absolute',
-    top: 'calc(65vh + 45px)',
+    top: 'calc(65vh + 35px)',
     left: '50%',
     transform: 'translate(-50%, -50%)',
     display: 'flex',
@@ -752,7 +752,7 @@ const bottomBackgroundTop = '65vh';
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        marginBottom: '0px',
+        marginBottom: '30px',
         opacity: isLoadingCheckInState || isProcessing ? 0.5 : 1,
       }}
       onMouseOver={(e) => {
