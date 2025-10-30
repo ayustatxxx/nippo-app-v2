@@ -610,10 +610,10 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
       {/* 戻るボタン */}
       <div 
         style={{ 
-          position: 'absolute', 
+          position: 'fixed',
           top: '20px', 
           left: '20px', 
-          zIndex: 10, 
+          zIndex: 100,
           cursor: 'pointer' 
         }}
         onClick={handleBack}
@@ -636,10 +636,10 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
       {/* メニューボタン（常に表示） */}
       <div 
         style={{ 
-          position: 'absolute', 
+          position: 'fixed',
           top: '20px', 
           right: '20px', 
-          zIndex: 10, 
+          zIndex: 100,
           cursor: 'pointer' 
         }}
       >
