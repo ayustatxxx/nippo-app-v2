@@ -599,28 +599,46 @@ const deleteSelectedMembers = async () => {
               }}
             >
               <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '0.5rem',
-                }}
-              >
-                <h3 style={{ color: '#F0DB4F', margin: 0 }}>{group.name}</h3>
+  style={{
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '0.5rem',
+    gap: '12px',
+  }}
+>
+  <h3
+    style={{
+      color: '#F0DB4F',
+      margin: 0,
+      flex: 1,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+      lineHeight: '1.3',
+      minWidth: 0,
+    }}
+  >
+    {group.name}
+  </h3>
 
-                {/* メンバー数を右上に配置 */}
-                <div
-                  style={{
-                    backgroundColor: '#F0DB4F33',
-                    color: '#F0DB4F',
-                    fontSize: '0.75rem',
-                    padding: '0.3rem 0.6rem',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
+  {/* メンバー数を右上に配置 */}
+  <div
+    style={{
+      backgroundColor: '#F0DB4F33',
+      color: '#F0DB4F',
+      fontSize: '0.75rem',
+      padding: '0.3rem 0.6rem',
+      borderRadius: '4px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+      flexShrink: 0,
+      minWidth: 'fit-content',
+    }}
+  >
                   <svg
                     width="14"
                     height="14"
