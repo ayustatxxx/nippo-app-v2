@@ -694,11 +694,11 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
         
         {/* グループ名 */}
         <h1
-          ref={groupNameRef}
-          style={groupNameStyle}
-        >
-          {group.name}
-        </h1>
+  ref={groupNameRef}
+  style={groupNameStyle}
+>
+  🧪テスト {group.name}
+</h1>
         
         {/* チェックイン・チェックアウトボタン */}
         {isLoadingCheckInState ? (
