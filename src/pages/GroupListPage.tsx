@@ -1070,49 +1070,60 @@ return (
   }}
 >
   {/* グループ名とメンバー数 */}
-  <div style={{
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '0.5rem'
+  {/* グループ名とメンバー数 */}
+<div style={{
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: '0.5rem',
+  gap: '12px',
+}}>
+  <h3 style={{ 
+    margin: 0, 
+    color: '#055A68',
+    fontSize: '1.2rem',
+    flex: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    lineHeight: '1.3',
+    minWidth: 0,
   }}>
-    <h3 style={{ 
-      margin: 0, 
-      color: '#055A68',
-      fontSize: '1.2rem' 
-    }}>
-      {group.name}
-    </h3>
-    
-    {/* メンバー数表示 */}
-    <div style={{
-      backgroundColor: '#055A6822',
-      color: '#055A68',
-      fontSize: '0.75rem',
-      padding: '0.3rem 0.6rem',
-      borderRadius: '4px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '4px'
-    }}>
-      <svg 
-        width="14" 
-        height="14" 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        stroke="#055A68"
-        strokeWidth="2" 
-        strokeLinecap="round" 
-        strokeLinejoin="round"
-      >
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-      {group.members?.length || 1}人
-    </div>
+    {group.name}
+  </h3>
+  {/* メンバー数表示 */}
+  <div style={{
+    backgroundColor: '#055A6822',
+    color: '#055A68',
+    fontSize: '0.75rem',
+    padding: '0.3rem 0.6rem',
+    borderRadius: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    flexShrink: 0,
+    minWidth: 'fit-content',
+  }}>
+    <svg 
+      width="14" 
+      height="14" 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="#055A68"
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    >
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+    {group.members?.length || 1}人
   </div>
+</div>
 
   {/* グループ説明 */}
   {group.description && (
