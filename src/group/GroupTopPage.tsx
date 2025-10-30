@@ -703,7 +703,7 @@ const bottomBackgroundTop = '65vh';
     ref={groupNameRef}
     style={{
       color: '#2d6a7e',
-      fontSize: '22px',
+      fontSize: '23px',
       fontWeight: 'bold',
       lineHeight: '1.4',
       margin: '0 0 20px 0',
