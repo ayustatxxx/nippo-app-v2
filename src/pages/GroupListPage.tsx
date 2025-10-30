@@ -1396,20 +1396,29 @@ return (
   }}
   onClick={isGroupEditMode ? undefined : () => navigate(`/group/${group.id}?from=group-list`)}  // ← 条件付きに変更
 >
-                <div
-  style={{
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  }}
->
-  <h3 style={{ 
-    margin: 0, 
-    color: '#055A68',
-    fontSize: '1.2rem' 
-  }}>
-    {group.name}
-  </h3>
+   
+   <div style={{
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: '12px',
+}}>
+
+  <h3 style={{
+  margin: 0,
+  color: '#055A68',
+  fontSize: '1.2rem',
+  flex: 1,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  lineHeight: '1.3',
+  minWidth: 0,
+}}>
+  {group.name}
+</h3>
   
   {/* メンバー数を右上に配置 */}
   <div style={{
