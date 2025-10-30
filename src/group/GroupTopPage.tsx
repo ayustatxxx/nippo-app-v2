@@ -752,7 +752,7 @@ const bottomBackgroundTop = '65vh';
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        marginBottom: '30px',
+        marginBottom: '45px',
         opacity: isLoadingCheckInState || isProcessing ? 0.5 : 1,
       }}
       onMouseOver={(e) => {
