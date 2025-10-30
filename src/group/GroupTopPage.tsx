@@ -708,7 +708,7 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
       margin: '0 0 20px 0',
       padding: '0 10px',
       width: '100%',
-      maxWidth: '350px',
+      maxWidth: '270px',
       textAlign: 'center',
       wordBreak: 'break-word',
       overflow: 'hidden',
