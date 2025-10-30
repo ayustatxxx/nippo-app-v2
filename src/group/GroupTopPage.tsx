@@ -670,16 +670,15 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
 <div
   style={{
     position: 'absolute',
-    top: '50%',
+    bottom: '120px',
     left: '50%',
-    transform: 'translate(-50%, -50%)',
+    transform: 'translateX(-50%)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     zIndex: 10,
     width: '90%',
     maxWidth: '400px',
-    marginTop: '60px',
   }}
 >
   {/* グループアイコン (正円) */}
