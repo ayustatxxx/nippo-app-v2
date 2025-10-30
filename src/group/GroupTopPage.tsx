@@ -667,115 +667,132 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
       
 
       {/* グループアイコンと名前 */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '120px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          zIndex: 1,
-          width: '70%',
-          maxWidth: '250px',
-        }}
-      >
-        {/* グループアイコン (正円) */}
-        <div
-          style={{
-            width: '150px',
-            height: '150px',
-            borderRadius: '50%',
-            backgroundImage: 'url(https://placehold.jp//ffffff/400x400.png?text=Group)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            marginBottom: '10px',
-            border: '4px solid white',
-            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-          }}
-        />
-        
-{/* グループ名 */}
-<h1
-  ref={groupNameRef}
-  style={groupNameStyle}
+<div
+  style={{
+    position: 'absolute',
+    top: backgroundHeight,
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    zIndex: 10,
+    width: '85%',
+    maxWidth: '400px',
+  }}
 >
-  {isTestEnvironment && '🧪テスト '}
-  {group.name}
-</h1>
-        
-        {/* チェックイン・チェックアウトボタン */}
-        {isLoadingCheckInState ? (
-  // ローディング中の表示
-  <div style={{ 
-    padding: '12px 30px',
-    color: '#055A68',
-    fontSize: '16px',
-    fontWeight: 'bold',
-    textAlign: 'center'
-  }}>
-    状態確認中...
-  </div>
-) : (
-  // 通常のボタン（既存のコード）
-  <button
-    onClick={handleCheckInOut}
-    disabled={isLoadingCheckInState || isProcessing}
+  {/* グループアイコン (正円) - 境界線上に固定 */}
+  <div
     style={{
-      backgroundColor: isCheckedIn ? '#F6C8A6' : '#F0DB4F',
-      color: '#055A68',
-      border: 'none',
-      borderRadius: '30px',
-      padding: '12px 30px',
-      fontSize: '16px',
+      width: '140px',
+      height: '140px',
+      borderRadius: '50%',
+      backgroundImage: 'url(https://placehold.jp//ffffff/400x400.png?text=Group)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      marginBottom: '20px',
+      border: '4px solid white',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+      flexShrink: 0,
+    }}
+  />
+  
+  {/* グループ名 - 白背景内に配置 */}
+  <h1
+    ref={groupNameRef}
+    style={{
+      color: '#2d6a7e',
+      fontSize: nameTruncated ? '22px' : '26px',
       fontWeight: 'bold',
-      cursor: isLoadingCheckInState || isProcessing ? 'not-allowed' : 'pointer',
-      transition: 'all 0.3s ease',
-      boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      marginBottom: '0px',
-      opacity: isLoadingCheckInState || isProcessing ? 0.5 : 1,
-    }}
-    onMouseOver={(e) => {
-      e.currentTarget.style.transform = 'translateY(-2px)';
-      e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.15)';
-    }}
-    onMouseOut={(e) => {
-      e.currentTarget.style.transform = 'translateY(0)';
-      e.currentTarget.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.1)';
+      lineHeight: '1.3',
+      margin: '0 0 20px 0',
+      padding: '0 10px',
+      width: '100%',
+      maxWidth: '350px',
+      textAlign: 'center',
+      wordBreak: 'break-word',
+      overflow: 'hidden',
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+      textOverflow: 'ellipsis',
     }}
   >
-    {/* アイコン */}
-    <svg 
-      width="20" 
-      height="20" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
+    {isTestEnvironment && '🧪テスト '}
+    {group.name}
+  </h1>
+  
+  {/* チェックイン・チェックアウトボタン */}
+  {isLoadingCheckInState ? (
+    // ローディング中の表示
+    <div style={{ 
+      padding: '12px 30px',
+      color: '#055A68',
+      fontSize: '16px',
+      fontWeight: 'bold',
+      textAlign: 'center'
+    }}>
+      状態確認中...
+    </div>
+  ) : (
+    // 通常のボタン（既存のコード）
+    <button
+      onClick={handleCheckInOut}
+      disabled={isLoadingCheckInState || isProcessing}
+      style={{
+        backgroundColor: isCheckedIn ? '#F6C8A6' : '#F0DB4F',
+        color: '#055A68',
+        border: 'none',
+        borderRadius: '30px',
+        padding: '12px 30px',
+        fontSize: '16px',
+        fontWeight: 'bold',
+        cursor: isLoadingCheckInState || isProcessing ? 'not-allowed' : 'pointer',
+        transition: 'all 0.3s ease',
+        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '0px',
+        opacity: isLoadingCheckInState || isProcessing ? 0.5 : 1,
+      }}
+      onMouseOver={(e) => {
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.15)';
+      }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.1)';
+      }}
     >
-      {isCheckedIn ? (
-        <>
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-          <line x1="9" y1="9" x2="15" y2="15" />
-          <line x1="15" y1="9" x2="9" y2="15" />
-        </>
-      ) : (
-        <>
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-          <path d="M9 12l2 2 4-4" />
-        </>
-      )}
-    </svg>
-    {isCheckedIn ? 'Check-out' : 'Check-in'}
-  </button>
-)}
-      </div>
+      {/* アイコン */}
+      <svg 
+        width="20" 
+        height="20" 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+      >
+        {isCheckedIn ? (
+          <>
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="9" y1="9" x2="15" y2="15" />
+            <line x1="15" y1="9" x2="9" y2="15" />
+          </>
+        ) : (
+          <>
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <path d="M9 12l2 2 4-4" />
+          </>
+        )}
+      </svg>
+      {isCheckedIn ? 'Check-out' : 'Check-in'}
+    </button>
+  )}
+</div>
       
       {/* GroupFooterNavコンポーネントを使用（常に表示） */}
       <GroupFooterNav 
