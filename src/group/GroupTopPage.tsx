@@ -702,7 +702,7 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
     ref={groupNameRef}
     style={{
       color: '#2d6a7e',
-      fontSize: nameTruncated ? '22px' : '26px',
+      fontSize: nameTruncated ? '20px' : '26px',
       fontWeight: 'bold',
       lineHeight: '1.3',
       margin: '0 0 20px 0',
