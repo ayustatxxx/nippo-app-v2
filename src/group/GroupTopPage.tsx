@@ -16,7 +16,8 @@ const GroupTopPage: React.FC = () => {
   const [searchParams] = useSearchParams();
 
    // 🎯 環境判定（本番 or テスト）
-  const isTestEnvironment = import.meta.env.MODE !== 'production';
+  const isTestEnvironment = typeof window !== 'undefined' && 
+  window.location.hostname.includes('git-develop');
   
   // グループ名の表示制限を追跡するための参照
   const groupNameRef = useRef<HTMLHeadingElement>(null);
