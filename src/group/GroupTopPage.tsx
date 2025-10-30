@@ -695,8 +695,7 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
           }}
         />
         
-
-// グループ名の表示を1行変更（697行目あたり）
+{/* グループ名 */}
 <h1
   ref={groupNameRef}
   style={groupNameStyle}
