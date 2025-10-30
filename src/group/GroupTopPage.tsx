@@ -709,7 +709,7 @@ const bottomBackgroundTop = '65vh';
       margin: '0 0 20px 0',
       padding: '0 15px',
       width: '100%',
-      maxWidth: '240px',
+      maxWidth: '220px',
       textAlign: 'center',
       wordBreak: 'break-word',
       overflow: 'hidden',
