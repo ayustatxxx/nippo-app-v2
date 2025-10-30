@@ -568,9 +568,10 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
     wordBreak: 'break-word' as 'break-word',
   };
 
-  // 上部の背景高さを調整
-  const backgroundHeight = nameTruncated ? '72%' : '67%';
-  const bottomBackgroundTop = nameTruncated ? '72%' : '67%';
+
+// 上部の背景高さを調整（可変）
+const backgroundHeight = '65vh'; // ビューポートの65%（画面サイズに応じて自動調整）
+const bottomBackgroundTop = '65vh';
   
   return (
     <div
@@ -670,9 +671,9 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
 <div
   style={{
     position: 'absolute',
-    bottom: '120px',
+    top: '65vh',
     left: '50%',
-    transform: 'translateX(-50%)',
+    transform: 'translate(-50%, -50%)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -681,7 +682,7 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
     maxWidth: '400px',
   }}
 >
-  {/* グループアイコン (正円) */}
+  {/* グループアイコン (正円) - 境界線の中心に配置 */}
   <div
     style={{
       width: '150px',
@@ -690,14 +691,14 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
       backgroundImage: 'url(https://placehold.jp//ffffff/400x400.png?text=Group)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
-      marginBottom: '15px',
+      marginBottom: '20px',
       border: '4px solid white',
       boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
       flexShrink: 0,
     }}
   />
   
-  {/* グループ名 */}
+  {/* グループ名 - アイコンから20px空ける */}
   <h1
     ref={groupNameRef}
     style={{
