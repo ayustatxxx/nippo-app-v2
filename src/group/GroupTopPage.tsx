@@ -1,4 +1,5 @@
 // GroupTopPage.tsx
+// 🧪 TEST: develop環境の動作確認
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Group } from '../types';
@@ -6,6 +7,7 @@ import { DBUtil, STORES } from '../utils/dbUtil';
 import GroupFooterNav from '../components/GroupFooterNav';
 import { getGroupWithFirestore } from '../utils/dbUtil';
 import UnifiedCoreSystem from '../core/UnifiedCoreSystem';
+
 
 
 const GroupTopPage: React.FC = () => {
@@ -659,6 +661,7 @@ console.log('📢 [GroupTopPage] チェックアウト通知を送信');
         </svg>
       </div>
       
+
       {/* グループアイコンと名前 */}
       <div
         style={{
