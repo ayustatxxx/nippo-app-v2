@@ -39,9 +39,10 @@ const InvitePage: React.FC = () => {
 
         setGroup(groupData);
 
-// ✅ ログイン済みユーザーの表示名を自動入力
-if (user && (user.displayName || user.username)) {
-  setDisplayName(user.displayName || user.username || '');
+
+// ✅ displayNameが設定済みのユーザーのみ自動入力
+if (user && user.displayName) {
+  setDisplayName(user.displayName);
 }
 
         // 既にメンバーかどうかチェック
@@ -295,7 +296,7 @@ if (user && (user.displayName || user.username)) {
     ユーザー名
   </label>
   
-  {currentUser?.displayName || currentUser?.username ? (
+  {currentUser?.displayName ? (
     // 既にユーザー名がある場合：表示のみ
     <div style={{
       width: '100%',
