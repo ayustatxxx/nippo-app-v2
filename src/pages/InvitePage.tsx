@@ -55,8 +55,13 @@ if (user && user.profileData && user.profileData.fullName) {
   // プロフィール設定済み
   setDisplayName(user.profileData.fullName);
   console.log('✅ profileData.fullNameを設定:', user.profileData.fullName);
-} else if (user && user.displayName) {
-  // displayNameのみ設定済み（他グループで既に使用）
+} else if (
+  user && 
+  user.displayName && 
+  user.displayName !== user.username &&
+  !user.displayName.startsWith(user.username)
+) {
+  // displayNameがusernameと異なり、かつusernameで始まらない = 手動設定された名前
   setDisplayName(user.displayName);
   console.log('✅ displayNameを設定:', user.displayName);
 } else {
