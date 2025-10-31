@@ -50,11 +50,18 @@ console.log('🔍 InvitePage デバッグ:', {
   'displayName state (前)': displayName
 });
 
+// プロフィール完了済みユーザー or displayName設定済みユーザー
 if (user && user.profileData && user.profileData.fullName) {
+  // プロフィール設定済み
   setDisplayName(user.profileData.fullName);
   console.log('✅ profileData.fullNameを設定:', user.profileData.fullName);
+} else if (user && user.displayName) {
+  // displayNameのみ設定済み（他グループで既に使用）
+  setDisplayName(user.displayName);
+  console.log('✅ displayNameを設定:', user.displayName);
 } else {
-  console.log('❌ プロフィール未設定 - 入力欄を表示');
+  // 完全な新規ユーザー
+  console.log('❌ 新規ユーザー - 入力欄を表示');
 }
 
 
@@ -309,7 +316,7 @@ if (user && user.profileData && user.profileData.fullName) {
     ユーザー名
   </label>
   
-  {displayName && currentUser?.profileData?.fullName ? (
+  {displayName && (currentUser?.profileData?.fullName || currentUser?.displayName) ? (
   // displayName stateに値があり、かつcurrentUser.displayNameも存在する場合のみ表示
   <div style={{
     width: '100%',
