@@ -40,6 +40,22 @@ const InvitePage: React.FC = () => {
         setGroup(groupData);
 
 
+        // ✅ displayNameが設定済みのユーザーのみ自動入力
+console.log('🔍 InvitePage デバッグ:', {
+  'user全体': user,
+  'user.displayName': user?.displayName,
+  'user.username': user?.username,
+  'displayName state (前)': displayName
+});
+
+if (user && user.displayName) {
+  setDisplayName(user.displayName);
+  console.log('✅ displayNameを設定:', user.displayName);
+} else {
+  console.log('❌ displayNameなし - 入力欄を表示');
+}
+
+
 // ✅ displayNameが設定済みのユーザーのみ自動入力
 if (user && user.displayName) {
   setDisplayName(user.displayName);
