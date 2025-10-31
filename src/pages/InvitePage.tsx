@@ -40,7 +40,7 @@ const InvitePage: React.FC = () => {
         setGroup(groupData);
 
 
-     // ✅ ユーザー名の自動設定（優先順位順）
+  // ✅ プロフィール設定済みユーザーのみ自動設定
 console.log('🔍 InvitePage デバッグ:', {
   'user全体': user,
   'user.displayName': user?.displayName,
@@ -50,23 +50,17 @@ console.log('🔍 InvitePage デバッグ:', {
   'displayName state (前)': displayName
 });
 
-// 優先順位: profileData.fullName > displayName > username
+// プロフィール設定済み（profileData.fullNameがある）かどうかで判定
 if (user && user.profileData && user.profileData.fullName) {
-  // 第1優先: プロフィールの正式名
+  // プロフィール設定済みユーザー → 自動表示
   setDisplayName(user.profileData.fullName);
-  console.log('✅ profileData.fullNameを設定:', user.profileData.fullName);
-} else if (user && user.displayName) {
-  // 第2優先: 表示名
-  setDisplayName(user.displayName);
-  console.log('✅ displayNameを設定:', user.displayName);
-} else if (user && user.username) {
-  // 第3優先: ユーザー名
-  setDisplayName(user.username);
-  console.log('✅ usernameを設定:', user.username);
+  console.log('✅ 既存ユーザー（profileData.fullName）:', user.profileData.fullName);
 } else {
-  // どれもない場合のみ新規ユーザー
-  console.log('❌ 新規ユーザー - 入力欄を表示');
+  // プロフィール未設定ユーザー → 入力欄を表示
+  console.log('❌ 新規ユーザー（profileData.fullNameなし） - 入力欄を表示');
+  // displayNameは空のままにする（入力欄が表示される）
 }
+
 
 
         // 既にメンバーかどうかチェック
@@ -307,30 +301,11 @@ if (user && user.profileData && user.profileData.fullName) {
 </div>
 
            
-            {/* ユーザー名入力フィールド - 修正版 */}
-{displayName ? (
-  // displayNameがあれば表示のみ（編集不可）
-  <div style={{
-    width: '100%',
-    padding: '0.8rem',
-    backgroundColor: '#ffffff88',
-    border: '1px solid #ffffff44',
-    borderRadius: '8px',
-    color: '#000',
-    fontSize: '1rem',
-    boxSizing: 'border-box',
-    fontWeight: 'bold'
-  }}>
-    {displayName}
-  </div>
-) : (
-  // displayNameがなければ入力欄を表示
-  <input
-    type="text"
-    value={displayName}
-    onChange={(e) => setDisplayName(e.target.value)}
-    placeholder="アプリ内で表示する名前"
-    style={{
+  {/* ユーザー名入力フィールド - 修正版 */}
+<div style={{ marginBottom: '2.5rem' }}>
+  {displayName ? (
+    // displayNameがあれば表示のみ（編集不可）
+    <div style={{
       width: '100%',
       padding: '0.8rem',
       backgroundColor: '#ffffff88',
@@ -338,10 +313,31 @@ if (user && user.profileData && user.profileData.fullName) {
       borderRadius: '8px',
       color: '#000',
       fontSize: '1rem',
-      boxSizing: 'border-box'
-    }}
-  />
-)}
+      boxSizing: 'border-box',
+      fontWeight: 'bold'
+    }}>
+      {displayName}
+    </div>
+  ) : (
+    // displayNameがなければ入力欄を表示
+    <input
+      type="text"
+      value={displayName}
+      onChange={(e) => setDisplayName(e.target.value)}
+      placeholder="アプリ内で表示する名前"
+      style={{
+        width: '100%',
+        padding: '0.8rem',
+        backgroundColor: '#ffffff88',
+        border: '1px solid #ffffff44',
+        borderRadius: '8px',
+        color: '#000',
+        fontSize: '1rem',
+        boxSizing: 'border-box'
+      }}
+    />
+  )}
+</div>
 
             {/* ボタン */}
             <div style={{ display: 'flex', gap: '1rem' }}>
