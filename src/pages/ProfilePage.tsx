@@ -764,7 +764,7 @@ const handleLogout = () => {
                           fontWeight: '500'
                         }}
                       >
-                        役職
+                        属性（職種・役職・担当業務）
                       </label>
                       <input
                         type="text"
@@ -1107,7 +1107,7 @@ const handleLogout = () => {
                           opacity: 0.8,
                           marginBottom: '0.4rem' 
                         }}>
-                          役職
+                          属性
                         </div>
                         <div style={{ 
                           fontSize: '1.1rem',
