@@ -39,6 +39,11 @@ const InvitePage: React.FC = () => {
 
         setGroup(groupData);
 
+// ✅ ログイン済みユーザーの表示名を自動入力
+if (user && (user.displayName || user.username)) {
+  setDisplayName(user.displayName || user.username || '');
+}
+
         // 既にメンバーかどうかチェック
         if (user && groupData.members) {
           const isAlreadyMember = groupData.members.some(
@@ -277,34 +282,54 @@ const InvitePage: React.FC = () => {
 </div>
 
             {/* ユーザー名入力フィールド - 修正版 */}
-            <div style={{ marginBottom: '2rem' }}>
-              <label style={{
-                display: 'block',
-                color: '#F0DB4F',
-                fontSize: '0.9rem',
-                fontWeight: '600',
-                marginBottom: '0.5rem',
-                textAlign: 'left'
-              }}>
-                ユーザー名
-              </label>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="アプリ内で表示する名前"
-                style={{
-                  width: '100%',
-                  padding: '0.8rem',
-                  backgroundColor: '#ffffff88',
-                  border: '1px solid #ffffff44',
-                  borderRadius: '8px',
-                  color: '#000',
-                  fontSize: '1rem',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
+            {/* ユーザー名入力フィールド - 修正版 */}
+<div style={{ marginBottom: '2rem' }}>
+  <label style={{
+    display: 'block',
+    color: '#F0DB4F',
+    fontSize: '0.9rem',
+    fontWeight: '600',
+    marginBottom: '0.5rem',
+    textAlign: 'left'
+  }}>
+    ユーザー名
+  </label>
+  
+  {currentUser?.displayName || currentUser?.username ? (
+    // 既にユーザー名がある場合：表示のみ
+    <div style={{
+      width: '100%',
+      padding: '0.8rem',
+      backgroundColor: '#ffffff88',
+      border: '1px solid #ffffff44',
+      borderRadius: '8px',
+      color: '#000',
+      fontSize: '1rem',
+      boxSizing: 'border-box',
+      fontWeight: 'bold'
+    }}>
+      {displayName}
+    </div>
+  ) : (
+    // ユーザー名がない場合：入力欄を表示
+    <input
+      type="text"
+      value={displayName}
+      onChange={(e) => setDisplayName(e.target.value)}
+      placeholder="アプリ内で表示する名前"
+      style={{
+        width: '100%',
+        padding: '0.8rem',
+        backgroundColor: '#ffffff88',
+        border: '1px solid #ffffff44',
+        borderRadius: '8px',
+        color: '#000',
+        fontSize: '1rem',
+        boxSizing: 'border-box'
+      }}
+    />
+  )}
+</div>
 
             {/* ボタン */}
             <div style={{ display: 'flex', gap: '1rem' }}>
