@@ -40,26 +40,28 @@ const InvitePage: React.FC = () => {
         setGroup(groupData);
 
 
-        // ✅ displayNameが設定済みのユーザーのみ自動入力
+        // ✅ プロフィール設定が完了しているユーザーのみ自動入力
 console.log('🔍 InvitePage デバッグ:', {
   'user全体': user,
   'user.displayName': user?.displayName,
   'user.username': user?.username,
+  'user.profileData': user?.profileData,
+  'user.profileData.fullName': user?.profileData?.fullName,
   'displayName state (前)': displayName
 });
 
-if (user && user.displayName) {
+if (user && user.profileData && user.profileData.fullName) {
+  // プロフィールのfullNameが設定されている場合
+  setDisplayName(user.profileData.fullName);
+  console.log('✅ profileData.fullNameを設定:', user.profileData.fullName);
+} else if (user && user.displayName && user.displayName !== user.username) {
+  // displayNameがusernameと異なる場合（手動設定）
   setDisplayName(user.displayName);
   console.log('✅ displayNameを設定:', user.displayName);
 } else {
-  console.log('❌ displayNameなし - 入力欄を表示');
+  console.log('❌ プロフィール未設定 - 入力欄を表示');
 }
 
-
-// ✅ displayNameが設定済みのユーザーのみ自動入力
-if (user && user.displayName) {
-  setDisplayName(user.displayName);
-}
 
         // 既にメンバーかどうかチェック
         if (user && groupData.members) {
@@ -312,7 +314,7 @@ if (user && user.displayName) {
     ユーザー名
   </label>
   
-  {displayName && currentUser?.displayName ? (
+  {displayName && currentUser?.profileData?.fullName ? (
   // displayName stateに値があり、かつcurrentUser.displayNameも存在する場合のみ表示
   <div style={{
     width: '100%',
