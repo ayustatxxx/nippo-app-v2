@@ -296,9 +296,29 @@ if (user && user.displayName) {
     ユーザー名
   </label>
   
-  {currentUser?.displayName ? (
-    // 既にユーザー名がある場合：表示のみ
-    <div style={{
+  {displayName && currentUser?.displayName ? (
+  // displayName stateに値があり、かつcurrentUser.displayNameも存在する場合のみ表示
+  <div style={{
+    width: '100%',
+    padding: '0.8rem',
+    backgroundColor: '#ffffff88',
+    border: '1px solid #ffffff44',
+    borderRadius: '8px',
+    color: '#000',
+    fontSize: '1rem',
+    boxSizing: 'border-box',
+    fontWeight: 'bold'
+  }}>
+    {displayName}
+  </div>
+) : (
+  // それ以外は入力欄
+  <input
+    type="text"
+    value={displayName}
+    onChange={(e) => setDisplayName(e.target.value)}
+    placeholder="アプリ内で表示する名前"
+    style={{
       width: '100%',
       padding: '0.8rem',
       backgroundColor: '#ffffff88',
@@ -306,30 +326,10 @@ if (user && user.displayName) {
       borderRadius: '8px',
       color: '#000',
       fontSize: '1rem',
-      boxSizing: 'border-box',
-      fontWeight: 'bold'
-    }}>
-      {displayName}
-    </div>
-  ) : (
-    // ユーザー名がない場合：入力欄を表示
-    <input
-      type="text"
-      value={displayName}
-      onChange={(e) => setDisplayName(e.target.value)}
-      placeholder="アプリ内で表示する名前"
-      style={{
-        width: '100%',
-        padding: '0.8rem',
-        backgroundColor: '#ffffff88',
-        border: '1px solid #ffffff44',
-        borderRadius: '8px',
-        color: '#000',
-        fontSize: '1rem',
-        boxSizing: 'border-box'
-      }}
-    />
-  )}
+      boxSizing: 'border-box'
+    }}
+  />
+)}
 </div>
 
             {/* ボタン */}
