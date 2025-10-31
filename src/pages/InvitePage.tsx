@@ -40,7 +40,7 @@ const InvitePage: React.FC = () => {
         setGroup(groupData);
 
 
-        // ✅ プロフィール設定が完了しているユーザーのみ自動入力
+     // ✅ ユーザー名の自動設定（優先順位順）
 console.log('🔍 InvitePage デバッグ:', {
   'user全体': user,
   'user.displayName': user?.displayName,
@@ -50,22 +50,21 @@ console.log('🔍 InvitePage デバッグ:', {
   'displayName state (前)': displayName
 });
 
-// プロフィール完了済みユーザー or displayName設定済みユーザー
+// 優先順位: profileData.fullName > displayName > username
 if (user && user.profileData && user.profileData.fullName) {
-  // プロフィール設定済み
+  // 第1優先: プロフィールの正式名
   setDisplayName(user.profileData.fullName);
   console.log('✅ profileData.fullNameを設定:', user.profileData.fullName);
-} else if (
-  user && 
-  user.displayName && 
-  user.displayName !== user.username &&
-  !user.displayName.startsWith(user.username)
-) {
-  // displayNameがusernameと異なり、かつusernameで始まらない = 手動設定された名前
+} else if (user && user.displayName) {
+  // 第2優先: 表示名
   setDisplayName(user.displayName);
   console.log('✅ displayNameを設定:', user.displayName);
+} else if (user && user.username) {
+  // 第3優先: ユーザー名
+  setDisplayName(user.username);
+  console.log('✅ usernameを設定:', user.username);
 } else {
-  // 完全な新規ユーザー
+  // どれもない場合のみ新規ユーザー
   console.log('❌ 新規ユーザー - 入力欄を表示');
 }
 
@@ -307,22 +306,10 @@ if (user && user.profileData && user.profileData.fullName) {
 </div>
 </div>
 
+           
             {/* ユーザー名入力フィールド - 修正版 */}
-            {/* ユーザー名入力フィールド - 修正版 */}
-<div style={{ marginBottom: '2rem' }}>
-  <label style={{
-    display: 'block',
-    color: '#F0DB4F',
-    fontSize: '0.9rem',
-    fontWeight: '600',
-    marginBottom: '0.5rem',
-    textAlign: 'left'
-  }}>
-    ユーザー名
-  </label>
-  
-  {displayName && (currentUser?.profileData?.fullName || currentUser?.displayName) ? (
-  // displayName stateに値があり、かつcurrentUser.displayNameも存在する場合のみ表示
+{displayName ? (
+  // displayNameがあれば表示のみ（編集不可）
   <div style={{
     width: '100%',
     padding: '0.8rem',
@@ -337,7 +324,7 @@ if (user && user.profileData && user.profileData.fullName) {
     {displayName}
   </div>
 ) : (
-  // それ以外は入力欄
+  // displayNameがなければ入力欄を表示
   <input
     type="text"
     value={displayName}
@@ -355,7 +342,6 @@ if (user && user.profileData && user.profileData.fullName) {
     }}
   />
 )}
-</div>
 
             {/* ボタン */}
             <div style={{ display: 'flex', gap: '1rem' }}>
