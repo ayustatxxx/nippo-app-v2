@@ -51,13 +51,8 @@ console.log('🔍 InvitePage デバッグ:', {
 });
 
 if (user && user.profileData && user.profileData.fullName) {
-  // プロフィールのfullNameが設定されている場合
   setDisplayName(user.profileData.fullName);
   console.log('✅ profileData.fullNameを設定:', user.profileData.fullName);
-} else if (user && user.displayName && user.displayName !== user.username) {
-  // displayNameがusernameと異なる場合（手動設定）
-  setDisplayName(user.displayName);
-  console.log('✅ displayNameを設定:', user.displayName);
 } else {
   console.log('❌ プロフィール未設定 - 入力欄を表示');
 }
