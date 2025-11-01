@@ -32,11 +32,11 @@ const MainFooterNav: React.FC = () => {
       isActive: isHomePage,
       label: "ホーム"
     },
-    
+
 {
   to: "/groups",
   icon: (isActive: boolean) => (
-    <svg width="34" height="34" viewBox="-2 0 28 24" fill="none" 
+    <svg width="29" height="29" viewBox="-2 0 27 24" fill="none" 
          stroke={isActive ? '#F0DB4F' : '#fff'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       {/* 中央の人物（上に移動） */}
       <circle cx="12" cy="7" r="3" />
@@ -57,7 +57,7 @@ const MainFooterNav: React.FC = () => {
     {
       to: "/profile",
       icon: (isActive: boolean) => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" 
+  <svg width="22" height="22" viewBox="0 0 23 23" fill="none" 
        stroke={isActive ? '#F0DB4F' : '#fff'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
           <circle cx="12" cy="7" r="4" />
@@ -111,43 +111,47 @@ const MainFooterNav: React.FC = () => {
           }}>
             {/* メニューアイテム（ホーム、グループ、プロフィール） */}
             {menuItems.map((item, index) => (
-              <Link 
-                key={item.to}
-                to={item.to}
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  width: "48px",
-                  height: "48px",
-                  borderRadius: "50%",
-                  backgroundColor: item.isActive ? "#ffffff22" : "transparent",
-                  transition: transitions.smooth,
-                  animationDelay: calculateStaggerDelay(index, 30),
-                  flexShrink: 0
-                }}
-                onTouchStart={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';
-                  (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff33" : "#ffffff11";
-                }}
-                onTouchEnd={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff22" : "transparent";
-                }}
-                onMouseDown={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';
-                }}
-                onMouseUp={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff22" : "transparent";
-                }}
-              >
-                {item.icon(item.isActive)}
-              </Link>
-            ))}
+  <Link 
+    key={item.to}
+    to={item.to}
+    onClick={(e) => {
+      // イベントの伝播を止める（親要素にクリックが伝わらない）
+      e.stopPropagation();
+    }}
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      width: "48px",
+      height: "48px",
+      borderRadius: "50%",
+      backgroundColor: item.isActive ? "#ffffff22" : "transparent",
+      transition: transitions.smooth,
+      animationDelay: calculateStaggerDelay(index, 30),
+      flexShrink: 0
+    }}
+    onTouchStart={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';
+      (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff33" : "#ffffff11";
+    }}
+    onTouchEnd={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+      (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff22" : "transparent";
+    }}
+    onMouseDown={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';
+    }}
+    onMouseUp={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+    }}
+    onMouseLeave={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+      (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff22" : "transparent";
+    }}
+  >
+    {item.icon(item.isActive)}
+  </Link>
+))}
           </div>
 
           {/* ×ボタンのみ右端固定 */}

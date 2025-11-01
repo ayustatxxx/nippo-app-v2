@@ -81,10 +81,54 @@ const GroupTopPage: React.FC = () => {
   const [isInitialized, setIsInitialized] = useState(false); 
   const [isLoadingCheckInState, setIsLoadingCheckInState] = useState(true); 
 
+
+// GroupTopPage読み込み時にフッターを必ず閉じる
+useEffect(() => {
+  console.log('🚪 GroupTopPage: フッターを閉じる処理実行', { groupId });
   
-  useEffect(() => {
-    // データ読み込み処理
-    const loadData = async () => {
+  const closeFooter = () => {
+    const footerState = {
+      showFooter: false,
+      showFAB: true,
+      animationTrigger: 'initial'
+    };
+    localStorage.setItem('footer-visibility-state', JSON.stringify(footerState));
+    window.dispatchEvent(new Event('storage'));
+    console.log('✅ フッター閉じる処理完了');
+  };
+  
+  // 即座に閉じる
+  closeFooter();
+  
+  // 念のため、複数回実行して確実に閉じる
+  const timerId1 = setTimeout(closeFooter, 50);
+  const timerId2 = setTimeout(closeFooter, 100);
+  const timerId3 = setTimeout(closeFooter, 200);
+  
+  return () => {
+    clearTimeout(timerId1);
+    clearTimeout(timerId2);
+    clearTimeout(timerId3);
+  };
+}, []); // 空の依存配列 = コンポーネントマウント時に1回だけ実行
+
+// groupId が変わった時にも閉じる
+useEffect(() => {
+  if (groupId) {
+    console.log('🔄 groupId変更: フッターを閉じる', { groupId });
+    const footerState = {
+      showFooter: false,
+      showFAB: true,
+      animationTrigger: 'initial'
+    };
+    localStorage.setItem('footer-visibility-state', JSON.stringify(footerState));
+    window.dispatchEvent(new Event('storage'));
+  }
+}, [groupId]);
+
+useEffect(() => {
+  // データ読み込み処理
+  const loadData = async () => {
       if (!groupId) {
         console.error('グループIDが見つかりません');
         return;
@@ -792,11 +836,11 @@ const bottomBackgroundTop = '65vh';
   )}
 </div>
       
-      {/* GroupFooterNavコンポーネントを使用（常に表示） */}
-      <GroupFooterNav 
-        activeTab={activeTab} 
-        onTabChange={handleTabChange} 
-      />
+     {/* GroupFooterNavコンポーネントを使用（常に表示） */}
+<GroupFooterNav 
+  activeTab={null as any}
+  onTabChange={handleTabChange} 
+/>
     </div>
   );
 };
