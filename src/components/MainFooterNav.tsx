@@ -32,6 +32,7 @@ const MainFooterNav: React.FC = () => {
       isActive: isHomePage,
       label: "ホーム"
     },
+    
 {
   to: "/groups",
   icon: (isActive: boolean) => (
