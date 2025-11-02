@@ -177,17 +177,21 @@ const WorkTimePostCard: React.FC<{
          {post.message.length > MAX_MESSAGE_LENGTH ? (
             <div>
               {`${post.message.substring(0, MAX_MESSAGE_LENGTH)}...`}
-              {post.isEdited && (
-                <span
-                  style={{
-                    color: '#F0DB4F',
-                    fontSize: '0.8rem',
-                    marginLeft: '0.5rem',
-                  }}
-                >
-                  （編集済み）
-                </span>
-              )}
+              {post.isEdited && !(
+  post.tags?.includes('#出退勤時間') && 
+  post.tags?.includes('#チェックイン') && 
+  post.tags?.includes('#チェックアウト')
+) && (
+  <span
+    style={{
+      color: '#F0DB4F',
+      fontSize: '0.8rem',
+      marginLeft: '0.5rem',
+    }}
+  >
+    （編集済み）
+  </span>
+)}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -212,24 +216,47 @@ const WorkTimePostCard: React.FC<{
           ) : (
             <div>
               {post.message}
-              {post.isEdited && (
-                <span
-                  style={{
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    fontSize: '0.8rem',
-                    marginLeft: '0.5rem',
-                  }}
-                >
-                  （編集済み）
-                </span>
-              )}
+              {(() => {
+  const shouldHideEdited = post.tags?.includes('#出退勤時間') && 
+                          post.tags?.includes('#チェックイン') && 
+                          post.tags?.includes('#チェックアウト');
+  
+  console.log('🔍 [編集済み判定]', {
+    postId: post.id,
+    isEdited: post.isEdited,
+    tags: post.tags,
+    shouldHideEdited: shouldHideEdited,
+    willShow: post.isEdited && !shouldHideEdited
+  });
+  
+  return null;
+})()}
+              {post.isEdited && !(
+  post.tags?.includes('#出退勤時間') && 
+  post.tags?.includes('#チェックイン') && 
+  post.tags?.includes('#チェックアウト')
+) && (
+  <span
+    style={{
+      color: '#F0DB4F',
+      fontSize: '0.8rem',
+      marginLeft: '0.5rem',
+    }}
+  >
+    （編集済み）
+  </span>
+)}
             </div>
           )}
         </div>
       )}
 
       {/* メッセージがない場合の編集済み表示 */}
-      {(!post.message || post.message.length === 0) && post.isEdited && (
+      {(!post.message || post.message.length === 0) && post.isEdited && !(
+  post.tags?.includes('#出退勤時間') && 
+  post.tags?.includes('#チェックイン') && 
+  post.tags?.includes('#チェックアウト')
+) && (
         <div
           style={{
             marginBottom: '0.8rem',
@@ -2260,31 +2287,39 @@ const PostDetailModal: React.FC<{
                     marginBottom: '1.5rem'
                   }}>
                     {displayPost.message}
-                    {displayPost.isEdited && (
-                      <span style={{
-                        color: 'rgba(5, 90, 104, 0.7)',
-                        fontSize: '0.85rem',
-                        marginLeft: '0.5rem'
-                      }}>
-                        （編集済み）
-                      </span>
-                    )}
+{displayPost.isEdited && !(
+  displayPost.tags?.includes('#出退勤時間') && 
+  displayPost.tags?.includes('#チェックイン') && 
+  displayPost.tags?.includes('#チェックアウト')
+) && (
+  <span style={{
+    color: 'rgba(5, 90, 104, 0.7)',
+    fontSize: '0.85rem',
+    marginLeft: '0.5rem'
+  }}>
+    （編集済み）
+  </span>
+)}
                   </div>
                 )}
     
                 {/* メッセージがない場合の編集済み表示 */}
-                {!displayPost.message && displayPost.isEdited && (
-                  <div style={{
-                    whiteSpace: 'pre-wrap',
-                    lineHeight: '1.6',
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    fontSize: '0.85rem',
-                    marginBottom: '1.5rem',
-                    fontStyle: 'italic'
-                  }}>
-                    （編集済み）
-                  </div>
-                )}
+{!displayPost.message && displayPost.isEdited && !(
+  displayPost.tags?.includes('#出退勤時間') && 
+  displayPost.tags?.includes('#チェックイン') && 
+  displayPost.tags?.includes('#チェックアウト')
+) && (
+  <div style={{
+    whiteSpace: 'pre-wrap',
+    lineHeight: '1.6',
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: '0.85rem',
+    marginBottom: '1.5rem',
+    fontStyle: 'italic'
+  }}>
+    （編集済み）
+  </div>
+)}
                 
                 {/* タグ */}
                 {displayPost.tags && displayPost.tags.length > 0 && (
@@ -3175,8 +3210,21 @@ const PostDetailModal: React.FC<{
           {date}
         </h3>
 
-        {postsForDate.map((post) =>
-          post.isWorkTimePost ? (
+        {postsForDate.map((post) => {
+  // デバッグ: isWorkTimePostの値を確認
+  if (post.tags?.includes('#出退勤時間') && 
+      post.tags?.includes('#チェックイン') && 
+      post.tags?.includes('#チェックアウト')) {
+    console.log('🔍 [ArchivePage レンダリング判定]', {
+      postId: post.id,
+      isWorkTimePost: post.isWorkTimePost,
+      isEdited: post.isEdited,
+      tags: post.tags,
+      message: post.message?.substring(0, 50)
+    });
+  }
+  
+  return post.isWorkTimePost ? (
             // 作業時間投稿の専用カードを表示
             <WorkTimePostCard
   key={post.id}
@@ -3296,10 +3344,19 @@ const PostDetailModal: React.FC<{
                       </button>
                     </div>
                   ) : (
-                    <div>
-                      {post.message}
-                    </div>
-                  )}
+  <div>
+    {post.message}
+    {post.isEdited && !(
+      post.tags?.includes('#出退勤時間') && 
+      post.tags?.includes('#チェックイン') && 
+      post.tags?.includes('#チェックアウト')
+    ) && (
+      <span style={{color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.8rem', marginLeft: '0.5rem'}}>
+        （編集済み）
+      </span>
+    )}
+  </div>
+)}
                 </div>
               )}
               {post.tags && post.tags.length > 0 && (
@@ -3600,8 +3657,8 @@ if (window.refreshArchivePage) {
 </div>
               </div>
             </div>
-          )
-        )}
+          );
+        })}
       </div>
     ))}
   </>

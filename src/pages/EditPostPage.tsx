@@ -202,6 +202,14 @@ useEffect(() => {
   // 🔒 セキュリティ強化: 安全な保存処理
   const handleSave = async () => {
     if (!post) return;
+
+    console.log('💾 [EditPostPage] 保存開始:', {
+  postId: post.id,
+  tags: editedTags,
+  hasチェックイン: editedTags?.includes('#チェックイン'),
+  hasチェックアウト: editedTags?.includes('#チェックアウト'),
+  現在時刻: new Date().toISOString()
+});
     
   try {
   setSaving(true);
@@ -357,6 +365,7 @@ try {
 
 alert('✅ 投稿を更新しました!');
 
+
 // 常に詳細ページに戻る
 const from = searchParams.get('from');
 const groupId = searchParams.get('groupId');
@@ -365,6 +374,15 @@ const params = new URLSearchParams();
 if (from) params.set('from', from);
 if (groupId) params.set('groupId', groupId);
 const paramString = params.toString() ? `?${params.toString()}` : '';
+
+console.log('💾 [EditPostPage] 保存完了・ナビゲーション開始:', {
+  postId: post.id,
+  保存後のtags: updatedPost.tags,
+  hasチェックイン: updatedPost.tags?.includes('#チェックイン'),
+  hasチェックアウト: updatedPost.tags?.includes('#チェックアウト'),
+  戻り先: from || 'post詳細',
+  現在時刻: new Date().toISOString()
+});
 
 navigate(`/post/${postId}${paramString}`);
 

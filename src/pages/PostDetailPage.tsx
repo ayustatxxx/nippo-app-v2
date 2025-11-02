@@ -708,21 +708,39 @@ const handleBack = () => {
     fontSize: '1rem',
     marginBottom: '1.5rem'
   }}>
-    {post.message}
-    {post.isEdited && (
-      <span style={{
-        color: 'rgba(5, 90, 104, 0.7)',
-        fontSize: '0.85rem',
-        marginLeft: '0.5rem'
-      }}>
-        （編集済み）
-      </span>
-    )}
+  {post.message}
+{(() => {
+  console.log('🔍 [編集済み判定]', {
+    isEdited: post.isEdited,
+    tags: post.tags,
+    has出退勤: post.tags?.includes('#出退勤時間'),
+    hasチェックイン: post.tags?.includes('#チェックイン'),
+    hasチェックアウト: post.tags?.includes('#チェックアウト'),
+  });
+  return null;
+})()}
+{post.isEdited && !(
+  post.tags?.includes('#出退勤時間') && 
+  post.tags?.includes('#チェックイン') && 
+  post.tags?.includes('#チェックアウト')
+) && (
+  <span style={{
+    color: '⬜rgba(5, 90, 104, 0.7)',
+    fontSize: '0.85rem',
+    marginLeft: '0.5rem'
+  }}>
+    （編集済み）
+  </span>
+)}
   </div>
 )}
 
 {/* メッセージがない場合の編集済み表示 */}
-{!post.message && post.isEdited && (
+{!post.message && post.isEdited && !(
+  post.tags?.includes('#出退勤時間') && 
+  post.tags?.includes('#チェックイン') && 
+  post.tags?.includes('#チェックアウト')
+) && (
   <div style={{
     whiteSpace: 'pre-wrap',
     lineHeight: '1.6',

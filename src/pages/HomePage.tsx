@@ -240,8 +240,12 @@ useEffect(() => {
             ? (
               <div>
                 {`${post.message.substring(0, 120)}...`}
-                {post.isEdited && (
-                  <span style={{
+                {post.isEdited && !(
+  post.tags?.includes('#出退勤時間') && 
+  post.tags?.includes('#チェックイン') && 
+  post.tags?.includes('#チェックアウト')
+) && (
+  <span style={{
                     color: 'rgba(5, 90, 104, 0.8)',
                     fontSize: '0.8rem',
                     marginLeft: '0.5rem'
@@ -274,8 +278,12 @@ useEffect(() => {
             : (
               <div>
                 {post.message}
-                {post.isEdited && (
-                  <span style={{
+               {post.isEdited && !(
+  post.tags?.includes('#出退勤時間') && 
+  post.tags?.includes('#チェックイン') && 
+  post.tags?.includes('#チェックアウト')
+) && (
+  <span style={{
                     color: 'rgba(5, 90, 104, 0.8)',
                     fontSize: '0.8rem',
                     marginLeft: '0.5rem'
@@ -290,8 +298,12 @@ useEffect(() => {
       )}
 
       {/* メッセージがない場合の編集済み表示 */}
-      {(!post.message || post.message.length === 0) && post.isEdited && (
-        <div style={{
+      {(!post.message || post.message.length === 0) && post.isEdited && !(
+  post.tags?.includes('#出退勤時間') && 
+  post.tags?.includes('#チェックイン') && 
+  post.tags?.includes('#チェックアウト')
+) && (
+  <div style={{
           marginBottom: '0.8rem',
           color: 'rgba(5, 90, 104, 0.8)',
           fontSize: '0.8rem',

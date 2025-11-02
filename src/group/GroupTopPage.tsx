@@ -216,7 +216,12 @@ useEffect(() => {
     const userIdFromStorage = localStorage.getItem("daily-report-user-id");
     if (userIdFromStorage && groupId) {
       console.log('🔄 ページ表示時: チェックイン状態を再確認');
-      await checkTodayWorkTimePost(userIdFromStorage);
+console.log('🔄 [デバッグ] ページ表示時の再確認:', {
+  userIdFromStorage,
+  groupId,
+  現在時刻: new Date().toISOString()
+});
+await checkTodayWorkTimePost(userIdFromStorage);
     }
   };
   
@@ -230,6 +235,12 @@ const checkTodayWorkTimePost = async (userId: string) => {
   try {
     setIsLoadingCheckInState(true);
     console.log('🔍 今日のチェックイン状態を確認中...');
+
+    console.log('🔍 [デバッグ] checkTodayWorkTimePost開始:', {
+  userId,
+  groupId,
+  現在時刻: new Date().toISOString()
+});
     
     const dbUtil = DBUtil.getInstance();
     await dbUtil.initDB();
@@ -301,6 +312,15 @@ const todayWorkTimePosts = posts.filter(post => {
     // 🔧 最新の投稿がチェックインかチェックアウトかを判定
     const hasCheckInTag = latestPost.tags?.includes('#チェックイン');
     const hasCheckOutTag = latestPost.tags?.includes('#チェックアウト');
+
+    console.log('🔍 [デバッグ] タグ判定:', {
+  postId: latestPost.id,
+  tags: latestPost.tags,
+  hasCheckInTag,
+  hasCheckOutTag,
+  判定結果: hasCheckInTag && !hasCheckOutTag ? 'チェックイン中' : 
+           hasCheckOutTag ? 'チェックアウト済み' : '不明'
+});
 
     if (hasCheckInTag && !hasCheckOutTag) {
       // 最新がチェックイン → チェックイン中
@@ -521,67 +541,90 @@ window.dispatchEvent(new CustomEvent('postsUpdated'));
         alert('チェックイン記録の保存に失敗しました。もう一度お試しください。');
       }
       
-    } else {
-      // チェックアウト処理
-      try {
-        console.log('🔴 チェックアウト処理開始');
-        
-        // 作業時間を計算（実際の時間差）
-        let hours = 0;
-        let minutes = 0;
-        
-        if (checkInTime) {
-          const duration = Math.floor((now.getTime() - checkInTime) / 1000 / 60); // 分単位
-          hours = Math.floor(duration / 60);
-          minutes = duration % 60;
-          console.log(`⏱️ 作業時間計算: ${hours}時間${minutes}分`);
-        } else {
-          // フォールバック（チェックイン時刻が不明な場合）
-          hours = 8;
-          minutes = 0;
-          console.log('⚠️ チェックイン時刻不明、デフォルト値使用');
-        }
-        
-        const postId = await UnifiedCoreSystem.savePost({
-          message: `作業終了: ${time}\n日時: ${date}　${time}\n作業時間: ${hours}時間${minutes}分`,
-          files: [],
-          tags: ["#出退勤時間", "#チェックアウト"],
-          groupId: groupId,
-        });
-
-        console.log('✅ チェックアウト投稿保存完了:', postId);
-
-// ⭐ ここから追加：HomePageとArchivePageに通知 ⭐
-const updateFlag = Date.now().toString();  // ← ✅ 数値のみ！
-localStorage.setItem('daily-report-posts-updated', updateFlag);
-localStorage.setItem('posts-need-refresh', 'true');  // ← ✅ 'true'に統一
-console.log('🔍 [デバッグ] チェックアウト通知:', updateFlag);
-
-// HomePageのキャッシュを強制無効化
-if (window.forceRefreshPosts) {
-  window.forceRefreshPosts();
-}
-
-// イベント発火
-window.dispatchEvent(new Event('storage'));
-window.dispatchEvent(new CustomEvent('postsUpdated'));
-window.dispatchEvent(new CustomEvent('refreshPosts'));
-
-console.log('📢 [GroupTopPage] チェックアウト通知を送信');
-        
-        // 状態をリセット
-        setIsCheckedIn(false);
-        setCheckInPostId(null);
-        setCheckInTime(null);
-        
-        // 成功メッセージ
-        alert(`✅ 作業終了を記録しました (${time})\n作業時間: ${hours}時間${minutes}分`);
-        
-      } catch (error) {
-        console.error('❌ チェックアウト保存エラー:', error);
-        alert('チェックアウト記録の保存に失敗しました。もう一度お試しください。');
-      }
+   } else {
+  // 🟠 チェックアウト処理開始
+  console.log('🟠 チェックアウト処理開始');
+  
+  if (!checkInPostId) {
+    alert('❌ チェックイン情報が見つかりません');
+    return;
+  }
+  
+  try {
+    // 既存のチェックイン投稿を取得
+    const dbUtil = DBUtil.getInstance();
+    await dbUtil.initDB();
+    const checkInPost = await dbUtil.get(STORES.POSTS, checkInPostId) as any;
+    
+    if (!checkInPost) {
+      alert('❌ チェックイン投稿が見つかりません');
+      return;
     }
+    
+    // 作業時間を計算
+    const checkOutTime = new Date().getTime();
+    const workDuration = checkOutTime - (checkInTime || 0);
+    const hours = Math.floor(workDuration / (1000 * 60 * 60));
+    const minutes = Math.floor((workDuration % (1000 * 60 * 60)) / (1000 * 60));
+    
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const date = `${now.getFullYear()} / ${now.getMonth() + 1} / ${now.getDate()}（${['日', '月', '火', '水', '木', '金', '土'][now.getDay()]}）`;
+    
+    // メッセージを更新（終了時刻を追加）
+    const updatedMessage = `${checkInPost.message}\n作業終了: ${time}`;
+    
+    // タグを更新（#チェックアウトを追加）
+    const updatedTags = [...(checkInPost.tags || [])];
+    if (!updatedTags.includes('#チェックアウト')) {
+      updatedTags.push('#チェックアウト');
+    }
+    
+    // 投稿を更新
+    await UnifiedCoreSystem.updatePost(checkInPostId, {
+      message: updatedMessage,
+      tags: updatedTags
+    });
+    
+    console.log('✅ チェックアウト完了:', checkInPostId);
+    
+    // 通知を送信
+    const updateFlag = Date.now().toString();
+    localStorage.setItem('daily-report-posts-updated', updateFlag);
+    localStorage.setItem('posts-need-refresh', 'true');
+    
+    // HomePageのキャッシュを強制無効化
+    if (window.forceRefreshPosts) {
+      window.forceRefreshPosts();
+    }
+    
+    // イベント発火
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('postsUpdated', {
+      detail: {
+        updatedPost: checkInPostId,
+        timestamp: Date.now(),
+        source: 'GroupTopPage',
+        action: 'checkout'
+      }
+    }));
+    window.dispatchEvent(new CustomEvent('refreshPosts'));
+    
+    console.log('📢 [GroupTopPage] チェックアウト通知を送信');
+    
+    // 状態をリセット
+    setIsCheckedIn(false);
+    setCheckInPostId(null);
+    setCheckInTime(null);
+    
+    // 成功メッセージ
+    alert(`✅ 作業終了を記録しました (${time})\n作業時間: ${hours}時間${minutes}分`);
+    
+  } catch (error) {
+    console.error('❌ チェックアウト更新エラー:', error);
+    alert('チェックアウト記録の更新に失敗しました。もう一度お試しください。');
+  }
+}
   } catch (error) {
     console.error('作業時間記録エラー:', error);
     alert('作業時間の記録に失敗しました');
