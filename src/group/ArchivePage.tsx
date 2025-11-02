@@ -2508,17 +2508,17 @@ const PostDetailModal: React.FC<{
   
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background:
-          'linear-gradient(to top, rgb(7, 112, 144), rgb(7, 107, 127), rgb(0, 102, 114))',
-        padding: '1.5rem',
-        boxSizing: 'border-box',
-        paddingTop: '4rem', // ヘッダーの高さ分のパディングを追加
-        paddingBottom: '80px', // フッター分の余白を追加
-      }}
-    >
+   <div
+  style={{
+    minHeight: '100vh',
+    background:
+      'linear-gradient(to top, rgb(7, 112, 144), rgb(7, 107, 127), rgb(0, 102, 114))',
+    padding: '1.5rem',
+    boxSizing: 'border-box',
+    paddingTop: '6.5rem',
+    paddingBottom: '80px',
+  }}
+>
       <div
         style={{
           maxWidth: '480px',
@@ -2528,7 +2528,6 @@ const PostDetailModal: React.FC<{
             : '0rem',
         }}
       >
-        ,
         <style>
           {`
             @keyframes fadeIn {
@@ -2538,25 +2537,31 @@ const PostDetailModal: React.FC<{
           `}
         </style>
         {/* ヘッダー部分 - 固定表示 */}
-        <div
-          style={{
-            position: 'fixed', // 画面上部に固定
-            top: 0,
-            left: 0,
-            width: '100%',
-            zIndex: 100,
-            background:
-              'linear-gradient(to right, rgb(0, 102, 114), rgb(7, 107, 127))', // ヘッダー背景
-            padding: '0.65rem',
-            boxSizing: 'border-box',
-          }}
-        >
+       <div
+  style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '60px',
+    zIndex: 100,
+    background:
+      'linear-gradient(to right, rgb(0, 102, 114), rgb(7, 107, 127))',
+    display: 'flex',
+    alignItems: 'center',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+    boxSizing: 'border-box',
+  }}
+>
           <div
-            style={{
-              maxWidth: '480px',
-              margin: '0 auto',
-            }}
-          >
+  style={{
+    maxWidth: '480px',
+    margin: '0 auto',
+    width: '100%',
+    padding: '0 1.5rem',
+    boxSizing: 'border-box',
+  }}
+>
             <div
               style={{
                 display: 'flex',
@@ -2590,29 +2595,19 @@ const PostDetailModal: React.FC<{
 }}
               >
                 <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#F0DB4F"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ marginRight: '0.5rem' }}
-                >
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#F0DB4F"
+  strokeWidth="2"
+  strokeLinecap="round"
+  strokeLinejoin="round"
+>
+  <path d="M15 18l-6-6 6-6" />
+</svg>
 
-                <h2
-                  style={{
-                    fontSize: '2rem',
-                    letterSpacing: '0.03em',
-                    color: '#F0DB4F',
-                    margin: 0,
-                  }}
-                >
-                  Archive
-                </h2>
+           
               </div>
 
               {/* 検索アイコン - アクティブ状態を視覚的に表示 */}
@@ -3102,9 +3097,29 @@ const PostDetailModal: React.FC<{
             </>
           )}
         </div>
-        )}
+       )}
        
-        
+        {/* ページタイトル - GroupListPageと同じスタイル */}
+        {!loading && (
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '1.5rem',
+            maxWidth: '480px',
+            width: '100%',
+            margin: '0 auto 1.5rem auto',
+          }}>
+            <h2 style={{ 
+              fontSize: '2rem', 
+              letterSpacing: '0.01em', 
+              color: '#F0DB4F', 
+              margin: 0 
+            }}>
+              Archive
+            </h2>
+          </div>
+        )}
 
 {/* 投稿リスト */}
 {!loading && (

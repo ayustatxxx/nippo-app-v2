@@ -78,7 +78,6 @@ const GroupTopPage: React.FC = () => {
   const [checkInPostId, setCheckInPostId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false); // 処理中フラグ
   const [checkInTime, setCheckInTime] = useState<number | null>(null); // チェックイン時刻
-  const [isInitialized, setIsInitialized] = useState(false); 
   const [isLoadingCheckInState, setIsLoadingCheckInState] = useState(true); 
 
 
@@ -197,15 +196,10 @@ try {
   }
 
   
-  // 今日の作業時間投稿を確認（初回のみ）
-if (!isInitialized) {
-  console.log('📍 checkTodayWorkTimePost 呼び出し直前');
-  await checkTodayWorkTimePost(userIdFromStorage);
-  console.log('📍 checkTodayWorkTimePost 呼び出し直後');
-  setIsInitialized(true);
-} else {
-  console.log('📍 checkTodayWorkTimePost スキップ（既に初期化済み）');
-}
+// 今日の作業時間投稿を確認（ページに戻るたびに実行）
+console.log('📍 checkTodayWorkTimePost 呼び出し直前');
+await checkTodayWorkTimePost(userIdFromStorage);
+console.log('📍 checkTodayWorkTimePost 呼び出し直後');
 
     
   } catch (error) {
@@ -215,6 +209,20 @@ if (!isInitialized) {
 
 loadData();
 }, [groupId]);
+
+// ページが表示されるたびにチェックイン状態を再確認
+useEffect(() => {
+  const recheckCheckInState = async () => {
+    const userIdFromStorage = localStorage.getItem("daily-report-user-id");
+    if (userIdFromStorage && groupId) {
+      console.log('🔄 ページ表示時: チェックイン状態を再確認');
+      await checkTodayWorkTimePost(userIdFromStorage);
+    }
+  };
+  
+  recheckCheckInState();
+}, []);
+
   
 
  // 今日の作業時間投稿を確認（改善版）
@@ -246,14 +254,25 @@ const checkTodayWorkTimePost = async (userId: string) => {
     }
     
     // 🔧 新しいロジック：今日の全ての出退勤投稿を取得
-    const todayWorkTimePosts = posts.filter(post => {
-      const isUserMatch = post.userId === userId;
-      const isGroupMatch = post.groupId === groupId;
-      const hasWorkTimeTag = post.tags?.includes('#出退勤時間');
-      const isToday = post.createdAt && new Date(post.createdAt).toDateString() === today.toDateString();
-      
-      return isUserMatch && isGroupMatch && hasWorkTimeTag && isToday;
-    });
+const todayWorkTimePosts = posts.filter(post => {
+  const isUserMatch = post.userId === userId;
+  const isGroupMatch = post.groupId === groupId;
+  const hasWorkTimeTag = post.tags?.includes('#出退勤時間');
+  const isToday = !post.createdAt || new Date(post.createdAt).toDateString() === today.toDateString();
+  
+  // デバッグログ：各投稿の詳細を確認
+  console.log('🔍 [フィルタリング] 投稿チェック:', post.id);
+  console.log('  - userId一致:', isUserMatch, `(${post.userId} === ${userId})`);
+  console.log('  - groupId一致:', isGroupMatch, `(${post.groupId} === ${groupId})`);
+  console.log('  - タグ一致:', hasWorkTimeTag, '(タグ:', post.tags, ')');
+  console.log('  - 今日の投稿:', isToday);
+  if (post.createdAt) {
+    console.log('    投稿日時:', new Date(post.createdAt).toDateString());
+    console.log('    今日の日付:', today.toDateString());
+  }
+  
+  return isUserMatch && isGroupMatch && hasWorkTimeTag && isToday;
+});
 
     console.log('📦 今日の出退勤投稿数:', todayWorkTimePosts.length);
 
@@ -460,10 +479,10 @@ const handleCheckInOut = async () => {
         console.log('🔵 チェックイン処理開始');
         
         const postId = await UnifiedCoreSystem.savePost({
-          message: `作業開始: ${time}\n日時: ${date}　${time}`,
+          message: `作業開始: ${time}\n日付: ${date}`,
           files: [],
           tags: ["#出退勤時間", "#チェックイン"],
-          groupId: groupId
+          groupId: groupId,
         });
 
         console.log('✅ チェックイン投稿保存完了:', postId);
@@ -527,7 +546,7 @@ window.dispatchEvent(new CustomEvent('postsUpdated'));
           message: `作業終了: ${time}\n日時: ${date}　${time}\n作業時間: ${hours}時間${minutes}分`,
           files: [],
           tags: ["#出退勤時間", "#チェックアウト"],
-          groupId: groupId
+          groupId: groupId,
         });
 
         console.log('✅ チェックアウト投稿保存完了:', postId);

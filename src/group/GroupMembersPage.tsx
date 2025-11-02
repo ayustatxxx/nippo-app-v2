@@ -443,25 +443,30 @@ const deleteSelectedMembers = async () => {
     >
       {/* ヘッダー部分 - 固定表示 */}
       <div
-        style={{
-          position: 'fixed', // 'sticky'から'fixed'に変更
-          top: 0,
-          left: 0,
-          width: '100%',
-          zIndex: 100,
-          background:
-            'linear-gradient(to right, rgb(0, 102, 114), rgb(7, 107, 127))', // ヘッダー背景
-          padding: '0.65rem',
-          boxSizing: 'border-box',
-          //borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        }}
-      >
+  style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '60px',
+    zIndex: 100,
+    background:
+      'linear-gradient(to right, rgb(0, 102, 114), rgb(7, 107, 127))',
+    display: 'flex',
+    alignItems: 'center',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+    boxSizing: 'border-box',
+  }}
+>
         <div
-          style={{
-            maxWidth: '480px',
-            margin: '0 auto',
-          }}
-        >
+  style={{
+    maxWidth: '480px',
+    margin: '0 auto',
+    width: '100%',
+    padding: '0 1.5rem',
+    boxSizing: 'border-box',
+  }}
+>
           <div
             style={{
               display: 'flex',
@@ -492,30 +497,18 @@ const deleteSelectedMembers = async () => {
                 navigate(`/group/${groupId}${paramString}`);
               }}
             >
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#F0DB4F"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ marginRight: '0.5rem' }}
-              >
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-
-              <h2
-                style={{
-                  fontSize: '2rem',
-                  letterSpacing: '0.03em',
-                  color: '#F0DB4F',
-                  margin: 0,
-                }}
-              >
-                Members
-              </h2>
+             <svg
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#F0DB4F"
+  strokeWidth="2"
+  strokeLinecap="round"
+  strokeLinejoin="round"
+>
+  <path d="M15 18l-6-6 6-6" />
+</svg>
             </div>
 
             {/* 管理者の場合のみ表示するメンバー招待ボタン */}
@@ -552,7 +545,7 @@ const deleteSelectedMembers = async () => {
           flex: 1,
           overflowY: 'auto',
           padding: '1.5rem',
-          paddingTop: '6rem', // ヘッダーの高さ分のパディングを追加
+          paddingTop: '6.5rem', // ヘッダーの高さ分のパディングを追加
           boxSizing: 'border-box',
           paddingBottom: '5rem', // フッターの高さよりも大きくする
         }}
@@ -584,6 +577,25 @@ const deleteSelectedMembers = async () => {
                 `}
               </style>
               メンバー情報を読み込み中...
+            </div>
+          )}
+
+          {/* ページタイトル - GroupListPageと同じスタイル */}
+          {!loading && (
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: '1.5rem' 
+            }}>
+              <h2 style={{ 
+                fontSize: '2rem', 
+                letterSpacing: '0.01em', 
+                color: '#F0DB4F', 
+                margin: 0 
+              }}>
+                Members
+              </h2>
             </div>
           )}
 

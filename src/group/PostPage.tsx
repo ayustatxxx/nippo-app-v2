@@ -571,22 +571,28 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
     >
       {/* 入力画面のみヘッダーを表示 */}
       {!isConfirmationMode && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            zIndex: 100,
-            background: 'linear-gradient(to right, rgb(0, 102, 114), rgb(7, 107, 127))',
-            padding: '0.65rem',
-            boxSizing: 'border-box',
-          }}
-        >
-          <div style={{ 
-            maxWidth: '480px', 
-            margin: '0 auto',
-          }}>
+       <div
+  style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '60px',  // ← 追加
+    zIndex: 100,
+    background: 'linear-gradient(to right, rgb(0, 102, 114), rgb(7, 107, 127))',
+    display: 'flex',  // ← 追加
+    alignItems: 'center',  // ← 追加
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',  // ← 追加
+    boxSizing: 'border-box',
+  }}
+>
+         <div style={{ 
+  maxWidth: '480px', 
+  margin: '0 auto',
+  width: '100%',
+  padding: '0 1.5rem',
+  boxSizing: 'border-box',
+}}>
             <div
               style={{
                 display: 'flex',
@@ -632,14 +638,7 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
                 
-                <h2 style={{ 
-                  fontSize: '2rem', 
-                  letterSpacing: "0.03em", 
-                  color: '#F0DB4F', 
-                  margin: '0'
-                }}>
-                  Daily Post
-                </h2>
+               
               </div>
             </div>
           </div>
@@ -648,15 +647,15 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
 
       {/* スクロール可能なコンテンツエリア */}
       <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '1.5rem',
-          paddingTop: isConfirmationMode ? '1.5rem' : '6.5rem',
-          boxSizing: 'border-box',
-          paddingBottom: '5rem',
-        }}
-      >
+  style={{
+    flex: 1,
+    overflowY: 'auto',
+    padding: '1.5rem',
+    paddingTop: isConfirmationMode ? '1.5rem' : '6.5rem',
+    boxSizing: 'border-box',
+    paddingBottom: '5rem',
+  }}
+>
         <div style={{ maxWidth: '480px', margin: '0 auto' }}>
           {isConfirmationMode ? (
             // 確認画面
@@ -669,10 +668,27 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
               onCancel={handleCancelConfirmation}
             />
           ) : (
-            // 入力画面 - コンテナスタイルを適用
-            <div style={{ width: "100%" }}>
-              {/* セキュリティエラー表示 */}
-              {validationErrors.length > 0 && (
+           // 入力画面 - コンテナスタイルを適用
+<div style={{ width: "100%" }}>
+  {/* ページタイトル - GroupListPageと同じスタイル */}
+  <div style={{ 
+    display: 'flex', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: '1.5rem' 
+  }}>
+    <h2 style={{ 
+      fontSize: '2rem', 
+      letterSpacing: '0.01em', 
+      color: '#F0DB4F', 
+      margin: 0 
+    }}>
+      Daily Post
+    </h2>
+  </div>
+
+  {/* セキュリティエラー表示 */}
+  {validationErrors.length > 0 && (
                 <div style={{
                   backgroundColor: "#ff555522",
                   color: "#ff5555",
