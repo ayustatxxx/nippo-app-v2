@@ -226,7 +226,7 @@ await checkTodayWorkTimePost(userIdFromStorage);
   };
   
   recheckCheckInState();
-}, []);
+}, [groupId]);
 
   
 

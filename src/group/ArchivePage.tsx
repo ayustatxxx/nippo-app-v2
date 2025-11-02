@@ -675,6 +675,35 @@ const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number =
 
 
 const ArchivePage: React.FC = () => {
+  // 🆕 作業時間を計算する関数
+  const calculateWorkDuration = (message: string): string | null => {
+    const startTimeMatch = message.match(/作業開始:\s*(\d{2}):(\d{2})/);
+    const endTimeMatch = message.match(/作業終了:\s*(\d{2}):(\d{2})/);
+    
+    if (!startTimeMatch || !endTimeMatch) {
+      return null;
+    }
+    
+    const startHour = parseInt(startTimeMatch[1]);
+    const startMinute = parseInt(startTimeMatch[2]);
+    const endHour = parseInt(endTimeMatch[1]);
+    const endMinute = parseInt(endTimeMatch[2]);
+    
+    // 分単位に変換
+    const startTotalMinutes = startHour * 60 + startMinute;
+    let endTotalMinutes = endHour * 60 + endMinute;
+    
+    // 日付をまたぐ場合の対応
+    if (endTotalMinutes < startTotalMinutes) {
+      endTotalMinutes += 24 * 60;
+    }
+    
+    const durationMinutes = endTotalMinutes - startTotalMinutes;
+    const hours = Math.floor(durationMinutes / 60);
+    const minutes = durationMinutes % 60;
+    
+    return `${hours}時間${minutes}分`;
+  };
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams(); 
@@ -3388,6 +3417,25 @@ const PostDetailModal: React.FC<{
                   ))}
                 </div>
               )}
+
+              {/* 🆕 作業時間の自動計算表示 */}
+{post.tags?.includes('#チェックイン') && post.tags?.includes('#チェックアウト') && (() => {
+  const duration = calculateWorkDuration(post.message || '');
+  return duration ? (
+    <div style={{
+      marginTop: '0.75rem',
+      padding: '0.5rem 0.75rem',
+      backgroundColor: '#E6F7FF',
+      borderLeft: '3px solid #1890FF',
+      borderRadius: '4px',
+      fontSize: '0.9rem',
+      color: '#055A68',
+      fontWeight: '600'
+    }}>
+      ⏱️ 作業時間: {duration}
+    </div>
+  ) : null;
+})()}
 
               {post.photoUrls && post.photoUrls.length > 0 && (
                 <div

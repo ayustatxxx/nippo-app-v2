@@ -22,6 +22,10 @@ const EditPostPage: React.FC = () => {
   
   // 編集用の状態
   const [editedMessage, setEditedMessage] = useState('');
+  // 時刻編集用の状態
+const [startTime, setStartTime] = useState<string>('');
+const [endTime, setEndTime] = useState<string>('');
+const [hasCheckOut, setHasCheckOut] = useState(false);
   const [editedTags, setEditedTags] = useState<string[]>([]);
   const [editedPhotos, setEditedPhotos] = useState<FileList | null>(null);
   const [newPhotoUrls, setNewPhotoUrls] = useState<string[]>([]);
@@ -72,9 +76,30 @@ const EditPostPage: React.FC = () => {
     }
     
     setPost(postData);
-    setEditedMessage(postData.message || '');
-    setEditedTags(postData.tags || []);
+
+// 🆕 メッセージから時刻を抽出
+const messageText = postData.message || '';
+const startTimeMatch = messageText.match(/作業開始:\s*(\d{2}:\d{2})/);
+const endTimeMatch = messageText.match(/作業終了:\s*(\d{2}:\d{2})/);
+
+if (startTimeMatch) {
+  setStartTime(startTimeMatch[1]);
+}
+if (endTimeMatch) {
+  setEndTime(endTimeMatch[1]);
+  setHasCheckOut(true);
+}
+
+// 🆕 メッセージから時刻部分を削除して表示
+const messageWithoutTime = messageText
+  .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+  .trim();
+
+setEditedMessage(messageWithoutTime);
+setEditedTags(postData.tags || []);
   } else {
+
     // 投稿が見つからない場合
     setError('指定された投稿が見つかりません');
   }
@@ -137,14 +162,20 @@ useEffect(() => {
   
   // 変更検知
   useEffect(() => {
-    if (!post) return;
-    
-    const messageChanged = editedMessage !== (post.message || '');
-    const tagsChanged = JSON.stringify(editedTags) !== JSON.stringify(post.tags || []);
-    const photosChanged = newPhotoUrls.length > 0 || deletedPhotoUrls.length > 0;
-    
-    setHasChanges(messageChanged || tagsChanged || photosChanged);
-  }, [editedMessage, editedTags, newPhotoUrls, deletedPhotoUrls, post]);
+  if (!post) return;
+  
+  const messageChanged = editedMessage !== (post.message || '');
+  const tagsChanged = JSON.stringify(editedTags) !== JSON.stringify(post.tags || []);
+  const photosChanged = newPhotoUrls.length > 0 || deletedPhotoUrls.length > 0;
+  
+  // 🆕 時刻の変更も検知
+  const messageText = post.message || '';
+  const originalStartTime = messageText.match(/作業開始:\s*(\d{2}:\d{2})/)?.[1] || '';
+  const originalEndTime = messageText.match(/作業終了:\s*(\d{2}:\d{2})/)?.[1] || '';
+  const timeChanged = startTime !== originalStartTime || endTime !== originalEndTime;
+  
+  setHasChanges(messageChanged || tagsChanged || photosChanged || timeChanged);
+}, [editedMessage, editedTags, newPhotoUrls, deletedPhotoUrls, post, startTime, endTime]);
   
   // 🔒 セキュリティ強化: 入力値サニタイゼーション
   const sanitizeInput = (input: string): string => {
@@ -154,6 +185,14 @@ useEffect(() => {
       .replace(/on\\w+=/gi, '') // イベントハンドラを除去
       .trim();
   };
+
+  // 🆕 メッセージから時刻情報を削除する関数
+const removeTimeFromMessage = (message: string): string => {
+  return message
+    .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+    .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+    .trim();
+};
   
   // 🔒 セキュリティ強化: メッセージ入力処理
   const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -277,8 +316,26 @@ console.log('  - 残りの画像:', remainingPhotos.length, '枚');
 console.log('  - 新規画像(Base64):', additionalPhotoUrls.length, '枚');
 console.log('  - 新規画像(File):', editedPhotos ? editedPhotos.length : 0, '枚');
 
-// 🔒 セキュリティ強化: 入力値の最終検証
-const sanitizedMessage = sanitizeInput(editedMessage).substring(0, 5000);
+
+// 🆕 時刻入力欄の値でメッセージを再構築（時刻を先頭に配置）
+let timePrefix = '';
+if (startTime) {
+  timePrefix += `作業開始: ${startTime}\n`;
+}
+if (hasCheckOut && endTime) {
+  timePrefix += `作業終了: ${endTime}\n`;
+}
+
+// メッセージから既存の時刻情報を削除
+const cleanMessage = editedMessage
+  .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+  .trim();
+
+// 時刻 + メッセージの順で結合
+const reconstructedMessage = timePrefix + cleanMessage;
+
+const sanitizedMessage = sanitizeInput(reconstructedMessage).substring(0, 5000);
 const validTags = editedTags.filter(tag => tag.length <= 50);
 
 // 更新されたデータ
@@ -623,6 +680,90 @@ try {
             </div>
           </div>
         </div>
+
+
+
+         {/* 🆕 時刻編集 */}
+{(editedTags.includes('#チェックイン') || editedTags.includes('#チェックアウト')) && (
+  <div style={{
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    padding: '1.5rem',
+    marginBottom: '1rem',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+  }}>
+    <label style={{
+      display: 'block',
+      marginBottom: '0.5rem',
+      color: '#055A68',
+      fontWeight: '600',
+      fontSize: '0.95rem'
+    }}>
+      ⏰ 時刻の編集
+    </label>
+    
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem'
+    }}>
+      {/* 開始時刻 */}
+      <div>
+        <label style={{
+          display: 'block',
+          marginBottom: '0.25rem',
+          color: '#666',
+          fontSize: '0.9rem'
+        }}>
+          開始時刻
+        </label>
+        <input
+          type="time"
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '0.75rem',
+            border: '2px solid #E6EDED',
+            borderRadius: '8px',
+            fontSize: '1rem',
+            fontFamily: 'inherit',
+            boxSizing: 'border-box'
+          }}
+        />
+      </div>
+      
+      {/* 終了時刻（チェックアウト済みの場合のみ） */}
+      {hasCheckOut && (
+        <div>
+          <label style={{
+            display: 'block',
+            marginBottom: '0.25rem',
+            color: '#666',
+            fontSize: '0.9rem'
+          }}>
+            終了時刻
+          </label>
+          <input
+            type="time"
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '2px solid #E6EDED',
+              borderRadius: '8px',
+              fontSize: '1rem',
+              fontFamily: 'inherit',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
         
         {/* メッセージ編集 */}
         <div style={{
@@ -779,6 +920,8 @@ try {
             </div>
           )}
         </div>
+
+       
         
         {/* 既存写真表示・削除 */}
         {post.photoUrls && post.photoUrls.length > 0 && (
