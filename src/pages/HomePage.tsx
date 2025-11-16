@@ -44,7 +44,27 @@ import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
     return `${hours}時間${minutes}分`;
   };
 
+// 🆕 メッセージから時刻情報を削除する関数
+const removeTimeInfo = (message: string): string => {
+  return message
+    .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+    .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+    .replace(/日付:[^\n]+\n?/g, '')
+    .trim();
+};
 
+// 🆕 時刻情報を抽出する関数
+const extractTimeInfo = (message: string) => {
+  const startTimeMatch = message.match(/作業開始:\s*(\d{2}:\d{2})/);
+  const endTimeMatch = message.match(/作業終了:\s*(\d{2}:\d{2})/);
+  const dateMatch = message.match(/日付:\s*(.+?)(?:\n|$)/);
+  
+  return {
+    startTime: startTimeMatch?.[1] || null,
+    endTime: endTimeMatch?.[1] || null,
+    date: dateMatch?.[1] || null,
+  };
+};
 
 
 // ★自分の画像用の設定を追加★
@@ -265,8 +285,100 @@ useEffect(() => {
             color: '#055A68',
           }}
         >
-          {/* メッセージが120文字より長い場合は省略表示 */}
-          {post.message.length > 120 
+         {/* チェックイン投稿は整形表示、通常投稿は120文字制限 */}
+         {post.tags?.includes('#チェックイン') ? (
+  (() => {
+    const timeInfo = extractTimeInfo(post.message || '');
+    const cleanMessage = removeTimeInfo(post.message || '');
+    const duration = post.tags?.includes('#チェックアウト') 
+      ? calculateWorkDuration(post.message || '') 
+      : null;
+    
+    return (
+      <div>
+      {(timeInfo.startTime || timeInfo.endTime) && (
+  <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
+    {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
+    {timeInfo.startTime && timeInfo.endTime && '  ー  '}
+    {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
+  </div>
+)}
+
+{duration && (
+  <>
+    <div style={{ 
+      borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+      width: '65%',
+      margin: '0.5rem 0'
+    }} />
+    <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
+     ■ 作業時間: {duration} 
+    </div>
+    <div style={{ 
+      borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+      width: '65%',
+      margin: '0.5rem 0'
+    }} />
+  </>
+)}
+
+{timeInfo.date && (
+  <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
+    日付: {timeInfo.date}
+  </div>
+)}
+        
+        {cleanMessage && cleanMessage.length > 120 ? (
+          <>
+            {`${cleanMessage.substring(0, 120)}...`}
+            {post.isEdited && (
+              <span style={{
+                color: 'rgba(5, 90, 104, 0.8)',
+                fontSize: '0.8rem',
+                marginLeft: '0.5rem'
+              }}>
+                （編集済み）
+              </span>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewDetails(post.id, post.groupId);
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#055A68',
+                fontWeight: 'bold',
+                fontSize: '0.85rem',
+                padding: '0.2rem 0',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                marginTop: '0.3rem',
+                display: 'block',
+              }}
+            >
+              more
+            </button>
+          </>
+        ) : cleanMessage ? (
+          <>
+            {cleanMessage}
+            {post.isEdited && (
+              <span style={{
+                color: 'rgba(5, 90, 104, 0.8)',
+                fontSize: '0.8rem',
+                marginLeft: '0.5rem'
+              }}>
+                （編集済み）
+              </span>
+            )}
+          </>
+        ) : null}
+      </div>
+    );
+  })()
+) : post.message.length > 120
             ? (
               <div>
                 {`${post.message.substring(0, 120)}...`}
@@ -368,26 +480,6 @@ useEffect(() => {
               {tag}
             </span>
           ))}
-
-
-          {/* 🆕 作業時間の自動計算表示 */}
-{post.tags?.includes('#チェックイン') && post.tags?.includes('#チェックアウト') && (() => {
-  const duration = calculateWorkDuration(post.message || '');
-  return duration ? (
-    <div style={{
-      marginTop: '0.75rem',
-      padding: '0.5rem 0.75rem',
-      backgroundColor: '#E6F7FF',
-      borderLeft: '3px solid #1890FF',
-      borderRadius: '4px',
-      fontSize: '0.9rem',
-      color: '#055A68',
-      fontWeight: '600'
-    }}>
-      ⏱️ 作業時間: {duration}
-    </div>
-  ) : null;
-})()}
 
 
           {post.tags.length > 3 && (
@@ -1223,8 +1315,93 @@ const PostDetailModal: React.FC<{
                 fontSize: '1rem',
                 marginBottom: '1.5rem'
               }}>
-                {displayPost.message}
-                {displayPost.isEdited && (
+                {/* チェックイン投稿は整形表示、通常投稿はそのまま表示 */}
+{displayPost.tags?.includes('#チェックイン') ? (
+  (() => {
+    const timeInfo = extractTimeInfo(displayPost.message || '');
+    const cleanMessage = removeTimeInfo(displayPost.message || '');
+    const duration = displayPost.tags?.includes('#チェックアウト') 
+      ? calculateWorkDuration(displayPost.message || '') 
+      : null;
+    
+    return (
+      <div>
+        {(timeInfo.startTime || timeInfo.endTime) && (
+          <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+            {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
+            {timeInfo.startTime && timeInfo.endTime && '  ー  '}
+            {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
+          </div>
+        )}
+
+        {duration && (
+          <>
+            <div style={{ 
+              borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+              width: '65%',
+              margin: '0.5rem 0'
+            }} />
+            <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+              ■ 作業時間: {duration} 
+            </div>
+            <div style={{ 
+              borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+              width: '65%',
+              margin: '0.5rem 0'
+            }} />
+          </>
+        )}
+
+        {timeInfo.date && (
+          <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+            日付: {timeInfo.date}
+          </div>
+        )}
+        
+        {cleanMessage && (
+          <div style={{ marginTop: '0.8rem' }}>
+            {cleanMessage}
+            {displayPost.isEdited && !(
+              displayPost.tags?.includes('#出退勤時間') && 
+              displayPost.tags?.includes('#チェックイン') && 
+              displayPost.tags?.includes('#チェックアウト')
+            ) && (
+              <span style={{
+                color: 'rgba(5, 90, 104, 0.7)',
+                fontSize: '0.85rem',
+                marginLeft: '0.5rem'
+              }}>
+                （編集済み）
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  })()
+) : (
+  <div>
+    {displayPost.message}
+    {displayPost.isEdited && !(
+      displayPost.tags?.includes('#出退勤時間') && 
+      displayPost.tags?.includes('#チェックイン') && 
+      displayPost.tags?.includes('#チェックアウト')
+    ) && (
+      <span style={{
+        color: 'rgba(5, 90, 104, 0.7)',
+        fontSize: '0.85rem',
+        marginLeft: '0.5rem'
+      }}>
+        （編集済み）
+      </span>
+    )}
+  </div>
+)}
+                {displayPost.isEdited && !(
+  displayPost.tags?.includes('#出退勤時間') && 
+  displayPost.tags?.includes('#チェックイン') && 
+  displayPost.tags?.includes('#チェックアウト')
+) && (
                   <span style={{
                     color: 'rgba(5, 90, 104, 0.7)',
                     fontSize: '0.85rem',
@@ -1237,7 +1414,11 @@ const PostDetailModal: React.FC<{
             )}
 
             {/* メッセージがない場合の編集済み表示 */}
-            {!displayPost.message && displayPost.isEdited && (
+            {!displayPost.message && displayPost.isEdited && !(
+  displayPost.tags?.includes('#出退勤時間') && 
+  displayPost.tags?.includes('#チェックイン') && 
+  displayPost.tags?.includes('#チェックアウト')
+) && (
               <div style={{
                 whiteSpace: 'pre-wrap',
                 lineHeight: '1.6',

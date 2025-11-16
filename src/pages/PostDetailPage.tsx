@@ -37,6 +37,57 @@ const MY_IMAGES = [
 ];
 
 
+// 🆕 作業時間を計算する関数
+const calculateWorkDuration = (message: string): string | null => {
+  const startTimeMatch = message.match(/作業開始:\s*(\d{2}):(\d{2})/);
+  const endTimeMatch = message.match(/作業終了:\s*(\d{2}):(\d{2})/);
+  
+  if (!startTimeMatch || !endTimeMatch) {
+    return null;
+  }
+  
+  const startHour = parseInt(startTimeMatch[1]);
+  const startMinute = parseInt(startTimeMatch[2]);
+  const endHour = parseInt(endTimeMatch[1]);
+  const endMinute = parseInt(endTimeMatch[2]);
+  
+  // 分単位に変換
+  const startTotalMinutes = startHour * 60 + startMinute;
+  let endTotalMinutes = endHour * 60 + endMinute;
+  
+  // 日付をまたぐ場合の対応
+  if (endTotalMinutes < startTotalMinutes) {
+    endTotalMinutes += 24 * 60;
+  }
+  
+  const durationMinutes = endTotalMinutes - startTotalMinutes;
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  
+  return `${hours}時間${minutes}分`;
+};
+
+// 🆕 メッセージから時刻情報を削除する関数
+const removeTimeInfo = (message: string): string => {
+  return message
+    .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+    .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+    .replace(/日付:[^\n]+\n?/g, '')
+    .trim();
+};
+
+// 🆕 時刻情報を抽出する関数
+const extractTimeInfo = (message: string) => {
+  const startTimeMatch = message.match(/作業開始:\s*(\d{2}:\d{2})/);
+  const endTimeMatch = message.match(/作業終了:\s*(\d{2}:\d{2})/);
+  const dateMatch = message.match(/日付:\s*(.+?)(?:\n|$)/);
+  
+  return {
+    startTime: startTimeMatch?.[1] || null,
+    endTime: endTimeMatch?.[1] || null,
+    date: dateMatch?.[1] || null,
+  };
+};
 
 
 const PostDetailPage: React.FC = () => {
@@ -177,25 +228,59 @@ const handleStatusUpdate = async (newStatus: string) => {
   // UserGroupResolverを使用した動的検索
   const currentUserId = localStorage.getItem("daily-report-user-id") || "";
   
-  console.log('🔍 [PostDetailPage] 動的投稿検索開始:', postId);
+  console.log('🔍 [PostDetailPage] 動的投稿検索開始:', postId);         
   
   // ハードコーディング完全排除: 動的投稿検索
   const postData = await UserGroupResolver.findPostInUserGroups(postId, currentUserId);
   
   if (postData) {
     console.log('✅ [PostDetailPage] 投稿発見:', postData.groupName);
+
+  // 🆕 この4行を追加!
+  console.log('🔍 [PostDetailPage] 取得した投稿データ:', {
+    id: postData.id,
+    isEdited: postData.isEdited,
+    isManuallyEdited: postData.isManuallyEdited,
+    editedAt: postData.editedAt
+  });
+  
     setPost(postData);
+
+    console.log('🔍 [PostDetailPage] 取得した投稿データ:', {
+  createdAt: postData.createdAt,
+  updatedAt: postData.updatedAt,
+  hasUpdatedAt: !!postData.updatedAt
+});
     
     // ユーザー情報を取得して会社名・役職を補完
     const fetchUserInfo = async () => {
       try {
         const userInfo = await getUser(postData.userId);
         if (userInfo && userInfo.company) {
-          setPost(prevPost => ({
-            ...prevPost,
-            company: userInfo.company || '会社名なし',
-            position: userInfo.position || '役職なし'
-          }));
+console.log('🔍 [setPost実行直前] prevPostの状態確認');
+setPost(prevPost => {
+  console.log('🔍 [setPost前] prevPost:', {
+    id: prevPost?.id,
+    isEdited: prevPost?.isEdited,
+    isManuallyEdited: prevPost?.isManuallyEdited
+  });
+  console.log('🔍 [setPost前] prevPost全体:', JSON.stringify({  // ← この行を追加
+    id: prevPost?.id,  // ← この行を追加
+    isEdited: prevPost?.isEdited,  // ← この行を追加
+    isManuallyEdited: prevPost?.isManuallyEdited  // ← この行を追加
+  }, null, 2));  // ← この行を追加
+  
+  return prevPost ? ({
+    ...prevPost,
+    company: userInfo.company || '会社名なし',
+    position: userInfo.position || '役職なし'
+  }) : prevPost;
+});
+          setPost(prevPost => prevPost ? ({
+  ...prevPost,
+  company: userInfo.company || '会社名なし',
+  position: userInfo.position || '役職なし'
+}) : prevPost);
         }
       } catch (error) {
         console.error('ユーザー情報取得エラー:', error);
@@ -708,50 +793,148 @@ const handleBack = () => {
     fontSize: '1rem',
     marginBottom: '1.5rem'
   }}>
-  {post.message}
+
+  {/* 🔍 デバッグログ - タグの状態を確認 */}
 {(() => {
-  console.log('🔍 [編集済み判定]', {
+  console.log('🔍 [PostDetailPage デバッグ]', {
+    'タグ配列': post.tags,
+    '#チェックイン含む?': post.tags?.includes('#チェックイン')
+  });
+  console.log('📝 [PostDetail編集情報]');
+      console.log('  - post.isEdited:', post?.isEdited);
+      console.log('  - post.isManuallyEdited:', post?.isManuallyEdited);
+      console.log('  - post.editedAt:', post?.editedAt);
+
+  return null;
+})()}
+
+{(post.tags?.includes('#チェックイン') || post.tags?.includes('#出退勤時間')) ? (() => {
+  const timeInfo = extractTimeInfo(post.message || '');
+  const cleanMessage = removeTimeInfo(post.message || '');
+  const duration = post.tags?.includes('#チェックアウト') 
+    ? calculateWorkDuration(post.message || '') 
+    : null;
+  
+  return (
+    <>
+      {/* 作業開始・終了を1行に */}
+      {(timeInfo.startTime || timeInfo.endTime) && (
+        <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
+          {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
+          {timeInfo.startTime && timeInfo.endTime && '  ー  '}
+          {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
+        </div>
+      )}
+      
+      {/* 区切り線 + 作業時間 + 区切り線 */}
+      {duration && (
+        <>
+          <div style={{ 
+            borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+          <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
+            ■ 作業時間: {duration}
+          </div>
+          <div style={{ 
+            borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+        </>
+      )}
+      
+      {/* 日付 */}
+      {timeInfo.date && (
+        <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
+          日付: {timeInfo.date}
+        </div>
+      )}
+      
+      {/* クリーンなメッセージ */}
+      {cleanMessage && (
+        <div style={{ marginTop: '0.5rem', color: '#333' }}>
+          {cleanMessage}
+        </div>
+      )}
+
+      {/* 🔍 デバッグログ追加 */}
+{(() => {
+  console.log('🔍 [修正済み表示判定]', {
+    isManuallyEdited: post.isManuallyEdited,
     isEdited: post.isEdited,
-    tags: post.tags,
-    has出退勤: post.tags?.includes('#出退勤時間'),
-    hasチェックイン: post.tags?.includes('#チェックイン'),
-    hasチェックアウト: post.tags?.includes('#チェックアウト'),
+    postId: post.id,
+    tags: post.tags
   });
   return null;
 })()}
-{post.isEdited && !(
-  post.tags?.includes('#出退勤時間') && 
-  post.tags?.includes('#チェックイン') && 
-  post.tags?.includes('#チェックアウト')
-) && (
+
+{/* 編集済み表示 */}
+{post.isManuallyEdited ? (
   <span style={{
-    color: '⬜rgba(5, 90, 104, 0.7)',
+    color: 'rgba(5, 90, 104, 0.7)',
     fontSize: '0.85rem',
     marginLeft: '0.5rem'
   }}>
-    （編集済み）
+    (修正済み)
   </span>
+) : post.isEdited ? (
+  <span style={{
+    color: 'rgba(5, 90, 104, 0.7)',
+    fontSize: '0.85rem',
+    marginLeft: '0.5rem'
+  }}>
+    (編集済み)
+  </span>
+) : null}
+      
+    
+    </>
+  );
+})() : (
+  // 通常投稿の場合はそのまま表示
+  <>
+    {post.message}
+    {(() => {
+      console.log('🔍 [編集済み判定]', {
+        isEdited: post.isEdited,
+        tags: post.tags,
+        has出退勤: post.tags?.includes('#出退勤時間'),
+        hasチェックイン: post.tags?.includes('#チェックイン'),
+        hasチェックアウト: post.tags?.includes('#チェックアウト'),
+      });
+      return null;
+    })()}
+  </>
 )}
   </div>
 )}
 
 {/* メッセージがない場合の編集済み表示 */}
-{!post.message && post.isEdited && !(
-  post.tags?.includes('#出退勤時間') && 
-  post.tags?.includes('#チェックイン') && 
-  post.tags?.includes('#チェックアウト')
-) && (
+{!post.message && post.isManuallyEdited ? (
   <div style={{
     whiteSpace: 'pre-wrap',
     lineHeight: '1.6',
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: '□rgba(255, 255, 255, 0.8)',
     fontSize: '0.85rem',
     marginBottom: '1.5rem',
     fontStyle: 'italic'
   }}>
-    （編集済み）
+    (修正済み)
   </div>
-)}
+) : !post.message && post.isEdited ? (
+  <div style={{
+    whiteSpace: 'pre-wrap',
+    lineHeight: '1.6',
+    color: '□rgba(255, 255, 255, 0.8)',
+    fontSize: '0.85rem',
+    marginBottom: '1.5rem',
+    fontStyle: 'italic'
+  }}>
+    (編集済み)
+  </div>
+) : null}
               
               {/* タグ */}
               {post.tags && post.tags.length > 0 && (

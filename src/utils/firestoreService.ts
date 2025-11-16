@@ -202,6 +202,11 @@ console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(mem
         authorIdフィールド: data.authorId,
         readByフィールド: data.readBy
       });
+
+      console.log('📝 [編集情報デバッグ] 投稿ID:', doc.id);
+console.log('  - data.isEdited:', data.isEdited);
+console.log('  - data.isManuallyEdited:', data.isManuallyEdited);
+console.log('  - data.editedAt:', data.editedAt);
       
       // Timestamp型の安全な変換
       let createdAtTimestamp;
@@ -256,12 +261,23 @@ console.log('  - images枚数:', data.images?.length || 0);
         username: displayName,
         groupId: data.groupId || groupId,
         status: data.status || '未確認',
-        isWorkTimePost: data.isWorkTimePost || false,
-        isEdited: data.isEdited || false,
-        time: timeString,
+        isWorkTimePost: data.tags?.includes('#出退勤時間') &&
+                data.tags?.includes('#チェックイン') &&
+                data.tags?.includes('#チェックアウト'),
+        isEdited: data.isEdited === true,
+isManuallyEdited: data.isManuallyEdited === true,
+editedAt: data.editedAt || null,  // ⬇️ この行を追加
+time: timeString,
         timestamp: createdAtTimestamp,
-        memos: postMemos // ⭐ メモ情報を追加
+        memos: postMemos, // ⭐ メモ情報を追加
+        createdAt: data.createdAt,
+updatedAt: data.updatedAt
       };
+
+      console.log('📝 [変換後の投稿] 投稿ID:', post.id);
+      console.log('  - post.isEdited:', post.isEdited);
+      console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
+      console.log('  - post.editedAt:', post.editedAt);
       
       posts.push(post);
     });

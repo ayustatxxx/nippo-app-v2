@@ -104,7 +104,7 @@ const WorkTimePostCard: React.FC<{
   return (
     <div
       style={{
-        backgroundColor: 'rgba(255, 251, 236, 0.3)', // #FFFBEC with 70% opacity (30% transparent)
+        backgroundColor: '#ffffff22', // 通常投稿と同じ背景色
         backdropFilter: 'blur(4px)', // ぼかし効果を追加（透明度があるため）
         color: '#fff', // テキスト色を通常投稿と同じ白色に戻す
         padding: '1rem',
@@ -177,21 +177,19 @@ const WorkTimePostCard: React.FC<{
          {post.message.length > MAX_MESSAGE_LENGTH ? (
             <div>
               {`${post.message.substring(0, MAX_MESSAGE_LENGTH)}...`}
-              {post.isEdited && !(
-  post.tags?.includes('#出退勤時間') && 
-  post.tags?.includes('#チェックイン') && 
-  post.tags?.includes('#チェックアウト')
-) && (
-  <span
-    style={{
-      color: '#F0DB4F',
-      fontSize: '0.8rem',
-      marginLeft: '0.5rem',
-    }}
-  >
-    （編集済み）
-  </span>
+              {post.isManuallyEdited && (
+  <div style={{ marginTop: '0.5rem' }}>
+    <span
+      style={{
+        color: '#F0DB4F',
+        fontSize: '0.8rem',
+      }}
+    >
+      (編集済み)
+    </span>
+  </div>
 )}
+          
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -214,49 +212,126 @@ const WorkTimePostCard: React.FC<{
               </button>
             </div>
           ) : (
-            <div>
-              {post.message}
-              {(() => {
-  const shouldHideEdited = post.tags?.includes('#出退勤時間') && 
-                          post.tags?.includes('#チェックイン') && 
-                          post.tags?.includes('#チェックアウト');
+
+            
+            
+           // 🆕 チェックイン投稿の場合は新フォーマット
+post.tags?.includes('#チェックイン') ? (() => {
+  const timeInfo = extractTimeInfo(post.message || '');
+  const cleanMessage = removeTimeInfo(post.message || '');
+  const duration = post.tags?.includes('#チェックアウト') 
+    ? calculateWorkDuration(post.message || '') 
+    : null;
   
-  console.log('🔍 [編集済み判定]', {
-    postId: post.id,
-    isEdited: post.isEdited,
-    tags: post.tags,
-    shouldHideEdited: shouldHideEdited,
-    willShow: post.isEdited && !shouldHideEdited
-  });
-  
-  return null;
-})()}
-              {post.isEdited && !(
-  post.tags?.includes('#出退勤時間') && 
-  post.tags?.includes('#チェックイン') && 
-  post.tags?.includes('#チェックアウト')
-) && (
-  <span
-    style={{
+  return (
+    <div>
+      {/* 作業開始・終了を1行に */}
+      {(timeInfo.startTime || timeInfo.endTime) && (
+        <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+          {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
+          {timeInfo.startTime && timeInfo.endTime && '  ー  '}
+          {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
+        </div>
+      )}
+      
+      {/* 区切り線 + 作業時間 + 区切り線 */}
+      {duration && (
+        <>
+          <div style={{ 
+            borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+          <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+           ■ 作業時間: {duration}
+          </div>
+          <div style={{ 
+            borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+        </>
+      )}
+      
+     {/* 日付 */}
+{timeInfo.date && (
+  <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+    日付: {timeInfo.date}
+  </div>
+)}
+
+{/* クリーンなメッセージ + 編集済み */}
+{cleanMessage && (
+  <div style={{ marginTop: '0.5rem' }}>
+    <span style={{ color: '#FFFFFF' }}>{cleanMessage}</span>
+{post.isManuallyEdited && (
+  <div style={{ marginTop: '0.5rem' }}>
+    <span style={{
       color: '#F0DB4F',
       fontSize: '0.8rem',
-      marginLeft: '0.5rem',
-    }}
-  >
-    （編集済み）
-  </span>
+    }}>
+      （編集済み）
+    </span>
+  </div>
 )}
-            </div>
+  </div>
+)}
+
+{/* メッセージがない場合の編集済み表示 */}
+{!cleanMessage && post.isManuallyEdited && (
+  <div style={{ marginTop: '0.5rem' }}>
+    <span style={{
+      color: '#F0DB4F',
+      fontSize: '0.8rem',
+    }}>
+      （編集済み）
+    </span>
+  </div>
+)}
+    </div>
+  );
+})() : (
+  // 通常投稿の場合はそのまま表示
+  <div>
+    {post.message}
+    {(() => {
+      const shouldHideEdited = post.tags?.includes('#出退勤時間') && 
+                              post.tags?.includes('#チェックイン') && 
+                              post.tags?.includes('#チェックアウト');
+      
+      console.log('🔍 [編集済み判定]', {
+        postId: post.id,
+        isEdited: post.isEdited,
+        tags: post.tags,
+        shouldHideEdited: shouldHideEdited,
+        willShow: post.isEdited && !shouldHideEdited
+      });
+      
+      return null;
+    })()}
+   {post.isManuallyEdited && !(
+      post.tags?.includes('#出退勤時間') && 
+      post.tags?.includes('#チェックイン') && 
+      post.tags?.includes('#チェックアウト')
+    ) && (
+      <span
+        style={{
+          color: '#F0DB4F',
+          fontSize: '0.8rem',
+          marginLeft: '0.5rem',
+        }}
+      >
+        （編集済み）
+      </span>
+    )}
+  </div>
+)
           )}
         </div>
       )}
 
       {/* メッセージがない場合の編集済み表示 */}
-      {(!post.message || post.message.length === 0) && post.isEdited && !(
-  post.tags?.includes('#出退勤時間') && 
-  post.tags?.includes('#チェックイン') && 
-  post.tags?.includes('#チェックアウト')
-) && (
+     {(!post.message || post.message.length === 0) && post.isManuallyEdited && (
         <div
           style={{
             marginBottom: '0.8rem',
@@ -437,27 +512,6 @@ const WorkTimePostCard: React.FC<{
 
   {/* 右側 - ボタン群 */}
   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-  {/* メモボタン（全員に表示） */}
-  <button
-  onClick={(e) => {
-    console.log('🔴🔴🔴 [DEBUG] メモボタンがクリックされました！');
-    console.log('🔴 [DEBUG] イベント:', e);
-    console.log('🔴 [DEBUG] post.id:', post.id);
-    console.log('🔴 [DEBUG] handleAddMemo関数:', handleAddMemo);
-    handleAddMemo(post.id);
-  }}
-    style={{
-      padding: '0.4rem 1rem',
-      backgroundColor: 'rgb(0, 102, 114)',
-      color: '#F0DB4F',
-      border: 'none',
-      borderRadius: '20px',
-      fontSize: '0.75rem',
-      cursor: 'pointer',
-    }}
-  >
-    メモ
-  </button>
 
   {/* 詳細ボタン */}
   <button
@@ -506,30 +560,6 @@ const WorkTimePostCard: React.FC<{
   })()}
 </div>
 </div>
-
-
-{/* メモ表示エリア - 投稿の下部に追加 */}
-{(post as PostWithMemos).memos && (post as PostWithMemos).memos!.length > 0 && (
-  <div style={{ marginTop: '1rem', paddingTop: '0.8rem', borderTop: '1px solid #ffffff33' }}>
-    <div style={{ fontSize: '0.8rem', color: '#F0DB4F', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-      メモ ({(post as PostWithMemos).memos!.length}件)
-    </div>
-    {(post as PostWithMemos).memos!.map((memo, index) => (
-      <div key={memo.id} style={{ 
-        backgroundColor: '#ffffff11', 
-        padding: '0.5rem', 
-        borderRadius: '6px', 
-        marginBottom: '0.3rem',
-        fontSize: '0.8rem'
-      }}>
-        <div style={{ color: '#ddd' }}>{memo.content}</div>
-        <div style={{ color: '#aaa', fontSize: '0.7rem', marginTop: '0.2rem' }}>
-          {memo.createdByName} • {new Date(memo.createdAt).toLocaleDateString('ja-JP')}
-        </div>
-      </div>
-    ))}
-  </div>
-)}
     </div>
   );
 };
@@ -673,37 +703,61 @@ const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number =
 };
 
 
+// 🆕 作業時間を計算する関数
+const calculateWorkDuration = (message: string): string | null => {
+  const startTimeMatch = message.match(/作業開始:\s*(\d{2}):(\d{2})/);
+  const endTimeMatch = message.match(/作業終了:\s*(\d{2}):(\d{2})/);
+  
+  if (!startTimeMatch || !endTimeMatch) {
+    return null;
+  }
+  
+  const startHour = parseInt(startTimeMatch[1]);
+  const startMinute = parseInt(startTimeMatch[2]);
+  const endHour = parseInt(endTimeMatch[1]);
+  const endMinute = parseInt(endTimeMatch[2]);
+  
+  // 分単位に変換
+  const startTotalMinutes = startHour * 60 + startMinute;
+  let endTotalMinutes = endHour * 60 + endMinute;
+  
+  // 日付をまたぐ場合の対応
+  if (endTotalMinutes < startTotalMinutes) {
+    endTotalMinutes += 24 * 60;
+  }
+  
+  const durationMinutes = endTotalMinutes - startTotalMinutes;
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  
+  return `${hours}時間${minutes}分`;
+};
+
+// 🆕 メッセージから時刻情報を削除する関数
+const removeTimeInfo = (message: string): string => {
+  return message
+    .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+    .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+    .replace(/日付:[^\n]+\n?/g, '')
+    .trim();
+};
+
+// 🆕 時刻情報を抽出する関数
+const extractTimeInfo = (message: string) => {
+  const startTimeMatch = message.match(/作業開始:\s*(\d{2}:\d{2})/);
+  const endTimeMatch = message.match(/作業終了:\s*(\d{2}:\d{2})/);
+  const dateMatch = message.match(/日付:\s*(.+?)(?:\n|$)/);
+  
+  return {
+    startTime: startTimeMatch?.[1] || null,
+    endTime: endTimeMatch?.[1] || null,
+    date: dateMatch?.[1] || null,
+  };
+};
+
 
 const ArchivePage: React.FC = () => {
-  // 🆕 作業時間を計算する関数
-  const calculateWorkDuration = (message: string): string | null => {
-    const startTimeMatch = message.match(/作業開始:\s*(\d{2}):(\d{2})/);
-    const endTimeMatch = message.match(/作業終了:\s*(\d{2}):(\d{2})/);
-    
-    if (!startTimeMatch || !endTimeMatch) {
-      return null;
-    }
-    
-    const startHour = parseInt(startTimeMatch[1]);
-    const startMinute = parseInt(startTimeMatch[2]);
-    const endHour = parseInt(endTimeMatch[1]);
-    const endMinute = parseInt(endTimeMatch[2]);
-    
-    // 分単位に変換
-    const startTotalMinutes = startHour * 60 + startMinute;
-    let endTotalMinutes = endHour * 60 + endMinute;
-    
-    // 日付をまたぐ場合の対応
-    if (endTotalMinutes < startTotalMinutes) {
-      endTotalMinutes += 24 * 60;
-    }
-    
-    const durationMinutes = endTotalMinutes - startTotalMinutes;
-    const hours = Math.floor(durationMinutes / 60);
-    const minutes = durationMinutes % 60;
-    
-    return `${hours}時間${minutes}分`;
-  };
+ 
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams(); 
@@ -1133,6 +1187,15 @@ const handleViewPostDetails = async (postId: string) => {
   console.log('🔍 [ArchivePage] 投稿詳細を開く:', postId);
   
   const targetPost = posts.find(post => post.id === postId);
+  
+  // 🆕 ここに追加！
+  console.log('🔍 [ArchivePage-handleViewPostDetails] 見つかった投稿:', {
+    id: targetPost?.id,
+    isEdited: targetPost?.isEdited,
+    isManuallyEdited: targetPost?.isManuallyEdited,
+    editedAt: targetPost?.editedAt
+  });
+  
   if (!targetPost) {
     console.warn('⚠️ 投稿が見つかりません:', postId);
     return;
@@ -1216,6 +1279,15 @@ useEffect(() => {
       const fetchedPosts = await UnifiedCoreSystem.getGroupPosts(groupId, userId);  // ✅ 修正
       console.log('✅ [Archive] データ取得完了:', fetchedPosts.length, '件');
       console.log('✅ [Archive] 投稿取得完了:', fetchedPosts.length, '件');
+
+      fetchedPosts.forEach(post => {
+       if (post.id === 'C3ZW1j0GDORx5XKi7vLw') { 
+          console.log('📝 [Archive投稿チェック] テスト投稿発見!');
+          console.log('  - isEdited:', post.isEdited);
+          console.log('  - isManuallyEdited:', post.isManuallyEdited);
+          console.log('  - editedAt:', post.editedAt);
+        }
+      });
 
       setPosts(fetchedPosts);
       setFilteredPosts(fetchedPosts);
@@ -2175,7 +2247,24 @@ const PostDetailModal: React.FC<{
   navigate: (path: string) => void;
   onMemoClick: (post: Post) => void;
 }> = ({ post, onClose, navigate, onMemoClick }) => {
+
+  // 🆕 デバッグログを追加
+  console.log('🔍 [PostDetailModal] 受け取った投稿:', {
+    id: post.id,
+    isEdited: post.isEdited,
+    isManuallyEdited: post.isManuallyEdited,
+    editedAt: post.editedAt
+  });
+  
   const [displayPost, setDisplayPost] = useState<Post>(post);
+
+    // 🆕 デバッグログを追加
+  console.log('🔍 [PostDetailModal] displayPost初期化:', {
+    id: displayPost.id,
+    isEdited: displayPost.isEdited,
+    isManuallyEdited: displayPost.isManuallyEdited,
+    editedAt: displayPost.editedAt
+  });
   
   // 現在ログインしているユーザーのIDを取得
   const currentUserId = localStorage.getItem("daily-report-user-id") || "";
@@ -2185,26 +2274,60 @@ const PostDetailModal: React.FC<{
                    displayPost.createdBy === currentUserId ||
                    displayPost.authorId === currentUserId;
 
+
   // ユーザー情報を取得して表示名・会社名・役職を補完
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      try {
-        const userInfo = await getUser(displayPost.userId);
-        if (userInfo) {
-          setDisplayPost(prevPost => ({
+useEffect(() => {
+  const fetchUserInfo = async () => {
+    try {
+      const userInfo = await getUser(displayPost.userId);
+      if (userInfo) {
+        console.log('🔍 [PostDetailModal-useEffect] setDisplayPost実行前:', {
+          displayPost_isManuallyEdited: displayPost.isManuallyEdited
+        });
+        
+        setDisplayPost(prevPost => {
+          console.log('🔍 [PostDetailModal-useEffect] prevPost:', {
+            id: prevPost.id,
+            isEdited: prevPost.isEdited,
+            isManuallyEdited: prevPost.isManuallyEdited
+          });
+          
+          return {
             ...prevPost,
             username: userInfo.displayName || userInfo.username || prevPost.username,
             company: userInfo.company || '会社名なし',
             position: userInfo.position || '役職なし'
-          }));
-        }
-      } catch (error) {
-        console.error('ユーザー情報取得エラー:', error);
+          };
+        });
       }
-    };
+    } catch (error) {
+      console.error('ユーザー情報取得エラー:', error);
+    }
+  };
+  
+  fetchUserInfo();
+}, [displayPost.userId]);
 
-    fetchUserInfo();
-  }, [displayPost.userId]);
+  // 🔧 親から渡されるpostが更新されたらdisplayPostも更新
+  useEffect(() => {
+       console.log('🔄 [PostDetailModal] post propsが更新されました:', {
+      post_id: post.id,
+      post_isManuallyEdited: post.isManuallyEdited,
+      post_isEdited: post.isEdited,
+      displayPost_isManuallyEdited: displayPost.isManuallyEdited,
+      displayPost_isEdited: displayPost.isEdited
+    });
+    
+    // propsのpostが変わったらdisplayPostを更新
+    if (post.id === displayPost.id) {
+      setDisplayPost(prev => ({
+        ...prev,
+        isEdited: post.isEdited,
+        isManuallyEdited: post.isManuallyEdited,
+        editedAt: post.editedAt
+      }));
+    }
+  }, [post.isEdited, post.isManuallyEdited, post.editedAt]);
     
       return (
         <div
@@ -2286,19 +2409,30 @@ const PostDetailModal: React.FC<{
                 </div>
                 
                 {/* 日時表示 */}
-                <div style={{ 
-                  padding: '0.4rem 0.8rem',
-                  borderRadius: '8px',
-                  color: '#055A68',
-                  fontSize: '0.85rem',
-                  fontWeight: '500',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'flex-end',
-                  gap: '0.0rem'
-                }}>
-                  <div>{extractTime(displayPost.time)}</div>
-                </div>
+<div style={{
+  padding: '0.4rem 0.8rem',
+  borderRadius: '8px',
+  color: '■#055A68',
+  fontSize: '0.85rem',
+  fontWeight: '500',
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'flex-end',
+  gap: '0.0rem'
+}}>
+  <div>{extractTime(displayPost.time)}</div>
+  {/* 🌟 修正済みバッジを追加 */}
+  {displayPost.isEdited && displayPost.isManuallyEdited && (
+    <span style={{
+      marginLeft: '0.5rem',
+      fontSize: '0.75rem',
+      color: '■#d97706',
+      fontWeight: '500'
+    }}>
+      (修正済み)
+    </span>
+  )}
+</div>
               </div>
               
               
@@ -2315,7 +2449,88 @@ const PostDetailModal: React.FC<{
                     fontSize: '1rem',
                     marginBottom: '1.5rem'
                   }}>
-                    {displayPost.message}
+                    {/* チェックイン投稿は整形表示、通常投稿はそのまま表示 */}
+{displayPost.tags?.includes('#チェックイン') ? (
+  (() => {
+    const timeInfo = extractTimeInfo(displayPost.message || '');
+    const cleanMessage = removeTimeInfo(displayPost.message || '');
+    const duration = displayPost.tags?.includes('#チェックアウト') 
+      ? calculateWorkDuration(displayPost.message || '') 
+      : null;
+    
+    return (
+      <div>
+        {(timeInfo.startTime || timeInfo.endTime) && (
+          <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+            {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
+            {timeInfo.startTime && timeInfo.endTime && '  ー  '}
+            {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
+          </div>
+        )}
+
+        {duration && (
+          <>
+            <div style={{ 
+              borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+              width: '65%',
+              margin: '0.5rem 0'
+            }} />
+            <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+              ■ 作業時間: {duration} 
+            </div>
+            <div style={{ 
+              borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+              width: '65%',
+              margin: '0.5rem 0'
+            }} />
+          </>
+        )}
+
+        {timeInfo.date && (
+          <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+            日付: {timeInfo.date}
+          </div>
+        )}
+        
+        {cleanMessage && (
+          <div style={{ marginTop: '0.8rem' }}>
+            {cleanMessage}
+            {displayPost.isEdited && !(
+              displayPost.tags?.includes('#出退勤時間') && 
+              displayPost.tags?.includes('#チェックイン') && 
+              displayPost.tags?.includes('#チェックアウト')
+            ) && (
+              <span style={{
+                color: 'rgba(5, 90, 104, 0.7)',
+                fontSize: '0.85rem',
+                marginLeft: '0.5rem'
+              }}>
+                （編集済み）
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  })()
+) : (
+  <div>
+    {displayPost.message}
+    {displayPost.isEdited && !(
+      displayPost.tags?.includes('#出退勤時間') && 
+      displayPost.tags?.includes('#チェックイン') && 
+      displayPost.tags?.includes('#チェックアウト')
+    ) && (
+      <span style={{
+        color: 'rgba(5, 90, 104, 0.7)',
+        fontSize: '0.85rem',
+        marginLeft: '0.5rem'
+      }}>
+        （編集済み）
+      </span>
+    )}
+  </div>
+)}
 {displayPost.isEdited && !(
   displayPost.tags?.includes('#出退勤時間') && 
   displayPost.tags?.includes('#チェックイン') && 
@@ -3373,18 +3588,83 @@ const PostDetailModal: React.FC<{
                       </button>
                     </div>
                   ) : (
+  // 🆕 チェックイン投稿の場合は新フォーマット
+post.tags?.includes('#チェックイン') ? (() => {
+  const timeInfo = extractTimeInfo(post.message || '');
+  const cleanMessage = removeTimeInfo(post.message || '');
+  const duration = post.tags?.includes('#チェックアウト') 
+    ? calculateWorkDuration(post.message || '') 
+    : null;
+  
+  return (
+    <div>
+      {/* 作業開始・終了を1行に */}
+      {(timeInfo.startTime || timeInfo.endTime) && (
+        <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+          {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
+          {timeInfo.startTime && timeInfo.endTime && '  ー  '}
+          {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
+        </div>
+      )}
+      
+      {/* 区切り線 + 作業時間 + 区切り線 */}
+      {duration && (
+        <>
+          <div style={{ 
+            borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+          <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+           ■ 作業時間: {duration}
+          </div>
+          <div style={{ 
+            borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+        </>
+      )}
+      
+      {/* 日付 */}
+      {timeInfo.date && (
+        <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+          日付: {timeInfo.date}
+        </div>
+      )}
+      
+      {/* クリーンなメッセージ */}
+      {cleanMessage && (
+        <div style={{ marginTop: '0.5rem', color: '#FFFFFF' }}>
+          {cleanMessage}
+        </div>
+      )}
+      
+      {/* 編集済み表示 */}
+      {post.isManuallyEdited && (
+  <span style={{
+    color: '#F0DB4F',
+    fontSize: '0.8rem',
+  }}>
+          （編集済み）
+        </span>
+      )}
+    </div>
+  );
+})() : (
+  // 通常投稿の場合はそのまま表示
   <div>
     {post.message}
-    {post.isEdited && !(
-      post.tags?.includes('#出退勤時間') && 
-      post.tags?.includes('#チェックイン') && 
-      post.tags?.includes('#チェックアウト')
-    ) && (
-      <span style={{color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.8rem', marginLeft: '0.5rem'}}>
-        （編集済み）
+    {post.isManuallyEdited && (
+  <span style={{
+    color: '#F0DB4F',
+    fontSize: '0.8rem',
+  }}>
+    （編集済み）
       </span>
     )}
   </div>
+)
 )}
                 </div>
               )}
@@ -3418,24 +3698,7 @@ const PostDetailModal: React.FC<{
                 </div>
               )}
 
-              {/* 🆕 作業時間の自動計算表示 */}
-{post.tags?.includes('#チェックイン') && post.tags?.includes('#チェックアウト') && (() => {
-  const duration = calculateWorkDuration(post.message || '');
-  return duration ? (
-    <div style={{
-      marginTop: '0.75rem',
-      padding: '0.5rem 0.75rem',
-      backgroundColor: '#E6F7FF',
-      borderLeft: '3px solid #1890FF',
-      borderRadius: '4px',
-      fontSize: '0.9rem',
-      color: '#055A68',
-      fontWeight: '600'
-    }}>
-      ⏱️ 作業時間: {duration}
-    </div>
-  ) : null;
-})()}
+            
 
               {post.photoUrls && post.photoUrls.length > 0 && (
                 <div

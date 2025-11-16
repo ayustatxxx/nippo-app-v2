@@ -74,8 +74,15 @@ const [hasCheckOut, setHasCheckOut] = useState(false);
     } catch (groupError) {
       console.error('グループ情報の取得に失敗:', groupError);
     }
+
+    // 🔍 デバッグ
+  console.log('🔍 [EditPage 初期化] 投稿データ取得:');
+  console.log('  - 投稿ID:', postData.id);
+  console.log('  - photoUrls:', postData.photoUrls);
+  console.log('  - photoUrls枚数:', postData.photoUrls?.length || 0);
     
-    setPost(postData);
+ // ✅ Firestoreの値をそのまま保持（編集ページを開いただけでは変更しない）
+setPost(postData);
 
 // 🆕 メッセージから時刻を抽出
 const messageText = postData.message || '';
@@ -241,6 +248,14 @@ const removeTimeFromMessage = (message: string): string => {
   // 🔒 セキュリティ強化: 安全な保存処理
   const handleSave = async () => {
     if (!post) return;
+      
+  // 🔍 デバッグ
+  console.log('🔍 [EditPage handleSave開始] post state確認:');
+console.log('  - post:', post);
+console.log('  - post.photoUrls:', post.photoUrls);
+console.log('  - post.photoUrls枚数:', post.photoUrls?.length || 0);
+console.log('  - post.isEdited:', post.isEdited);  // ← 追加
+console.log('  - post.isManuallyEdited:', post.isManuallyEdited);  // ← 追加
 
     console.log('💾 [EditPostPage] 保存開始:', {
   postId: post.id,
@@ -276,6 +291,16 @@ if (editedPhotos && editedPhotos.length > 0) {
       
       // ✨ 既存写真と新規写真を合わせた合計サイズチェック
       const remainingPhotos = post.photoUrls.filter(url => !deletedPhotoUrls.includes(url));
+
+      // 🔍 デバッグ
+console.log('🔍 [EditPage 保存直前] 画像状態確認:');
+console.log('  - post.photoUrls:', post.photoUrls);
+console.log('  - post.photoUrls枚数:', post.photoUrls?.length || 0);
+console.log('  - deletedPhotoUrls:', deletedPhotoUrls);
+console.log('  - remainingPhotos:', remainingPhotos);
+console.log('  - remainingPhotos枚数:', remainingPhotos.length);
+console.log('  - additionalPhotoUrls枚数:', additionalPhotoUrls.length);
+
       const allPhotos = [...remainingPhotos, ...additionalPhotoUrls];
       
       const sizeCheck = FileValidator.checkCompressedTotalSize(allPhotos, result.validFiles);
@@ -343,11 +368,16 @@ const updatedPost: Post = {
   ...post,
   message: sanitizedMessage,
   tags: validTags,
-  photoUrls: [...remainingPhotos],  // ✅ 修正済み
+  photoUrls: [...remainingPhotos, ...additionalPhotoUrls],  // ← 既存+新規
   updatedAt: Date.now(),
-  isEdited: true
+  isEdited: true,
+  isManuallyEdited: true
 };
 
+console.log('🔍 [EditPage] updatedPost作成完了:');
+console.log('  - isEdited:', updatedPost.isEdited);
+console.log('  - isManuallyEdited:', updatedPost.isManuallyEdited);
+console.log('  - photoUrls枚数:', updatedPost.photoUrls.length);
 console.log('📦 [EditPage] IndexedDB保存データ:');
 console.log('  - photoUrls枚数:', updatedPost.photoUrls.length);
 console.log('  - photoUrls:', updatedPost.photoUrls);
@@ -363,12 +393,16 @@ console.log('✅ [EditPage] IndexedDB保存完了');
 setSyncStatus('online');
 try {
   const updateData = {
-    message: sanitizedMessage,
-    tags: validTags,
-    photoUrls: [...remainingPhotos],  // ✅ 修正済み
-    files: editedPhotos ? Array.from(editedPhotos) : undefined
-  };
-  
+  message: sanitizedMessage,
+  tags: validTags,
+  photoUrls: [...remainingPhotos, ...additionalPhotoUrls],  
+  files: editedPhotos ? Array.from(editedPhotos) : undefined,
+  isManuallyEdited: true
+};
+
+  console.log('🔍 [EditPage] updateData作成完了:');
+  console.log('  - isManuallyEdited:', updateData.isManuallyEdited);
+  console.log('  - photoUrls枚数:', updateData.photoUrls.length);
   console.log('📡 [EditPage] UnifiedCoreSystem.updatePost呼び出し:');
   console.log('  - photoUrls枚数:', updateData.photoUrls.length);
   console.log('  - files枚数:', updateData.files ? updateData.files.length : 0);
@@ -389,7 +423,11 @@ if (userId) {
       console.log(`  ${index + 1}. ${url.substring(0, 50)}...`);
     });
     
-    setPost(updatedPostData);
+    // ⭐ 修正：isManuallyEdited を保持
+setPost({
+  ...updatedPostData,
+  isManuallyEdited: true  // ← 「編集済み」スタンプを必ず付ける！
+});
     setEditedMessage(updatedPostData.message || '');
     setEditedTags(updatedPostData.tags || []);
     setDeletedPhotoUrls([]);
@@ -408,13 +446,14 @@ try {
   const updateFlag = Date.now().toString();
   localStorage.setItem('daily-report-posts-updated', updateFlag);
   window.dispatchEvent(new CustomEvent('postsUpdated', {
-    detail: {
-      updatedPost: updatedPost,
-      timestamp: Date.now(),
-      source: 'EditPostPage',
-      action: 'update'
-    }
-  }));
+  detail: {
+    updatedPost: updatedPost,
+    timestamp: Date.now(),
+    source: 'EditPostPage',
+    action: 'update',
+    isManuallyEdited: true  // ← この1行を追加!
+  }
+}));
   console.log('✅ EditPage: 統合システムに更新通知完了');
 } catch (error) {
   console.error('❌ EditPage: 更新通知エラー:', error);

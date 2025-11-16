@@ -581,10 +581,11 @@ window.dispatchEvent(new CustomEvent('postsUpdated'));
     }
     
     // 投稿を更新
-    await UnifiedCoreSystem.updatePost(checkInPostId, {
-      message: updatedMessage,
-      tags: updatedTags
-    });
+await UnifiedCoreSystem.updatePost(checkInPostId, {
+  message: updatedMessage,
+  tags: updatedTags,
+  isManuallyEdited: false
+});
     
     console.log('✅ チェックアウト完了:', checkInPostId);
     

@@ -152,11 +152,20 @@ if (postData.files && postData.files.length > 0) {
       if (post) {
         console.log('✅ 投稿発見完了:', postId);
         console.log('🔍 [getPost] 取得した画像枚数:', post.photoUrls?.length || 0);
+        console.log('📝 [getPost編集情報-取得直後]');
+      console.log('  - post.isEdited:', post.isEdited);
+      console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
+      console.log('  - post.editedAt:', post.editedAt);
         
         const dbUtil = DBUtil.getInstance();
         await dbUtil.initDB();
         await dbUtil.save(STORES.POSTS, post);
         console.log('✅ [getPost] IndexedDB同期完了');
+
+        console.log('📝 [getPost編集情報-return直前]');
+      console.log('  - post.isEdited:', post.isEdited);
+      console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
+      console.log('  - post.editedAt:', post.editedAt);
         
         return post;
       }
@@ -311,11 +320,12 @@ if (postData.files && postData.files.length > 0) {
   static async updatePost(
   postId: string,
   updates: {
-    message?: string;
-    files?: File[];
-    tags?: string[];
-    photoUrls?: string[];
-  }
+  message?: string;
+  files?: File[];
+  tags?: string[];
+  photoUrls?: string[];
+  isManuallyEdited?: boolean;  // ← 新規追加
+}
 ): Promise<void> {
   try {
     console.log('🔄 [UnifiedCore] 投稿更新開始:', postId);
@@ -331,6 +341,12 @@ const updateData: any = {
   updatedAt: Date.now(),
   isEdited: true
 };
+
+// isManuallyEditedがtrueの場合、必ず保存
+if (updates.isManuallyEdited === true) {
+  updateData.isEdited = true;
+  updateData.isManuallyEdited = true;
+}
 
 if (updates.message !== undefined) {
   updateData.message = this.sanitizeInput(updates.message);
@@ -393,7 +409,10 @@ const postRef = doc(db, 'posts', postId);
 console.log('📡 [UpdatePost] Firestore更新データ:', {
   photoUrlsLength: updateData.photoUrls?.length,
   message: updateData.message?.substring(0, 50),
-  tags: updateData.tags
+  tags: updateData.tags,
+  isEdited: updateData.isEdited,
+  isManuallyEdited: updateData.isManuallyEdited,  // ← この行を追加!
+  updatedAt: updateData.updatedAt
 });
 
 await updateDoc(postRef, updateData);
