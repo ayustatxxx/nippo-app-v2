@@ -493,7 +493,43 @@ if (existingPost) {
 }
 }
 
-
+/**
+   * 投稿を削除
+   * チェックアウト時に古い投稿を削除するために使用
+   */
+  static async deletePost(postId: string, userId: string): Promise<void> {
+    try {
+      console.log('🗑️ UnifiedCoreSystem: 投稿削除開始:', postId);
+      
+      // Step 1: 投稿を取得して権限確認
+      const post = await this.getPost(postId, userId);
+      if (!post) {
+        throw new Error('投稿が見つかりません');
+      }
+      
+      console.log('✅ 投稿を確認しました:', post.groupId);
+      
+      // Step 2: Firestoreから削除
+      const { doc, deleteDoc, getFirestore } = await import('firebase/firestore');
+      const db = getFirestore();
+      const postRef = doc(db, 'posts', postId);
+      await deleteDoc(postRef);
+      
+      console.log('✅ Firestoreから削除完了');
+      
+      // Step 3: IndexedDBからも削除
+      const dbUtil = DBUtil.getInstance();
+      await dbUtil.initDB();
+      await dbUtil.delete(STORES.POSTS, postId);
+      
+      console.log('✅ IndexedDBから削除完了');
+      console.log('✅ 投稿削除完了:', postId);
+      
+    } catch (error) {
+      console.error('❌ UnifiedCoreSystem: 投稿削除エラー', error);
+      throw error;
+    }
+  }
 
   /**
    * システム健康状態確認
