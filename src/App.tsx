@@ -10,7 +10,6 @@ import PostPage from './group/PostPage';
 import ArchivePage from './group/ArchivePage';
 import GroupTopPage from './group/GroupTopPage';
 import GroupMembersPage from './group/GroupMembersPage';
-import PostDetailPage from './pages/PostDetailPage';
 import EditPostPage from './pages/EditPostPage'; 
 import InvitePage from './pages/InvitePage';
 
@@ -46,11 +45,7 @@ function App() {
         </AuthGuard>
       } />
       
-      <Route path="/post/:postId" element={
-        <AuthGuard>
-          <PostDetailPage />
-        </AuthGuard>
-      } />
+      
       
       <Route path="/edit-post/:postId" element={
         <AuthGuard>

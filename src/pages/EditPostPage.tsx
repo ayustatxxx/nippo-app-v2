@@ -480,7 +480,17 @@ console.log('💾 [EditPostPage] 保存完了・ナビゲーション開始:', {
   現在時刻: new Date().toISOString()
 });
 
-navigate(`/post/${postId}${paramString}`);
+// 保存完了後、元のページに戻りモーダルを開く
+if (from === 'archive' && groupId) {
+  navigate(`/group/${groupId}/archive${paramString}`, {
+    state: { openPostDetail: postId }
+  });
+} else {
+  // Homeから来た場合
+  navigate('/', {
+    state: { openPostDetail: postId }
+  });
+}
 
 
     } catch (error) {
@@ -547,7 +557,19 @@ try {
         if (groupId) params.set('groupId', groupId);
         const paramString = params.toString() ? `?${params.toString()}` : '';
         
-        navigate(`/post/${postId}${paramString}`, { replace: true });
+        // 保存完了後、元のページに戻りモーダルを開く
+if (from === 'archive' && groupId) {
+  navigate(`/group/${groupId}/archive${paramString}`, {
+    state: { openPostDetail: postId },
+    replace: true
+  });
+} else {
+  // Homeから来た場合
+  navigate('/', {
+    state: { openPostDetail: postId },
+    replace: true
+  });
+}
       }
     } else {
       const from = searchParams.get('from');
@@ -558,7 +580,19 @@ try {
       if (groupId) params.set('groupId', groupId);
       const paramString = params.toString() ? `?${params.toString()}` : '';
       
-      navigate(`/post/${postId}${paramString}`, { replace: true });
+      // 保存完了後、元のページに戻りモーダルを開く
+if (from === 'archive' && groupId) {
+  navigate(`/group/${groupId}/archive${paramString}`, {
+    state: { openPostDetail: postId },
+    replace: true
+  });
+} else {
+  // Homeから来た場合
+  navigate('/', {
+    state: { openPostDetail: postId },
+    replace: true
+  });
+}
     }
   };
   

@@ -1,4 +1,4 @@
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import GroupFooterNav from '../components/GroupFooterNav';
 import React, { useEffect, useState, useRef } from 'react';
 import * as html2pdflib from 'html2pdf.js';
@@ -82,9 +82,10 @@ const WorkTimePostCard: React.FC<{
   shouldShowSelection: () => boolean;
   setSelectedPostForStatus: (postId: string | null) => void;
   getContainerStatusStyle: (status: string) => any;
-  handleAddMemo: (postId: string) => void; // ← この行を追加
+  handleAddMemo: (postId: string) => void;
   setPosts: React.Dispatch<React.SetStateAction<Post[]>>;
   setFilteredPosts: React.Dispatch<React.SetStateAction<Post[]>>;
+  from?: 'archive' | 'home';  
 }> = ({
   post,
   onDelete,
@@ -99,6 +100,7 @@ const WorkTimePostCard: React.FC<{
   handleAddMemo, 
   setPosts,
   setFilteredPosts,
+  from = 'archive',  
 }) => {
 
   return (
@@ -532,13 +534,14 @@ post.tags?.includes('#チェックイン') ? (() => {
     詳細
   </button>
 
-  {/* 削除ボタン（投稿者のみ表示） */}
-  {(() => {
-    const currentUserId = localStorage.getItem('daily-report-user-id') || '';
-    const isAuthor = post.userId === currentUserId || 
-                     post.createdBy === currentUserId ||
-                     post.authorId === currentUserId;
-    return isAuthor ? (
+ {/* 削除ボタン（投稿者のみ表示 & Archiveのみ） */}
+{from === 'archive' && (() => {  // ⭐ from === 'archive' && を追加
+  const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+  const isAuthor = post.userId === currentUserId ||
+                   post.createdBy === currentUserId ||
+                   post.authorId === currentUserId;
+  
+  return isAuthor ? (
       <button
         onClick={() => onDelete(post.id)}
         style={{
@@ -761,6 +764,7 @@ const ArchivePage: React.FC = () => {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams(); 
+  const location = useLocation();
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -1328,6 +1332,24 @@ const interval = setInterval(() => {
     clearInterval(interval);
   };
 }, [groupId]);
+
+
+// ★ モーダル自動表示用のuseEffect（EditPageから戻ってきた時） ★
+useEffect(() => {
+  const locationState = location.state;
+  
+  if (locationState?.openPostDetail && posts.length > 0) {
+    const postId = locationState.openPostDetail;
+    
+    console.log('🔍 [ArchivePage] モーダル自動表示:', postId);
+    
+    // モーダルを開く
+    handleViewPostDetails(postId);
+    
+    // stateをクリア（再表示を防ぐ）
+    navigate(location.pathname + location.search, { replace: true, state: {} });
+  }
+}, [posts, location.state]);
 
 
 // ✅ Step 4: PostPage.tsxからの更新イベント監視システム
@@ -2246,7 +2268,9 @@ const PostDetailModal: React.FC<{
   onClose: () => void;
   navigate: (path: string) => void;
   onMemoClick: (post: Post) => void;
-}> = ({ post, onClose, navigate, onMemoClick }) => {
+  from?: 'archive' | 'home';  // ⭐ この行を追加
+}> = ({ post, onClose, navigate, onMemoClick, from = 'archive' }) => {  
+  
 
   // 🆕 デバッグログを追加
   console.log('🔍 [PostDetailModal] 受け取った投稿:', {
@@ -2422,7 +2446,14 @@ useEffect(() => {
 }}>
   <div>{extractTime(displayPost.time)}</div>
   {/* 🌟 修正済みバッジを追加 */}
-  {displayPost.isEdited && displayPost.isManuallyEdited && (
+{(() => {
+  console.log('🔍 [バッジ判定] isEdited:', displayPost.isEdited);
+console.log('🔍 [バッジ判定] isManuallyEdited:', displayPost.isManuallyEdited);
+console.log('🔍 [バッジ判定] 両方true:', displayPost.isEdited && displayPost.isManuallyEdited);
+console.log('🔍 [バッジ判定] tags:', displayPost.tags);
+  return null;
+})()}
+{displayPost.isEdited && displayPost.isManuallyEdited && (
     <span style={{
       marginLeft: '0.5rem',
       fontSize: '0.75rem',
@@ -2495,19 +2526,6 @@ useEffect(() => {
         {cleanMessage && (
           <div style={{ marginTop: '0.8rem' }}>
             {cleanMessage}
-            {displayPost.isEdited && !(
-              displayPost.tags?.includes('#出退勤時間') && 
-              displayPost.tags?.includes('#チェックイン') && 
-              displayPost.tags?.includes('#チェックアウト')
-            ) && (
-              <span style={{
-                color: 'rgba(5, 90, 104, 0.7)',
-                fontSize: '0.85rem',
-                marginLeft: '0.5rem'
-              }}>
-                （編集済み）
-              </span>
-            )}
           </div>
         )}
       </div>
@@ -2516,54 +2534,21 @@ useEffect(() => {
 ) : (
   <div>
     {displayPost.message}
-    {displayPost.isEdited && !(
-      displayPost.tags?.includes('#出退勤時間') && 
-      displayPost.tags?.includes('#チェックイン') && 
-      displayPost.tags?.includes('#チェックアウト')
-    ) && (
-      <span style={{
-        color: 'rgba(5, 90, 104, 0.7)',
-        fontSize: '0.85rem',
-        marginLeft: '0.5rem'
-      }}>
-        （編集済み）
-      </span>
-    )}
   </div>
 )}
-{displayPost.isEdited && !(
-  displayPost.tags?.includes('#出退勤時間') && 
-  displayPost.tags?.includes('#チェックイン') && 
-  displayPost.tags?.includes('#チェックアウト')
-) && (
+{displayPost.isManuallyEdited && (
   <span style={{
-    color: 'rgba(5, 90, 104, 0.7)',
+    color: '#d97706',
     fontSize: '0.85rem',
-    marginLeft: '0.5rem'
+    marginLeft: '0.5rem',
+    fontWeight: '500'
   }}>
-    （編集済み）
+    （修正済み）
   </span>
 )}
                   </div>
                 )}
-    
-                {/* メッセージがない場合の編集済み表示 */}
-{!displayPost.message && displayPost.isEdited && !(
-  displayPost.tags?.includes('#出退勤時間') && 
-  displayPost.tags?.includes('#チェックイン') && 
-  displayPost.tags?.includes('#チェックアウト')
-) && (
-  <div style={{
-    whiteSpace: 'pre-wrap',
-    lineHeight: '1.6',
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: '0.85rem',
-    marginBottom: '1.5rem',
-    fontStyle: 'italic'
-  }}>
-    （編集済み）
-  </div>
-)}
+
                 
                 {/* タグ */}
                 {displayPost.tags && displayPost.tags.length > 0 && (
@@ -3485,6 +3470,7 @@ useEffect(() => {
   handleAddMemo={handleAddMemo} 
   setPosts={setPosts}
   setFilteredPosts={setFilteredPosts}
+  from="archive"  // ⭐ この行を追加!
 />
           ) : (
             // 通常の投稿カード
@@ -4555,6 +4541,7 @@ if (window.refreshArchivePage) {
     onClose={() => setSelectedPostForDetail(null)}
     navigate={navigate}
     onMemoClick={(post) => handleAddMemo(post.id)}
+    from="archive" 
   />
 )}
       {/* グループフッターナビゲーション */}
