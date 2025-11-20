@@ -114,33 +114,89 @@ export class DBUtil {
     }
   }
   
-  public async get<T>(storeName: string, id: string): Promise<T | null> {
-    if (!this.db) await this.initDB();
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, "readonly");
-      const store = transaction.objectStore(storeName);
-      const request = store.get(id);
-      
-      request.onerror = () => reject(new Error(`データ取得エラー: ${storeName}`));
-      request.onsuccess = () => resolve(request.result || null);
-    });
+  public async get<T>(storeName: string, id: string, retryCount: number = 0): Promise<T | null> {
+  if (!this.db) {
+    await this.initDB();
   }
   
-  public async save<T>(storeName: string, data: T): Promise<void> {
-    if (!this.db) await this.initDB();
-    return new Promise((resolve, reject) => {
+  try {
+    return await new Promise<T | null>((resolve, reject) => {
+      try {
+        const transaction = this.db!.transaction(storeName, "readonly");
+        const store = transaction.objectStore(storeName);
+        const request = store.get(id);
+        
+        request.onerror = () => reject(new Error(`データ取得エラー: ${storeName}`));
+        request.onsuccess = () => resolve(request.result || null);
+        
+        transaction.onerror = () => reject(new Error(`トランザクションエラー: ${storeName}`));
+      } catch (innerError) {
+        reject(innerError);
+      }
+    });
+  } catch (error) {
+    console.error('get() でエラー:', error);
+    
+    // 🛡️ 安全策：最大2回まで再試行
+    if (error instanceof DOMException && 
+        error.name === 'InvalidStateError' && 
+        retryCount < 2) {
+      console.log(`🔄 接続が閉じているため再初期化します（試行${retryCount + 1}/2）`);
+      this.db = null;
+      await this.initDB();
+      return await this.get<T>(storeName, id, retryCount + 1);
+    }
+    throw error;
+  }
+}
+  
+  public async save<T>(storeName: string, data: T, retryCount: number = 0): Promise<void> {
+  if (!this.db) {
+    await this.initDB();
+  }
+  
+  return new Promise(async (resolve, reject) => {
+    try {
       const transaction = this.db!.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
       const request = store.put(data);
       
       request.onerror = () => reject(new Error(`データ保存エラー: ${storeName}`));
       request.onsuccess = () => resolve();
-    });
+      
+      // トランザクションエラーも検知
+      transaction.onerror = () => reject(new Error(`トランザクションエラー: ${storeName}`));
+    } catch (error) {
+      console.error('save() でエラー:', error);
+      
+      // 🛡️ 安全策：最大2回まで再試行
+      if (error instanceof DOMException && 
+          error.name === 'InvalidStateError' && 
+          retryCount < 2) {
+        console.log(`🔄 接続が閉じているため再初期化します（試行${retryCount + 1}/2）`);
+        this.db = null;
+        await this.initDB();
+        
+        try {
+          await this.save(storeName, data, retryCount + 1);
+          resolve();
+        } catch (retryError) {
+          reject(retryError);
+        }
+        return;
+      }
+      reject(error);
+    }
+  });
+}
+  
+  public async getByIndex<T>(storeName: string, indexName: string, value: any, retryCount: number = 0): Promise<T[]> {
+  if (!this.db) {
+    await this.initDB();
   }
   
-  public async getByIndex<T>(storeName: string, indexName: string, value: any): Promise<T[]> {
-    if (!this.db) await this.initDB();
-    return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    try {
       const transaction = this.db!.transaction(storeName, "readonly");
       const store = transaction.objectStore(storeName);
       const index = store.index(indexName);
@@ -148,20 +204,70 @@ export class DBUtil {
       
       request.onerror = () => reject(new Error(`インデックス検索エラー: ${indexName}`));
       request.onsuccess = () => resolve(request.result);
-    });
+      
+      transaction.onerror = () => reject(new Error(`トランザクションエラー: ${indexName}`));
+    } catch (error) {
+      console.error('getByIndex() でエラー:', error);
+      
+      // 🛡️ 安全策：最大2回まで再試行
+      if (error instanceof DOMException && 
+          error.name === 'InvalidStateError' && 
+          retryCount < 2) {
+        console.log(`🔄 接続が閉じているため再初期化します（試行${retryCount + 1}/2）`);
+        this.db = null;
+        await this.initDB();
+        
+        try {
+          const result = await this.getByIndex<T>(storeName, indexName, value, retryCount + 1);
+          resolve(result);
+        } catch (retryError) {
+          reject(retryError);
+        }
+        return;
+      }
+      reject(error);
+    }
+  });
+}
+  
+  public async getAll<T>(storeName: string, retryCount: number = 0): Promise<T[]> {
+  if (!this.db) {
+    await this.initDB();
   }
   
-  public async getAll<T>(storeName: string): Promise<T[]> {
-    if (!this.db) await this.initDB();
-    return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    try {
       const transaction = this.db!.transaction(storeName, "readonly");
       const store = transaction.objectStore(storeName);
       const request = store.getAll();
       
       request.onerror = () => reject(new Error(`全データ取得エラー: ${storeName}`));
       request.onsuccess = () => resolve(request.result);
-    });
-  }
+      
+      transaction.onerror = () => reject(new Error(`トランザクションエラー: ${storeName}`));
+    } catch (error) {
+      console.error('getAll() でエラー:', error);
+      
+      // 🛡️ 安全策：最大2回まで再試行
+      if (error instanceof DOMException && 
+          error.name === 'InvalidStateError' && 
+          retryCount < 2) {
+        console.log(`🔄 接続が閉じているため再初期化します（試行${retryCount + 1}/2）`);
+        this.db = null;
+        await this.initDB();
+        
+        try {
+          const result = await this.getAll<T>(storeName, retryCount + 1);
+          resolve(result);
+        } catch (retryError) {
+          reject(retryError);
+        }
+        return;
+      }
+      reject(error);
+    }
+  });
+}
   
   public async delete(storeName: string, id: string): Promise<void> {
     if (!this.db) await this.initDB();
