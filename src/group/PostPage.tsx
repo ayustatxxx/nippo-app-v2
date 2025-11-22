@@ -951,34 +951,7 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                     Photos
                   </label>
                   
-                  {/* ステップ表示 */}
-                  {selectedFiles.length > 0 && (
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      marginBottom: '1rem',
-                      padding: '0.5rem 1rem',
-                      backgroundColor: 'rgba(240, 219, 79, 0.1)',
-                      borderRadius: '8px',
-                      fontSize: '0.85rem',
-                      color: '#F0DB4F'
-                    }}>
-                      <span style={{ 
-                        opacity: selectionStep === 'select' ? 1 : 0.5,
-                        fontWeight: selectionStep === 'select' ? 'bold' : 'normal'
-                      }}>
-                        ① 画像選択
-                      </span>
-                      <span style={{ color: '#ffffff44' }}>→</span>
-                      <span style={{ 
-                        opacity: selectionStep === 'highQuality' ? 1 : 0.5,
-                        fontWeight: selectionStep === 'highQuality' ? 'bold' : 'normal'
-                      }}>
-                        ② 高画質選択
-                      </span>
-                    </div>
-                  )}
+                 
 
                   {/* 画像選択ステップ */}
                   {selectionStep === 'select' && (
@@ -989,19 +962,21 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                           multiple
                           accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
                           onChange={(e) => {
-                            if (e.target.files && e.target.files.length > 0) {
-                              const filesArray = Array.from(e.target.files);
-                              if (filesArray.length > DEFAULT_IMAGE_CONFIG.maxTotal) {
-                                alert(`最大${DEFAULT_IMAGE_CONFIG.maxTotal}枚まで選択できます`);
-                                return;
-                              }
-                              setSelectedFiles(filesArray);
-                              setPhotos(e.target.files);
-                              // プレビュー生成
-                              const urls = filesArray.map(file => URL.createObjectURL(file));
-                              setPhotoPreviewUrls(urls);
-                            }
-                          }}
+  if (e.target.files && e.target.files.length > 0) {
+    const filesArray = Array.from(e.target.files);
+    if (filesArray.length > DEFAULT_IMAGE_CONFIG.maxTotal) {
+      alert(`最大${DEFAULT_IMAGE_CONFIG.maxTotal}枚まで選択できます`);
+      return;
+    }
+    setSelectedFiles(filesArray);
+    setPhotos(e.target.files);
+    // プレビュー生成
+    const urls = filesArray.map(file => URL.createObjectURL(file));
+    setPhotoPreviewUrls(urls);
+    // 直接高画質選択画面へ遷移
+    setSelectionStep('highQuality');
+  }
+}}
                           disabled={isValidating}
                           style={{
                             position: 'absolute',
@@ -1013,114 +988,27 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                         />
                         <div
                           style={{
-                            width: "100%", 
-                            padding: "1rem", 
-                            borderRadius: "12px", 
-                            backgroundColor: "#ffffff12", 
-                            color: "#fff", 
-                            border: "2px dashed #ffffff44", 
-                            boxSizing: "border-box",
-                            cursor: isValidating ? "not-allowed" : "pointer",
-                            textAlign: "center",
-                            transition: "all 0.2s ease"
-                          }}
+  width: "100%", 
+  padding: "3rem 1rem",  // ← 上下のpaddingを増やして中央配置
+  borderRadius: "12px", 
+  backgroundColor: "#ffffff12", 
+  color: "#fff", 
+　border: "1.5px dashed #ffffff40", 
+  boxSizing: "border-box",
+  cursor: isValidating ? "not-allowed" : "pointer",
+  textAlign: "center",
+  transition: "all 0.2s ease",
+  display: "flex",  // ← 追加
+  flexDirection: "column",  // ← 追加
+  justifyContent: "center",  // ← 追加
+  minHeight: "140px"  // ← 追加（最小の高さを確保）
+}}
                         >
-                          <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>📷</div>
-                          <div style={{ fontSize: "0.95rem", fontWeight: "500" }}>
+                          <div style={{ fontSize: "0.95rem", fontWeight: "500", marginBottom: "0.5rem" }}>
                             タップして画像を選択
-                          </div>
-                          <div style={{ fontSize: "0.8rem", color: "#ffffff88", marginTop: "0.3rem" }}>
-                            最大{DEFAULT_IMAGE_CONFIG.maxTotal}枚まで
                           </div>
                         </div>
                       </div>
-
-                      {/* 選択済み画像のプレビュー */}
-                      {selectedFiles.length > 0 && (
-                        <div style={{ marginTop: "1rem" }}>
-                          <div style={{ 
-                            display: "flex", 
-                            justifyContent: "space-between", 
-                            alignItems: "center",
-                            marginBottom: "0.5rem"
-                          }}>
-                            <span style={{ color: "#fff", fontSize: "0.9rem" }}>
-                              {selectedFiles.length}枚選択中
-                            </span>
-                            <button
-                              onClick={() => {
-                                setSelectedFiles([]);
-                                setPhotos(null);
-                                setPhotoPreviewUrls([]);
-                                setHighQualityIndices([]);
-                              }}
-                              style={{
-                                padding: "0.3rem 0.8rem",
-                                backgroundColor: "transparent",
-                                color: "#ff6b6b",
-                                border: "1px solid #ff6b6b",
-                                borderRadius: "6px",
-                                fontSize: "0.8rem",
-                                cursor: "pointer"
-                              }}
-                            >
-                              クリア
-                            </button>
-                          </div>
-                          
-                          <div style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(5, 1fr)",
-                            gap: "0.5rem"
-                          }}>
-                            {photoPreviewUrls.map((url, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  aspectRatio: "1",
-                                  borderRadius: "8px",
-                                  overflow: "hidden",
-                                  backgroundColor: "#ffffff22"
-                                }}
-                              >
-                                <img
-                                  src={url}
-                                  alt={`選択画像 ${index + 1}`}
-                                  style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover"
-                                  }}
-                                />
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* 次へボタン */}
-                          <button
-                            onClick={() => setSelectionStep('highQuality')}
-                            style={{
-                              width: "100%",
-                              marginTop: "1rem",
-                              padding: "0.75rem",
-                              backgroundColor: "#F0DB4F",
-                              color: "#000",
-                              border: "none",
-                              borderRadius: "10px",
-                              fontSize: "1rem",
-                              fontWeight: "bold",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: "0.5rem"
-                            }}
-                          >
-                            高画質にする画像を選ぶ
-                            <span style={{ fontSize: "1.2rem" }}>→</span>
-                          </button>
-                        </div>
-                      )}
 
                       <small style={{ 
                         display: "block", 
@@ -1128,7 +1016,7 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                         color: "#ddd", 
                         fontSize: "0.8rem" 
                       }}>
-                        JPEG, PNG, GIF, WebP
+                        JPEG, PNG, GIF, WebP（最大{DEFAULT_IMAGE_CONFIG.maxTotal}枚）
                       </small>
                     </>
                   )}
@@ -1143,10 +1031,10 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                         marginBottom: "1rem"
                       }}>
                         <div style={{ color: "#F0DB4F", fontWeight: "bold", marginBottom: "0.5rem" }}>
-                          📄 高画質でアップする画像を選択
+                          高画質にチェック
                         </div>
                         <div style={{ color: "#ffffff99", fontSize: "0.85rem" }}>
-                          図面・書類など細かい文字を読みたい画像を最大{DEFAULT_IMAGE_CONFIG.maxHighQuality}枚まで選んでください
+                          図面・書類など細かい文字が読めるよう高画質をキープしたい画像を最大{DEFAULT_IMAGE_CONFIG.maxHighQuality}枚まで選べます
                         </div>
                       </div>
 
@@ -1253,68 +1141,51 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                         </div>
                       </div>
 
-                      {/* ボタン群 */}
-                      <div style={{ 
-                        display: "flex", 
-                        gap: "0.75rem", 
-                        marginTop: "1rem" 
-                      }}>
-                        <button
-                          onClick={() => {
-                            setSelectionStep('select');
-                            setHighQualityIndices([]);
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: "0.75rem",
-                            backgroundColor: "transparent",
-                            color: "#fff",
-                            border: "1px solid #ffffff44",
-                            borderRadius: "10px",
-                            fontSize: "0.95rem",
-                            cursor: "pointer"
-                          }}
-                        >
-                          ← 戻る
-                        </button>
-                        <button
-                          onClick={() => setSelectionStep('select')}
-                          style={{
-                            flex: 2,
-                            padding: "0.75rem",
-                            backgroundColor: "#F0DB4F",
-                            color: "#000",
-                            border: "none",
-                            borderRadius: "10px",
-                            fontSize: "0.95rem",
-                            fontWeight: "bold",
-                            cursor: "pointer"
-                          }}
-                        >
-                          選択を確定
-                        </button>
-                      </div>
+                     {/* ボタン群 */}
+<div style={{ 
+  display: "flex", 
+  gap: "0.75rem", 
+  marginTop: "1rem" 
+}}>
+  <button
+    onClick={() => {
+      // 画像選択画面に戻る
+      setSelectionStep('select');
+      // 高画質選択をリセット
+      setHighQualityIndices([]);
+    }}
+    style={{
+      flex: 1,
+      padding: "0.75rem",
+      backgroundColor: "transparent",
+      color: "#fff",
+      border: "1px solid #ffffff44",
+      borderRadius: "10px",
+      fontSize: "0.95rem",
+      cursor: "pointer"
+    }}
+  >
+    ← 戻る
+  </button>
+  <button
+    onClick={handleConfirmation}
+    disabled={isValidating || validationErrors.length > 0 || groupLoading}
+    style={{
+      flex: 2,
+      padding: "0.75rem",
+      backgroundColor: isValidating || validationErrors.length > 0 || groupLoading ? "#666" : "#F0DB4F",
+      color: isValidating || validationErrors.length > 0 || groupLoading ? "#ccc" : "#000",
+      border: "none",
+      borderRadius: "10px",
+      fontSize: "0.95rem",
+      fontWeight: "bold",
+      cursor: isValidating || validationErrors.length > 0 || groupLoading ? "not-allowed" : "pointer"
+    }}
+  >
+    確認する
+  </button>
+</div>
 
-                      {/* スキップオプション */}
-                      <button
-                        onClick={() => {
-                          setHighQualityIndices([]);
-                          setSelectionStep('select');
-                        }}
-                        style={{
-                          width: "100%",
-                          marginTop: "0.75rem",
-                          padding: "0.5rem",
-                          backgroundColor: "transparent",
-                          color: "#ffffff88",
-                          border: "none",
-                          fontSize: "0.85rem",
-                          cursor: "pointer",
-                          textDecoration: "underline"
-                        }}
-                      >
-                        すべて通常画質でアップする
-                      </button>
                     </div>
                   )}
                   
@@ -1344,9 +1215,10 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
 
                 
                 {/* 確認ボタン */}
-                <button
-                  onClick={handleConfirmation}
-                  disabled={isValidating || validationErrors.length > 0 || groupLoading || (selectedFiles.length > 0 && selectionStep === 'highQuality')}
+                {selectionStep === 'select' && (
+  <button
+    onClick={handleConfirmation}
+    disabled={isValidating || validationErrors.length > 0 || groupLoading}
                   style={{ 
                     width: "100%", 
                     padding: "0.75rem", 
@@ -1404,6 +1276,7 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                     "確認する"
                   )}
                 </button>
+                )}
               </div>
             </div>
           )}
