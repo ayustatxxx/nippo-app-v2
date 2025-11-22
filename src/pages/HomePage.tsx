@@ -10,7 +10,7 @@ import { getCurrentUser, isAdmin, getUserRole, getUserDisplayName } from '../uti
 import { DisplayNameResolver } from '../utils/displayNameResolver';
 import { UnifiedDataManager } from '../utils/unifiedDataManager';
 import { getDisplayNameSafe } from '../core/SafeUnifiedDataManager';
-import { getUser } from '../firebase/firestore';
+import { getUser, getPostImages } from '../firebase/firestore';
 import MemoModal from '../components/MemoModal';
 import { MemoService } from '../utils/memoService'; 
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";

@@ -697,13 +697,13 @@ export const createGroup = async (
 export const createPost = async (post: Omit<Post, 'id' | 'createdAt'>) => {
   try {
     // メインドキュメント用のデータ（画像はサムネイルのみ保存）
-    const postData = {
+   const postData = {
       ...post,
       createdAt: new Date(),
-      // 大きな画像データは除外（サブコレクションに保存）
-      images: [], // 後方互換性のため空配列を保持
+      // 後方互換性：従来のimagesフィールドにも画像を保存
+      // （一覧表示で使用するため）
     };
-
+    
     // メインドキュメントを作成
     const docRef = await addDoc(collection(db, 'posts'), postData);
     const postId = docRef.id;

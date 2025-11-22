@@ -264,7 +264,7 @@ public static async convertToBase64(file: File): Promise<string> {
    */
   public static async compressDocumentImage(file: File): Promise<string> {
     console.log(`📄 図面・書類用圧縮開始: ${file.name}`);
-    return this.compressImage(file, 1000, 0.40);
+    return this.compressImage(file, 1500, 0.55);
   }
 
   /**

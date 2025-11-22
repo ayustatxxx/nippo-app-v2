@@ -286,8 +286,8 @@ export const DEFAULT_IMAGE_CONFIG: ImageUploadConfig = {
   maxStandard: 10,
   maxTotal: 15,
   highQualitySettings: {
-    maxWidth: 1000,   // 図面・書類が読める解像度
-    quality: 0.40,    // 文字が潰れない品質
+    maxWidth: 1500,   // 図面・書類が読める解像度
+    quality: 0.55,    // 文字が潰れない品質
   },
   standardSettings: {
     maxWidth: 720,    // 現場写真用
