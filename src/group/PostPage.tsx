@@ -416,17 +416,36 @@ try {
       const tags = parseTags(tagInput);
       const timestamp = Date.now();
   
-      // Firestore用の投稿データ
+    
+      // Firestore用の投稿データ（2モード設計対応）
       const newPost = {
         userId: user.id,
         userName: user.displayName || localStorage.getItem("daily-report-displayname") || user.username,
         groupId: groupId,
         message: sanitizedMessage || "",
-        images: photoUrls,
         tags: tags,
         status: '未確認' as const,
         isWorkTimePost: false,
         isEdited: false,
+        
+        // 後方互換性：従来の画像配列
+        images: photoUrls,
+        
+        // 2モード設計：新しい画像データ構造
+        thumbnails: processedData ? processedData.thumbnails : { documents: [], photos: [] },
+        highQualityCount: processedData ? processedData.documentImages.length : 0,
+        standardCount: processedData ? processedData.photoImages.length : 0,
+        totalImageCount: photoUrls.length,
+        
+        // 会社情報（ハイブリッド方式）
+        companyName: user.profileData?.company || user.company || null,
+        companyId: null,  // 将来用
+        
+        // AI準備フィールド（将来用）
+        aiTags: null,
+        aiSummary: null,
+        extractedText: null,
+        scheduleId: null,
       };
   
       // Firestoreに投稿を保存
@@ -439,7 +458,7 @@ try {
       const date = `${now.getFullYear()} / ${now.getMonth() + 1} / ${now.getDate()}（${weekday}）`;
       const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   
-      const legacyPost: Post = {
+      const legacyPost = {
         id: postId,
         message: sanitizedMessage || "",
         time: `${date}　${time}`,
@@ -448,7 +467,17 @@ try {
         userId: user.id,
         username: user.displayName || localStorage.getItem("daily-report-displayname") || user.username,
         groupId: groupId,
-        timestamp: timestamp
+        timestamp: timestamp,
+        status: '未確認' as const,
+        
+        // 2モード設計データ
+        thumbnails: processedData ? processedData.thumbnails : { documents: [], photos: [] },
+        highQualityCount: processedData ? processedData.documentImages.length : 0,
+        standardCount: processedData ? processedData.photoImages.length : 0,
+        totalImageCount: photoUrls.length,
+        
+        // 会社情報
+        companyName: user.profileData?.company || user.company || null,
       };
   
       // IndexedDBにも保存（後方互換性のため）
@@ -537,6 +566,11 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
       setTagInput("");
       setIsConfirmationMode(false);
       clearErrors();
+
+      // 2モード設計：追加のリセット
+      setSelectedFiles([]);
+      setHighQualityIndices([]);
+      setSelectionStep('select');
       
       
       alert("✅ 投稿が保存されました！");
@@ -558,7 +592,7 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
       FileValidator.logSecurityEvent('post_save_failed', { error, groupId });
       alert("投稿の保存中にエラーが発生しました");
     }
-  }, [groupId, photos, message, tagInput, sanitizeInput, parseTags, clearErrors, navigate]);
+  }, [groupId, selectedFiles, highQualityIndices, message, tagInput, sanitizeInput, parseTags, clearErrors, navigate]);
 
   // データベースが初期化されるまで読み込み表示
   if (!dbInitialized) {
