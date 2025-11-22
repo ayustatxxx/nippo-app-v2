@@ -464,7 +464,7 @@ const handleLogout = () => {
             color: '#055A68', 
             margin: 0
           }}>
-            Profile
+            My Page
           </h2>
         </div>
 
