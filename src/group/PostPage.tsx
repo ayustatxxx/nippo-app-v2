@@ -9,6 +9,7 @@ import { createPost } from '../firebase/firestore';
 import { getCurrentUser, isAdmin } from '../utils/authUtil';
 import { forceRefreshPosts } from '../pages/HomePage';
 import { FileValidator } from '../utils/fileValidation';
+import { DEFAULT_IMAGE_CONFIG } from '../types';
 
 
 // ✅ ArchivePageとHomePageへの直接リフレッシュ関数を定義
@@ -53,6 +54,14 @@ function PostPage() {
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [groupLoading, setGroupLoading] = useState(true); // グループ読み込み状態を追加
   
+  // ===== 2モード設計：新しいstate =====
+  const [selectionStep, setSelectionStep] = useState<'select' | 'highQuality' | 'confirm'>('select');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [highQualityIndices, setHighQualityIndices] = useState<number[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 });
+
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams(); 
   
@@ -338,48 +347,70 @@ try {
 }
 
 
+    // ===== 2モード設計：画像処理 =====
       let photoUrls: string[] = [];
-if (photos && photos.length > 0) {
-  const result = await FileValidator.validateFiles(photos);
-  
-  if (result.errors.length > 0) {
-    alert(`ファイルエラー:\n${result.errors.join('\n')}`);
-    return;
-  }
-  
-  if (result.validFiles.length > 0) {
-    try {
-      console.log(`📸 画像処理開始: ${result.validFiles.length}枚`);
-      
-      // 🆕 バッチ処理で画像を圧縮
-      photoUrls = await FileValidator.processFilesInBatches(result.validFiles, 2);
+      let processedData: {
+        documentImages: string[];
+        photoImages: string[];
+        thumbnails: { documents: string[]; photos: string[] };
+      } | null = null;
 
-      // ✨ 圧縮後の合計サイズチェック
-      const sizeCheck = FileValidator.checkCompressedTotalSize(photoUrls, result.validFiles);
-      if (!sizeCheck.isValid) {
-        alert(sizeCheck.error);
-        console.error('❌ 圧縮後のサイズチェックエラー:', sizeCheck.totalSizeMB, 'MB');
-        return;
+      if (selectedFiles.length > 0) {
+        const result = await FileValidator.validateFiles(selectedFiles);
+        
+        if (result.errors.length > 0) {
+          alert(`ファイルエラー:\n${result.errors.join('\n')}`);
+          return;
+        }
+
+        if (result.validFiles.length > 0) {
+          try {
+            console.log(`📸 2モード画像処理開始: ${result.validFiles.length}枚（高画質${highQualityIndices.length}枚）`);
+            setIsProcessing(true);
+            setProcessingProgress({ current: 0, total: result.validFiles.length });
+
+            // 2モード処理を実行
+            processedData = await FileValidator.processImagesWithTwoModes(
+              result.validFiles,
+              highQualityIndices
+            );
+
+            // サイズチェック
+            const sizeCheck = FileValidator.checkTwoModeTotalSize(
+              processedData.documentImages,
+              processedData.photoImages
+            );
+
+            if (!sizeCheck.isValid) {
+              alert(sizeCheck.error);
+              setIsProcessing(false);
+              return;
+            }
+
+            // 後方互換性のため、全画像を1つの配列にも保存
+            photoUrls = [...processedData.documentImages, ...processedData.photoImages];
+
+            console.log(`✅ 2モード画像処理完了: 図面${processedData.documentImages.length}枚, 写真${processedData.photoImages.length}枚`);
+            console.log(`📊 合計サイズ: ${sizeCheck.totalSizeMB}MB`);
+
+            FileValidator.logSecurityEvent('two_mode_upload', {
+              totalFiles: result.validFiles.length,
+              documentCount: processedData.documentImages.length,
+              photoCount: processedData.photoImages.length,
+              totalSizeMB: sizeCheck.totalSizeMB,
+              groupId: groupId
+            });
+
+            setIsProcessing(false);
+
+          } catch (conversionError) {
+            console.error('画像処理エラー:', conversionError);
+            alert('画像の処理中にエラーが発生しました。画像サイズを確認して再度お試しください。');
+            setIsProcessing(false);
+            return;
+          }
+        }
       }
-      
-      console.log(`✅ 画像処理完了: ${photoUrls.length}枚（合計${sizeCheck.totalSizeMB}MB）`);
-      
-      FileValidator.logSecurityEvent('files_uploaded', {
-        fileCount: result.validFiles.length,
-        totalOriginalSize: result.validFiles.reduce((sum, file) => sum + file.size, 0),
-        totalCompressedSize: sizeCheck.totalSizeMB * 1024 * 1024,
-        totalCompressedSizeMB: sizeCheck.totalSizeMB,
-        compressionRatio: Math.round((1 - (sizeCheck.totalSizeMB * 1024 * 1024) / result.validFiles.reduce((sum, file) => sum + file.size, 0)) * 100),
-        groupId: groupId
-      });
-
-    } catch (conversionError) {
-      console.error('画像処理エラー:', conversionError);
-      alert('画像の処理中にエラーが発生しました。画像サイズを確認して再度お試しください。');
-      return;
-    }
-  }
-}
       
       const sanitizedMessage = sanitizeInput(message).substring(0, 5000);
       const tags = parseTags(tagInput);
@@ -872,7 +903,10 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                   )}
                 </div>
                 
-                {/* 写真アップロード */}
+                
+
+
+                {/* ===== 2モード設計：画像アップロードセクション ===== */}
                 <div style={{ marginBottom: "2rem" }}>
                   <label style={{ 
                     display: "block", 
@@ -882,63 +916,373 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                   }}>
                     Photos
                   </label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                      onChange={(e) => setPhotos(e.target.files)}
-                      disabled={isValidating}
-                      style={{
-                        position: 'absolute',
-                        width: '100%',
-                        height: '100%',
-                        opacity: 0,
-                        cursor: isValidating ? "not-allowed" : "pointer",
-                      }}
-                    />
-                    <div
-                      style={{
-                        width: "100%", 
-                        padding: "0.6rem 0.8rem", 
-                        borderRadius: "10px", 
-                        backgroundColor: isValidating ? "#ffffff08" : "#ffffff12", 
-                        color: isValidating ? "#888" : "#fff", 
-                        border: "1px solid #ffffff22", 
-                        boxSizing: "border-box",
-                        cursor: isValidating ? "not-allowed" : "pointer",
-                        fontSize: "16px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "flex-start"
-                      }}
-                    >
-                      <button
-                        type="button"
-                        disabled={isValidating}
-                        style={{
-                          padding: "0.3rem 0.8rem",
-                          backgroundColor: "white",
-                          color: "#1e1e2f",
-                          border: "none",
-                          borderRadius: "6px",
-                          fontSize: "0.75rem",
-                          fontWeight: "bold",
-                          cursor: isValidating ? "not-allowed" : "pointer",
-                          opacity: isValidating ? 0.5 : 1,
-                          pointerEvents: "none",
-                          marginRight: "0.8rem"
-                        }}
-                      >
-                        ファイル選択
-                      </button>
-                      <span style={{ fontSize: "15px", color: "#ddd" }}>
-                        {photos && photos.length > 0 
-                          ? `${photos.length}枚` 
-                          : "ファイルを選択"}
+                  
+                  {/* ステップ表示 */}
+                  {selectedFiles.length > 0 && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      marginBottom: '1rem',
+                      padding: '0.5rem 1rem',
+                      backgroundColor: 'rgba(240, 219, 79, 0.1)',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: '#F0DB4F'
+                    }}>
+                      <span style={{ 
+                        opacity: selectionStep === 'select' ? 1 : 0.5,
+                        fontWeight: selectionStep === 'select' ? 'bold' : 'normal'
+                      }}>
+                        ① 画像選択
+                      </span>
+                      <span style={{ color: '#ffffff44' }}>→</span>
+                      <span style={{ 
+                        opacity: selectionStep === 'highQuality' ? 1 : 0.5,
+                        fontWeight: selectionStep === 'highQuality' ? 'bold' : 'normal'
+                      }}>
+                        ② 高画質選択
                       </span>
                     </div>
-                  </div>
+                  )}
+
+                  {/* 画像選択ステップ */}
+                  {selectionStep === 'select' && (
+                    <>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              const filesArray = Array.from(e.target.files);
+                              if (filesArray.length > DEFAULT_IMAGE_CONFIG.maxTotal) {
+                                alert(`最大${DEFAULT_IMAGE_CONFIG.maxTotal}枚まで選択できます`);
+                                return;
+                              }
+                              setSelectedFiles(filesArray);
+                              setPhotos(e.target.files);
+                              // プレビュー生成
+                              const urls = filesArray.map(file => URL.createObjectURL(file));
+                              setPhotoPreviewUrls(urls);
+                            }
+                          }}
+                          disabled={isValidating}
+                          style={{
+                            position: 'absolute',
+                            width: '100%',
+                            height: '100%',
+                            opacity: 0,
+                            cursor: isValidating ? "not-allowed" : "pointer",
+                          }}
+                        />
+                        <div
+                          style={{
+                            width: "100%", 
+                            padding: "1rem", 
+                            borderRadius: "12px", 
+                            backgroundColor: "#ffffff12", 
+                            color: "#fff", 
+                            border: "2px dashed #ffffff44", 
+                            boxSizing: "border-box",
+                            cursor: isValidating ? "not-allowed" : "pointer",
+                            textAlign: "center",
+                            transition: "all 0.2s ease"
+                          }}
+                        >
+                          <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>📷</div>
+                          <div style={{ fontSize: "0.95rem", fontWeight: "500" }}>
+                            タップして画像を選択
+                          </div>
+                          <div style={{ fontSize: "0.8rem", color: "#ffffff88", marginTop: "0.3rem" }}>
+                            最大{DEFAULT_IMAGE_CONFIG.maxTotal}枚まで
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 選択済み画像のプレビュー */}
+                      {selectedFiles.length > 0 && (
+                        <div style={{ marginTop: "1rem" }}>
+                          <div style={{ 
+                            display: "flex", 
+                            justifyContent: "space-between", 
+                            alignItems: "center",
+                            marginBottom: "0.5rem"
+                          }}>
+                            <span style={{ color: "#fff", fontSize: "0.9rem" }}>
+                              {selectedFiles.length}枚選択中
+                            </span>
+                            <button
+                              onClick={() => {
+                                setSelectedFiles([]);
+                                setPhotos(null);
+                                setPhotoPreviewUrls([]);
+                                setHighQualityIndices([]);
+                              }}
+                              style={{
+                                padding: "0.3rem 0.8rem",
+                                backgroundColor: "transparent",
+                                color: "#ff6b6b",
+                                border: "1px solid #ff6b6b",
+                                borderRadius: "6px",
+                                fontSize: "0.8rem",
+                                cursor: "pointer"
+                              }}
+                            >
+                              クリア
+                            </button>
+                          </div>
+                          
+                          <div style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(5, 1fr)",
+                            gap: "0.5rem"
+                          }}>
+                            {photoPreviewUrls.map((url, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  aspectRatio: "1",
+                                  borderRadius: "8px",
+                                  overflow: "hidden",
+                                  backgroundColor: "#ffffff22"
+                                }}
+                              >
+                                <img
+                                  src={url}
+                                  alt={`選択画像 ${index + 1}`}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover"
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* 次へボタン */}
+                          <button
+                            onClick={() => setSelectionStep('highQuality')}
+                            style={{
+                              width: "100%",
+                              marginTop: "1rem",
+                              padding: "0.75rem",
+                              backgroundColor: "#F0DB4F",
+                              color: "#000",
+                              border: "none",
+                              borderRadius: "10px",
+                              fontSize: "1rem",
+                              fontWeight: "bold",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "0.5rem"
+                            }}
+                          >
+                            高画質にする画像を選ぶ
+                            <span style={{ fontSize: "1.2rem" }}>→</span>
+                          </button>
+                        </div>
+                      )}
+
+                      <small style={{ 
+                        display: "block", 
+                        marginTop: "0.5rem", 
+                        color: "#ddd", 
+                        fontSize: "0.8rem" 
+                      }}>
+                        JPEG, PNG, GIF, WebP
+                      </small>
+                    </>
+                  )}
+
+                  {/* 高画質選択ステップ */}
+                  {selectionStep === 'highQuality' && (
+                    <div>
+                      <div style={{
+                        backgroundColor: "rgba(240, 219, 79, 0.1)",
+                        padding: "1rem",
+                        borderRadius: "10px",
+                        marginBottom: "1rem"
+                      }}>
+                        <div style={{ color: "#F0DB4F", fontWeight: "bold", marginBottom: "0.5rem" }}>
+                          📄 高画質でアップする画像を選択
+                        </div>
+                        <div style={{ color: "#ffffff99", fontSize: "0.85rem" }}>
+                          図面・書類など細かい文字を読みたい画像を最大{DEFAULT_IMAGE_CONFIG.maxHighQuality}枚まで選んでください
+                        </div>
+                      </div>
+
+                      <div style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, 1fr)",
+                        gap: "0.75rem"
+                      }}>
+                        {photoPreviewUrls.map((url, index) => {
+                          const isSelected = highQualityIndices.includes(index);
+                          const canSelect = highQualityIndices.length < DEFAULT_IMAGE_CONFIG.maxHighQuality || isSelected;
+                          
+                          return (
+                            <div
+                              key={index}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setHighQualityIndices(prev => prev.filter(i => i !== index));
+                                } else if (canSelect) {
+                                  setHighQualityIndices(prev => [...prev, index]);
+                                }
+                              }}
+                              style={{
+                                position: "relative",
+                                aspectRatio: "1",
+                                borderRadius: "10px",
+                                overflow: "hidden",
+                                cursor: canSelect ? "pointer" : "not-allowed",
+                                opacity: canSelect ? 1 : 0.5,
+                                border: isSelected ? "3px solid #F0DB4F" : "3px solid transparent",
+                                transition: "all 0.2s ease"
+                              }}
+                            >
+                              <img
+                                src={url}
+                                alt={`画像 ${index + 1}`}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover"
+                                }}
+                              />
+                              
+                              {/* 選択インジケーター */}
+                              <div style={{
+                                position: "absolute",
+                                top: "6px",
+                                right: "6px",
+                                width: "24px",
+                                height: "24px",
+                                borderRadius: "50%",
+                                backgroundColor: isSelected ? "#F0DB4F" : "rgba(255,255,255,0.3)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: "14px",
+                                fontWeight: "bold",
+                                color: isSelected ? "#000" : "#fff",
+                                border: "2px solid #fff",
+                                boxShadow: "0 2px 4px rgba(0,0,0,0.3)"
+                              }}>
+                                {isSelected ? "✓" : ""}
+                              </div>
+
+                              {/* 高画質バッジ */}
+                              {isSelected && (
+                                <div style={{
+                                  position: "absolute",
+                                  bottom: "6px",
+                                  left: "6px",
+                                  backgroundColor: "#F0DB4F",
+                                  color: "#000",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  fontSize: "0.65rem",
+                                  fontWeight: "bold"
+                                }}>
+                                  高画質
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* 選択状況 */}
+                      <div style={{
+                        marginTop: "1rem",
+                        padding: "0.75rem",
+                        backgroundColor: "rgba(255,255,255,0.1)",
+                        borderRadius: "8px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      }}>
+                        <div style={{ color: "#fff", fontSize: "0.9rem" }}>
+                          <span style={{ color: "#F0DB4F", fontWeight: "bold" }}>
+                            {highQualityIndices.length}
+                          </span>
+                          /{DEFAULT_IMAGE_CONFIG.maxHighQuality}枚 高画質選択中
+                        </div>
+                        <div style={{ color: "#ffffff88", fontSize: "0.85rem" }}>
+                          残り{selectedFiles.length - highQualityIndices.length}枚は通常画質
+                        </div>
+                      </div>
+
+                      {/* ボタン群 */}
+                      <div style={{ 
+                        display: "flex", 
+                        gap: "0.75rem", 
+                        marginTop: "1rem" 
+                      }}>
+                        <button
+                          onClick={() => {
+                            setSelectionStep('select');
+                            setHighQualityIndices([]);
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: "0.75rem",
+                            backgroundColor: "transparent",
+                            color: "#fff",
+                            border: "1px solid #ffffff44",
+                            borderRadius: "10px",
+                            fontSize: "0.95rem",
+                            cursor: "pointer"
+                          }}
+                        >
+                          ← 戻る
+                        </button>
+                        <button
+                          onClick={() => setSelectionStep('select')}
+                          style={{
+                            flex: 2,
+                            padding: "0.75rem",
+                            backgroundColor: "#F0DB4F",
+                            color: "#000",
+                            border: "none",
+                            borderRadius: "10px",
+                            fontSize: "0.95rem",
+                            fontWeight: "bold",
+                            cursor: "pointer"
+                          }}
+                        >
+                          選択を確定
+                        </button>
+                      </div>
+
+                      {/* スキップオプション */}
+                      <button
+                        onClick={() => {
+                          setHighQualityIndices([]);
+                          setSelectionStep('select');
+                        }}
+                        style={{
+                          width: "100%",
+                          marginTop: "0.75rem",
+                          padding: "0.5rem",
+                          backgroundColor: "transparent",
+                          color: "#ffffff88",
+                          border: "none",
+                          fontSize: "0.85rem",
+                          cursor: "pointer",
+                          textDecoration: "underline"
+                        }}
+                      >
+                        すべて通常画質でアップする
+                      </button>
+                    </div>
+                  )}
                   
                   {isValidating && (
                     <div style={{
@@ -960,21 +1304,15 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                       ファイル検証中...
                     </div>
                   )}
-                  
-                  <small style={{ 
-                    display: "block", 
-                    marginTop: "0.4rem", 
-                    color: "#ddd", 
-                    fontSize: "0.8rem" 
-                  }}>
-                    JPEG, PNG, GIF, WebP ( 最大10枚 )
-                  </small>
                 </div>
+
+
+
                 
                 {/* 確認ボタン */}
                 <button
                   onClick={handleConfirmation}
-                  disabled={isValidating || validationErrors.length > 0 || groupLoading}
+                  disabled={isValidating || validationErrors.length > 0 || groupLoading || (selectedFiles.length > 0 && selectionStep === 'highQuality')}
                   style={{ 
                     width: "100%", 
                     padding: "0.75rem", 
