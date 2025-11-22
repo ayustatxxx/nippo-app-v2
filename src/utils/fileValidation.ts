@@ -16,8 +16,8 @@ export class FileValidator {
     'image/webp'
   ];
   
-  private static readonly MAX_FILE_SIZE = 7 * 1024 * 1024; // 7MB
-  private static readonly MAX_FILES = 10; // 最大ファイル数
+  private static readonly MAX_FILE_SIZE = 9 * 1024 * 1024; // 9MB
+  private static readonly MAX_FILES = 15; // 最大ファイル数（高画質5枚 + 通常10枚）
   
   // ファイル名の危険な文字をサニタイズ
   private static sanitizeFileName(fileName: string): string {
@@ -254,6 +254,191 @@ public static async convertToBase64(file: File): Promise<string> {
     
     // 将来的にはサーバーに送信
     // analytics.track('security_event', logEntry);
+  }
+
+  // ===== 2モード設計：専用圧縮関数 =====
+  
+  /**
+   * 図面・書類用の高画質圧縮
+   * 細かい文字が読める品質を維持
+   */
+  public static async compressDocumentImage(file: File): Promise<string> {
+    console.log(`📄 図面・書類用圧縮開始: ${file.name}`);
+    return this.compressImage(file, 1000, 0.40);
+  }
+
+  /**
+   * 現場写真用の通常圧縮
+   * ファイルサイズを優先
+   */
+  public static async compressPhotoImage(file: File): Promise<string> {
+    console.log(`📷 現場写真用圧縮開始: ${file.name}`);
+    return this.compressImage(file, 720, 0.27);
+  }
+
+  /**
+   * サムネイル生成（一覧表示用）
+   * 小さくて軽量な画像を生成
+   */
+  public static async generateThumbnail(file: File): Promise<string> {
+    console.log(`🖼️ サムネイル生成開始: ${file.name}`);
+    return this.compressImage(file, 150, 0.30);
+  }
+
+  /**
+   * Base64文字列からサムネイルを生成
+   * すでに圧縮済みの画像からサムネイルを作成
+   */
+  public static async generateThumbnailFromBase64(base64: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // 150pxにリサイズ
+          const maxSize = 150;
+          const ratio = Math.min(maxSize / img.width, maxSize / img.height);
+          const newWidth = Math.floor(img.width * ratio);
+          const newHeight = Math.floor(img.height * ratio);
+          
+          canvas.width = newWidth;
+          canvas.height = newHeight;
+          
+          ctx!.imageSmoothingEnabled = true;
+          ctx!.imageSmoothingQuality = 'medium';
+          ctx!.fillStyle = 'white';
+          ctx!.fillRect(0, 0, newWidth, newHeight);
+          ctx!.drawImage(img, 0, 0, newWidth, newHeight);
+          
+          const thumbnail = canvas.toDataURL('image/jpeg', 0.30);
+          resolve(thumbnail);
+        } catch (error) {
+          reject(new Error('サムネイル生成に失敗しました'));
+        }
+      };
+      
+      img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+      img.src = base64;
+    });
+  }
+
+  /**
+   * 2モード設計：画像を分類して圧縮
+   * @param files 全ての画像ファイル
+   * @param documentIndices 図面・書類として扱うファイルのインデックス
+   */
+  public static async processImagesWithTwoModes(
+    files: File[],
+    documentIndices: number[]
+  ): Promise<{
+    documentImages: string[];
+    photoImages: string[];
+    thumbnails: {
+      documents: string[];
+      photos: string[];
+    };
+  }> {
+    console.log(`🚀 2モード画像処理開始: 全${files.length}枚（図面${documentIndices.length}枚）`);
+    
+    const documentImages: string[] = [];
+    const photoImages: string[] = [];
+    const thumbnails = {
+      documents: [] as string[],
+      photos: [] as string[],
+    };
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const isDocument = documentIndices.includes(i);
+      
+      try {
+        if (isDocument) {
+          // 図面・書類として処理
+          const compressed = await this.compressDocumentImage(file);
+          const thumbnail = await this.generateThumbnailFromBase64(compressed);
+          documentImages.push(compressed);
+          thumbnails.documents.push(thumbnail);
+          console.log(`✅ 図面 ${documentImages.length}/${documentIndices.length} 完了`);
+        } else {
+          // 現場写真として処理
+          const compressed = await this.compressPhotoImage(file);
+          const thumbnail = await this.generateThumbnailFromBase64(compressed);
+          photoImages.push(compressed);
+          thumbnails.photos.push(thumbnail);
+          console.log(`✅ 写真 ${photoImages.length}/${files.length - documentIndices.length} 完了`);
+        }
+        
+        // メモリ解放のため少し待機
+        if (i < files.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      } catch (error) {
+        console.error(`❌ 画像処理エラー (${i + 1}/${files.length}):`, error);
+        throw error;
+      }
+    }
+    
+    console.log(`🎉 2モード画像処理完了: 図面${documentImages.length}枚, 写真${photoImages.length}枚`);
+    
+    return {
+      documentImages,
+      photoImages,
+      thumbnails,
+    };
+  }
+
+  /**
+   * 2モード設計：合計サイズチェック
+   */
+  public static checkTwoModeTotalSize(
+    documentImages: string[],
+    photoImages: string[]
+  ): {
+    isValid: boolean;
+    documentSizeMB: number;
+    photoSizeMB: number;
+    totalSizeMB: number;
+    error?: string;
+  } {
+    const calculateSize = (images: string[]): number => {
+      return images.reduce((sum, base64) => {
+        const base64Data = base64.split(',')[1] || base64;
+        return sum + (base64Data.length * 3) / 4;
+      }, 0);
+    };
+    
+    const documentSize = calculateSize(documentImages);
+    const photoSize = calculateSize(photoImages);
+    const totalSize = documentSize + photoSize;
+    
+    const documentSizeMB = Math.round(documentSize / (1024 * 1024) * 100) / 100;
+    const photoSizeMB = Math.round(photoSize / (1024 * 1024) * 100) / 100;
+    const totalSizeMB = Math.round(totalSize / (1024 * 1024) * 100) / 100;
+    
+    // 合計2.5MB以下を推奨（サブコレクション方式なので余裕あり）
+    const maxTotalSize = 2.5 * 1024 * 1024;
+    
+    console.log(`📊 サイズチェック: 図面${documentSizeMB}MB + 写真${photoSizeMB}MB = 合計${totalSizeMB}MB`);
+    
+    if (totalSize > maxTotalSize) {
+      return {
+        isValid: false,
+        documentSizeMB,
+        photoSizeMB,
+        totalSizeMB,
+        error: `合計サイズが大きすぎます（${totalSizeMB}MB）。\n画像の枚数を減らしてください。`,
+      };
+    }
+    
+    return {
+      isValid: true,
+      documentSizeMB,
+      photoSizeMB,
+      totalSizeMB,
+    };
   }
 
   // 画像圧縮機能（PostPageから移植）
