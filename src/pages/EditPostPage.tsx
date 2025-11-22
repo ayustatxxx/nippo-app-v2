@@ -201,7 +201,7 @@ useEffect(() => {
   return () => {
     isMounted = false;
   };
-}, [editedPhotos]); // editedPhotosのみに依存
+}, [editedPhotos, validateAndProcess, clearErrors]);
   
   // 変更検知
   useEffect(() => {
@@ -505,7 +505,6 @@ try {
   message: sanitizedMessage,
   tags: validTags,
   photoUrls: [...remainingPhotos, ...additionalPhotoUrls],  
-  files: editedPhotos ? Array.from(editedPhotos) : undefined,
   isManuallyEdited: true
 };
 
@@ -514,7 +513,6 @@ try {
   console.log('  - photoUrls枚数:', updateData.photoUrls.length);
   console.log('📡 [EditPage] UnifiedCoreSystem.updatePost呼び出し:');
   console.log('  - photoUrls枚数:', updateData.photoUrls.length);
-  console.log('  - files枚数:', updateData.files ? updateData.files.length : 0);
   
   await UnifiedCoreSystem.updatePost(post.id, updateData);
   
