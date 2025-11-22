@@ -1404,39 +1404,11 @@ const PostDetailModal: React.FC<{
     )}
   </div>
 )}
-                {displayPost.isEdited && !(
-  displayPost.tags?.includes('#出退勤時間') && 
-  displayPost.tags?.includes('#チェックイン') && 
-  displayPost.tags?.includes('#チェックアウト')
-) && (
-                  <span style={{
-                    color: 'rgba(5, 90, 104, 0.7)',
-                    fontSize: '0.85rem',
-                    marginLeft: '0.5rem'
-                  }}>
-                    （編集済み）
-                  </span>
-                )}
+                
               </div>
             )}
 
-            {/* メッセージがない場合の編集済み表示 */}
-            {!displayPost.message && displayPost.isEdited && !(
-  displayPost.tags?.includes('#出退勤時間') && 
-  displayPost.tags?.includes('#チェックイン') && 
-  displayPost.tags?.includes('#チェックアウト')
-) && (
-              <div style={{
-                whiteSpace: 'pre-wrap',
-                lineHeight: '1.6',
-                color: 'rgba(255, 255, 255, 0.8)',
-                fontSize: '0.85rem',
-                marginBottom: '1.5rem',
-                fontStyle: 'italic'
-              }}>
-                （編集済み）
-              </div>
-            )}
+           
             
             {/* タグ */}
             {displayPost.tags && displayPost.tags.length > 0 && (
