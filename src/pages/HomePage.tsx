@@ -598,6 +598,10 @@ useEffect(() => {
     const readStatus = getPostReadStatus(post, currentUserId);
     
     if (readStatus.isAuthor) {
+  // ⭐ チェックイン投稿の場合は既読を非表示
+  if (post.tags?.includes('#出退勤時間')) {
+    return null;
+  }
       // 投稿者の場合：既読カウント表示（インスタグラム風）
       return (
         <div style={{
@@ -629,7 +633,10 @@ useEffect(() => {
         </div>
       );
     } else {
-      // 投稿者以外の場合：ステータス切り替えボタン表示（アーカイブと同じ）
+  // ⭐ チェックイン投稿の場合はステータスボタンも非表示
+  if (post.tags?.includes('#出退勤時間')) {
+    return null;
+  }
       return (
         <span 
           style={{

@@ -424,8 +424,13 @@ post.tags?.includes('#チェックイン') ? (() => {
   {(() => {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "";
     const readStatus = getPostReadStatus(post, currentUserId);
-    
-    if (readStatus.isAuthor) {
+
+// 🆕 チェックイン・チェックアウト投稿では既読を非表示
+if (post.tags?.includes('#出退勤時間')) {
+  return null;
+}
+
+if (readStatus.isAuthor) {
       // 投稿者の場合：背景に適応した既読カウント表示
       return (
         <div style={{
@@ -3441,9 +3446,7 @@ console.log('🔍 [バッジ判定] tags:', displayPost.tags);
 
         {postsForDate.map((post) => {
   // デバッグ: isWorkTimePostの値を確認
-  if (post.tags?.includes('#出退勤時間') && 
-      post.tags?.includes('#チェックイン') && 
-      post.tags?.includes('#チェックアウト')) {
+  if (post.tags?.includes('#出退勤時間')) {
     console.log('🔍 [ArchivePage レンダリング判定]', {
       postId: post.id,
       isWorkTimePost: post.isWorkTimePost,
@@ -3805,8 +3808,13 @@ post.tags?.includes('#チェックイン') ? (() => {
   {(() => {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "";
     const readStatus = getPostReadStatus(post, currentUserId);
-    
-    if (readStatus.isAuthor) {
+
+// 🆕 チェックイン・チェックアウト投稿では既読を非表示
+if (post.tags?.includes('#出退勤時間')) {
+  return null;
+}
+
+if (readStatus.isAuthor) {
       // 投稿者の場合：既読カウント表示
       return (
         <div style={{

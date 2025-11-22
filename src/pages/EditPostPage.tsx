@@ -26,6 +26,7 @@ const EditPostPage: React.FC = () => {
 const [startTime, setStartTime] = useState<string>('');
 const [endTime, setEndTime] = useState<string>('');
 const [hasCheckOut, setHasCheckOut] = useState(false);
+const [workDate, setWorkDate] = useState<string>('');
   const [editedTags, setEditedTags] = useState<string[]>([]);
   const [editedPhotos, setEditedPhotos] = useState<FileList | null>(null);
   const [newPhotoUrls, setNewPhotoUrls] = useState<string[]>([]);
@@ -86,21 +87,56 @@ setPost(postData);
 
 // 🆕 メッセージから時刻を抽出
 const messageText = postData.message || '';
-const startTimeMatch = messageText.match(/作業開始:\s*(\d{2}:\d{2})/);
-const endTimeMatch = messageText.match(/作業終了:\s*(\d{2}:\d{2})/);
 
-if (startTimeMatch) {
-  setStartTime(startTimeMatch[1]);
-}
-if (endTimeMatch) {
-  setEndTime(endTimeMatch[1]);
+// 新フォーマット: "開始: 23:31 ー 終了: 23:31"
+const newFormatMatch = messageText.match(/開始:\s*(\d{2}:\d{2})\s*ー\s*終了:\s*(\d{2}:\d{2})/);
+// 旧フォーマット: "作業開始: 23:31" "作業終了: 23:31"
+const oldStartMatch = messageText.match(/作業開始:\s*(\d{2}:\d{2})/);
+const oldEndMatch = messageText.match(/作業終了:\s*(\d{2}:\d{2})/);
+// チェックインのみ: "開始: 23:31"
+const startOnlyMatch = messageText.match(/^開始:\s*(\d{2}:\d{2})/m);
+
+if (newFormatMatch) {
+  setStartTime(newFormatMatch[1]);
+  setEndTime(newFormatMatch[2]);
   setHasCheckOut(true);
+} else if (oldStartMatch) {
+  setStartTime(oldStartMatch[1]);
+  if (oldEndMatch) {
+    setEndTime(oldEndMatch[1]);
+    setHasCheckOut(true);
+  }
+} else if (startOnlyMatch) {
+  setStartTime(startOnlyMatch[1]);
+}
+
+// 🆕 日付を抽出（新フォーマット: "開始日:" または 旧フォーマット: "日付:"）
+const newDateMatch = messageText.match(/開始日:\s*(.+?)(?:\n|$)/);
+const oldDateMatch = messageText.match(/日付:\s*(.+?)(?:\n|$)/);
+const dateMatch = newDateMatch || oldDateMatch;
+
+if (dateMatch) {
+  // "2025 / 11 / 20 (木)" → "2025-11-20" に変換
+  const dateStr = dateMatch[1].replace(/（.+）/, '').trim();
+  const normalizedDate = dateStr.replace(/\s*\/\s*/g, '-');
+  setWorkDate(normalizedDate);
+} else {
+  // 日付がない場合は今日の日付を設定
+  const today = new Date().toISOString().split('T')[0];
+  setWorkDate(today);
 }
 
 // 🆕 メッセージから時刻部分を削除して表示
 const messageWithoutTime = messageText
+  .replace(/開始:\s*\d{2}:\d{2}\s*ー\s*終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/開始:\s*\d{2}:\d{2}\n?/g, '')
   .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
   .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/日付:[^\n]+\n?/g, '')
+  .replace(/開始日:[^\n]+\n?/g, '')
+  .replace(/■\s*作業時間:[^\n]+\n?/g, '')
+  .replace(/─+/g, '')  // ← 追加：区切り線を削除
+  .replace(/^\s*作業\s*$/gm, '')  // ← 追加：単独の「作業」を削除
   .trim();
 
 setEditedMessage(messageWithoutTime);
@@ -177,12 +213,15 @@ useEffect(() => {
   
   // 🆕 時刻の変更も検知
   const messageText = post.message || '';
-  const originalStartTime = messageText.match(/作業開始:\s*(\d{2}:\d{2})/)?.[1] || '';
-  const originalEndTime = messageText.match(/作業終了:\s*(\d{2}:\d{2})/)?.[1] || '';
-  const timeChanged = startTime !== originalStartTime || endTime !== originalEndTime;
+// 新旧フォーマット両方に対応
+const newFormatMatch = messageText.match(/開始:\s*(\d{2}:\d{2})\s*ー\s*終了:\s*(\d{2}:\d{2})/);
+const originalStartTime = newFormatMatch?.[1] || messageText.match(/作業開始:\s*(\d{2}:\d{2})/)?.[1] || '';
+const originalEndTime = newFormatMatch?.[2] || messageText.match(/作業終了:\s*(\d{2}:\d{2})/)?.[1] || '';
+const originalDate = messageText.match(/開始日:\s*(.+?)(?:\n|$)/)?.[1] || messageText.match(/日付:\s*(.+?)(?:\n|$)/)?.[1] || '';
+const timeChanged = startTime !== originalStartTime || endTime !== originalEndTime || workDate !== originalDate;
   
   setHasChanges(messageChanged || tagsChanged || photosChanged || timeChanged);
-}, [editedMessage, editedTags, newPhotoUrls, deletedPhotoUrls, post, startTime, endTime]);
+}, [editedMessage, editedTags, newPhotoUrls, deletedPhotoUrls, post, startTime, endTime, workDate]);
   
   // 🔒 セキュリティ強化: 入力値サニタイゼーション
   const sanitizeInput = (input: string): string => {
@@ -195,10 +234,53 @@ useEffect(() => {
 
   // 🆕 メッセージから時刻情報を削除する関数
 const removeTimeFromMessage = (message: string): string => {
-  return message
-    .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
-    .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
-    .trim();
+ return message
+  .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/日付:[^\n]+\n?/g, '') // ← この行を追加！
+  .trim();
+};
+
+// 🆕 作業時間を計算する関数
+const calculateWorkDuration = (startTime: string, endTime: string): { duration: string; isValid: boolean; errorMessage?: string } => {
+  const [startHour, startMin] = startTime.split(':').map(Number);
+  const [endHour, endMin] = endTime.split(':').map(Number);
+  
+  let totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
+  
+  // 🆕 終了時刻 < 開始時刻 → 日をまたいだと判断
+  if (totalMinutes < 0) {
+    totalMinutes += 24 * 60; // +24時間
+  }
+  
+  // 🆕 23時間59分（1439分）を超える場合はエラー
+  if (totalMinutes >= 24 * 60) { // 1440分以上
+    return {
+      duration: '',
+      isValid: false,
+      errorMessage: '⚠️ 作業時間は23時間59分以内で入力してください'
+    };
+  }
+  
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  
+  return {
+    duration: `${hours}時間${minutes}分`,
+    isValid: true
+  };
+};
+
+// 🆕 日付を日本語形式に変換する関数
+const formatDateToJapanese = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+  const weekday = weekdays[date.getDay()];
+  
+  return `${year} / ${month} / ${day} (${weekday})`;
 };
   
   // 🔒 セキュリティ強化: メッセージ入力処理
@@ -342,23 +424,50 @@ console.log('  - 新規画像(Base64):', additionalPhotoUrls.length, '枚');
 console.log('  - 新規画像(File):', editedPhotos ? editedPhotos.length : 0, '枚');
 
 
-// 🆕 時刻入力欄の値でメッセージを再構築（時刻を先頭に配置）
+// 🆕 時刻入力欄の値でメッセージを再構築
 let timePrefix = '';
-if (startTime) {
-  timePrefix += `作業開始: ${startTime}\n`;
+
+// チェックイン・チェックアウト情報
+if (startTime && hasCheckOut && endTime) {
+  timePrefix += `開始: ${startTime} ー 終了: ${endTime}\n`;
+} else if (startTime) {
+  timePrefix += `開始: ${startTime}\n`;
 }
-if (hasCheckOut && endTime) {
-  timePrefix += `作業終了: ${endTime}\n`;
+
+// 🆕 作業時間を計算して追加（チェックアウト済みの場合のみ）
+if (hasCheckOut && startTime && endTime) {
+  const result = calculateWorkDuration(startTime, endTime);
+  
+  if (!result.isValid) {
+    // エラーがある場合は保存前にアラート表示
+    alert(result.errorMessage);
+    return; // ここでreturnして保存を中止
+  }
+  
+  timePrefix += `─────────────────\n■ 作業時間: ${result.duration}\n─────────────────\n`;
+}
+
+// 🆕 開始日を追加
+if (workDate) {
+  const formattedDate = formatDateToJapanese(workDate);
+  timePrefix += `日付: ${formattedDate}\n`;
 }
 
 // メッセージから既存の時刻情報を削除
 const cleanMessage = editedMessage
+  .replace(/開始:\s*\d{2}:\d{2}\s*ー\s*終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/開始:\s*\d{2}:\d{2}\n?/g, '')
   .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
   .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/日付:[^\n]+\n?/g, '')
+  .replace(/開始日:[^\n]+\n?/g, '')
+  .replace(/■\s*作業時間:[^\n]+\n?/g, '')
+  .replace(/─+/g, '')  // ← 追加：区切り線を削除
+  .replace(/^\s*作業\s*$/gm, '')  // ← 追加：単独の「作業」を削除
   .trim();
 
-// 時刻 + メッセージの順で結合
-const reconstructedMessage = timePrefix + cleanMessage;
+// 時刻 + 作業時間 + 開始日 + メッセージの順で結合
+const reconstructedMessage = timePrefix + (cleanMessage ? `\n${cleanMessage}` : '');
 
 const sanitizedMessage = sanitizeInput(reconstructedMessage).substring(0, 5000);
 const validTags = editedTags.filter(tag => tag.length <= 50);
@@ -757,7 +866,7 @@ if (from === 'archive' && groupId) {
 
 
          {/* 🆕 時刻編集 */}
-{(editedTags.includes('#チェックイン') || editedTags.includes('#チェックアウト')) && (
+{editedTags.includes('#出退勤時間') && (
   <div style={{
     backgroundColor: 'white',
     borderRadius: '12px',
@@ -772,7 +881,7 @@ if (from === 'archive' && groupId) {
       fontWeight: '600',
       fontSize: '0.95rem'
     }}>
-      ⏰ 時刻の編集
+      ■ 時刻の編集
     </label>
     
     <div style={{
@@ -831,13 +940,69 @@ if (from === 'archive' && groupId) {
               boxSizing: 'border-box'
             }}
           />
+          
         </div>
       )}
     </div>
   </div>
 )}
 
-        
+        {/* 🆕 日付編集 */}
+{editedTags.includes('#出退勤時間') && (
+  <div style={{
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    padding: '1.5rem',
+    marginBottom: '1rem',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+  }}>
+    <label style={{
+      display: 'block',
+      marginBottom: '0.5rem',
+      color: '#055A68',
+      fontWeight: '600',
+      fontSize: '0.95rem'
+    }}>
+      ■ 開始日（変更不可）
+    </label>
+    
+    <div>
+      <label style={{
+        display: 'block',
+        marginBottom: '0.25rem',
+        color: '#666',
+        fontSize: '0.9rem'
+      }}>
+        開始日
+      </label>
+      <input
+  type="date"
+  value={workDate}
+  disabled
+  style={{
+    width: '100%',
+    padding: '0.75rem',
+    border: '2px solid #E6EDED',
+    borderRadius: '8px',
+    fontSize: '1rem',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+    backgroundColor: '#f5f5f5',
+    color: '#666',
+    cursor: 'not-allowed'
+  }}
+/>
+      <div style={{
+          fontSize: '0.8rem',
+          color: '#999',
+          marginTop: '0.5rem',
+          lineHeight: '1.4'
+        }}>
+          ℹ️ 開始日はチェックイン時に自動記録され、変更できません。
+        </div>
+    </div>
+  </div>
+)}
         {/* メッセージ編集 */}
         <div style={{
           backgroundColor: 'white',
@@ -1105,7 +1270,7 @@ if (from === 'archive' && groupId) {
             fontSize: '0.9rem',
             fontWeight: '600'
           }}>
-            新しい写真を追加 (最大10枚、各5MB以下)
+            新しい写真を追加 (最大10枚、各7MB以下)
           </label>
           
           <input
@@ -1151,7 +1316,7 @@ if (from === 'archive' && groupId) {
             fontSize: '0.8rem',
             color: '#666'
           }}>
-            対応形式: JPEG, PNG, GIF, WebP | 各ファイル最大5MB | 全体最大20MB
+            対応形式: JPEG, PNG, GIF, WebP 
           </div>
           
           {/* 新しい写真のプレビュー */}
