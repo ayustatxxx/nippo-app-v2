@@ -752,41 +752,7 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
     </h2>
   </div>
 
-  {/* セキュリティエラー表示 */}
-  {validationErrors.length > 0 && (
-                <div style={{
-                  backgroundColor: "#ff555522",
-                  color: "#ff5555",
-                  padding: "1rem",
-                  borderRadius: "12px",
-                  marginBottom: "1rem",
-                  border: "1px solid #ff555544"
-                }}>
-                  <div style={{ fontWeight: "bold", marginBottom: "0.5rem" }}>
-                    ⚠️ ファイルセキュリティエラー
-                  </div>
-                  {validationErrors.map((error, index) => (
-                    <div key={index} style={{ fontSize: "0.9rem", marginBottom: "0.25rem" }}>
-                      • {error}
-                    </div>
-                  ))}
-                  <button
-                    onClick={clearErrors}
-                    style={{
-                      marginTop: "0.5rem",
-                      padding: "0.3rem 0.6rem",
-                      backgroundColor: "#ff5555",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      fontSize: "0.8rem",
-                      cursor: "pointer"
-                    }}
-                  >
-                    エラーを閉じる
-                  </button>
-                </div>
-              )}
+
 
               {/* メイン投稿フォーム - コンテナスタイルを適用 */}
               <div style={{ 
@@ -860,7 +826,8 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                       fontSize: "16px", 
                       resize: "none", 
                       boxSizing: "border-box",
-                      outline: "none"
+                      outline: "none",
+                      lineHeight: "1.6"
                     }}
                   />
                   <div style={{
@@ -937,7 +904,7 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                   )}
                 </div>
                 
-                
+                  
 
 
                 {/* ===== 2モード設計：画像アップロードセクション ===== */}
@@ -1023,171 +990,172 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
 
                   {/* 高画質選択ステップ */}
                   {selectionStep === 'highQuality' && (
-                    <div>
-                      <div style={{
-                        backgroundColor: "rgba(240, 219, 79, 0.1)",
-                        padding: "1rem",
-                        borderRadius: "10px",
-                        marginBottom: "1rem"
-                      }}>
-                        <div style={{ color: "#F0DB4F", fontWeight: "bold", marginBottom: "0.5rem" }}>
-                          高画質にチェック
-                        </div>
-                        <div style={{ color: "#ffffff99", fontSize: "0.85rem" }}>
-                          図面・書類など細かい文字が読めるよう高画質をキープしたい画像を最大{DEFAULT_IMAGE_CONFIG.maxHighQuality}枚まで選べます
-                        </div>
-                      </div>
+  <div>
+    {/* エラーがある場合はエラー表示のみ、ない場合は高画質選択UI */}
+    {validationErrors.length > 0 ? (
+  <div style={{
+    backgroundColor: "rgba(229, 115, 115, 0.6)",
+    color: "#ffffff",      
+    padding: "1rem",
+    borderRadius: "12px",
+    marginBottom: "1rem",
+  }}>
+    <div style={{ fontWeight: "bold", marginBottom: "0.5rem" }}>
+      ⚠️ ファイルセキュリティエラー
+    </div>
+    {validationErrors.map((error, index) => (
+      <div key={index} style={{ fontSize: "0.9rem", marginBottom: "0.25rem" }}>
+        • {error}
+      </div>
+    ))}
+  </div>
+    ) : (
+      /* 高画質選択UI */
+      <>
+        <div style={{
+          backgroundColor: "rgba(240, 219, 79, 0.1)",
+          padding: "1rem",
+          borderRadius: "10px",
+          marginBottom: "1rem"
+        }}>
+          <div style={{ color: "#F0DB4F", fontWeight: "bold", marginBottom: "0.5rem" }}>
+            高画質を選択
+          </div>
+          <div style={{ color: "#ffff", fontSize: "0.85rem" }}>
+            図面・書類など細かい文字が読めるよう高画質をキープしたい場合は、最大{DEFAULT_IMAGE_CONFIG.maxHighQuality}枚まで選べます。
+          </div>
+        </div>
 
-                      <div style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(3, 1fr)",
-                        gap: "0.75rem"
-                      }}>
-                        {photoPreviewUrls.map((url, index) => {
-                          const isSelected = highQualityIndices.includes(index);
-                          const canSelect = highQualityIndices.length < DEFAULT_IMAGE_CONFIG.maxHighQuality || isSelected;
-                          
-                          return (
-                            <div
-                              key={index}
-                              onClick={() => {
-                                if (isSelected) {
-                                  setHighQualityIndices(prev => prev.filter(i => i !== index));
-                                } else if (canSelect) {
-                                  setHighQualityIndices(prev => [...prev, index]);
-                                }
-                              }}
-                              style={{
-                                position: "relative",
-                                aspectRatio: "1",
-                                borderRadius: "10px",
-                                overflow: "hidden",
-                                cursor: canSelect ? "pointer" : "not-allowed",
-                                opacity: canSelect ? 1 : 0.5,
-                                border: isSelected ? "3px solid #F0DB4F" : "3px solid transparent",
-                                transition: "all 0.2s ease"
-                              }}
-                            >
-                              <img
-                                src={url}
-                                alt={`画像 ${index + 1}`}
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover"
-                                }}
-                              />
-                              
-                              {/* 選択インジケーター */}
-                              <div style={{
-                                position: "absolute",
-                                top: "6px",
-                                right: "6px",
-                                width: "24px",
-                                height: "24px",
-                                borderRadius: "50%",
-                                backgroundColor: isSelected ? "#F0DB4F" : "rgba(255,255,255,0.3)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: "14px",
-                                fontWeight: "bold",
-                                color: isSelected ? "#000" : "#fff",
-                                border: "2px solid #fff",
-                                boxShadow: "0 2px 4px rgba(0,0,0,0.3)"
-                              }}>
-                                {isSelected ? "✓" : ""}
-                              </div>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: "0.75rem"
+        }}>
+          {photoPreviewUrls.map((url, index) => {
+            const isSelected = highQualityIndices.includes(index);
+            const canSelect = highQualityIndices.length < DEFAULT_IMAGE_CONFIG.maxHighQuality || isSelected;
+            
+            return (
+              <div
+                key={index}
+                onClick={() => {
+                  if (isSelected) {
+                    setHighQualityIndices(prev => prev.filter(i => i !== index));
+                  } else if (canSelect) {
+                    setHighQualityIndices(prev => [...prev, index]);
+                  }
+                }}
+                style={{
+                  position: "relative",
+                  aspectRatio: "1",
+                  borderRadius: "10px",
+                  overflow: "hidden",
+                  cursor: canSelect ? "pointer" : "not-allowed",
+                  opacity: canSelect ? 1 : 0.5,
+                  border: isSelected ? "3px solid #F0DB4F" : "3px solid transparent",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                <img
+                  src={url}
+                  alt={`画像 ${index + 1}`}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover"
+                  }}
+                />
+                
+                {/* 選択インジケーター - 選択時のみ表示 */}
+                {isSelected && (
+                  <div style={{
+                    position: "absolute",
+                    top: "6px",
+                    right: "6px",
+                    width: "24px",
+                    height: "24px",
+                    borderRadius: "50%",
+                    backgroundColor: "#F0DB4F",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "14px",
+                    fontWeight: "bold",
+                    color: "#000",
+                    border: "2px solid #fff",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.3)"
+                  }}>
+                    {highQualityIndices.indexOf(index) + 1}
+                  </div>
+                )}
 
-                              {/* 高画質バッジ */}
-                              {isSelected && (
-                                <div style={{
-                                  position: "absolute",
-                                  bottom: "6px",
-                                  left: "6px",
-                                  backgroundColor: "#F0DB4F",
-                                  color: "#000",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                  fontSize: "0.65rem",
-                                  fontWeight: "bold"
-                                }}>
-                                  高画質
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                {/* 高画質バッジ */}
+                {isSelected && (
+                  <div style={{
+                    position: "absolute",
+                    bottom: "6px",
+                    left: "6px",
+                    backgroundColor: "#F0DB4F",
+                    color: "#000",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    fontSize: "0.65rem",
+                    fontWeight: "bold"
+                  }}>
+                    高画質
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </>
+    )}
 
-                      {/* 選択状況 */}
-                      <div style={{
-                        marginTop: "1rem",
-                        padding: "0.75rem",
-                        backgroundColor: "rgba(255,255,255,0.1)",
-                        borderRadius: "8px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center"
-                      }}>
-                        <div style={{ color: "#fff", fontSize: "0.9rem" }}>
-                          <span style={{ color: "#F0DB4F", fontWeight: "bold" }}>
-                            {highQualityIndices.length}
-                          </span>
-                          /{DEFAULT_IMAGE_CONFIG.maxHighQuality}枚 高画質選択中
-                        </div>
-                        <div style={{ color: "#ffffff88", fontSize: "0.85rem" }}>
-                          残り{selectedFiles.length - highQualityIndices.length}枚は通常画質
-                        </div>
-                      </div>
-
-                     {/* ボタン群 */}
-<div style={{ 
-  display: "flex", 
-  gap: "0.75rem", 
-  marginTop: "1rem" 
-}}>
-  <button
-    onClick={() => {
-      // 画像選択画面に戻る
-      setSelectionStep('select');
-      // 高画質選択をリセット
-      setHighQualityIndices([]);
-    }}
-    style={{
-      flex: 1,
-      padding: "0.75rem",
-      backgroundColor: "transparent",
-      color: "#fff",
-      border: "1px solid #ffffff44",
-      borderRadius: "10px",
-      fontSize: "0.95rem",
-      cursor: "pointer"
-    }}
-  >
-    ← 戻る
-  </button>
-  <button
-    onClick={handleConfirmation}
-    disabled={isValidating || validationErrors.length > 0 || groupLoading}
-    style={{
-      flex: 2,
-      padding: "0.75rem",
-      backgroundColor: isValidating || validationErrors.length > 0 || groupLoading ? "#666" : "#F0DB4F",
-      color: isValidating || validationErrors.length > 0 || groupLoading ? "#ccc" : "#000",
-      border: "none",
-      borderRadius: "10px",
-      fontSize: "0.95rem",
-      fontWeight: "bold",
-      cursor: isValidating || validationErrors.length > 0 || groupLoading ? "not-allowed" : "pointer"
-    }}
-  >
-    確認する
-  </button>
-</div>
-
-                    </div>
-                  )}
+    {/* ボタン群 */}
+    <div style={{ 
+      display: "flex", 
+      gap: "0.75rem", 
+      marginTop: "3rem" 
+    }}>
+      <button
+        onClick={() => {
+          setSelectionStep('select');
+          setHighQualityIndices([]);
+        }}
+        style={{
+          flex: 1,
+          padding: "0.75rem",
+          backgroundColor: "transparent",
+          color: "#fff",
+          border: "2px solid #ffffff66",
+          borderRadius: "10px",
+          fontSize: "0.95rem",
+          cursor: "pointer"
+        }}
+      >
+        画像選択に戻る
+      </button>
+      <button
+        onClick={handleConfirmation}
+        disabled={isValidating || validationErrors.length > 0 || groupLoading}
+        style={{
+          flex: 1,
+          padding: "0.75rem",
+          backgroundColor: isValidating || validationErrors.length > 0 || groupLoading ? "#666" : "#F0DB4F",
+          color: isValidating || validationErrors.length > 0 || groupLoading ? "#ccc" : "#000",
+          border: "none",
+          borderRadius: "10px",
+          fontSize: "0.95rem",
+          fontWeight: "bold",
+          cursor: isValidating || validationErrors.length > 0 || groupLoading ? "not-allowed" : "pointer"
+        }}
+      >
+        確認する
+      </button>
+    </div>
+  </div>
+)}
                   
                   {isValidating && (
                     <div style={{
@@ -1271,7 +1239,7 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
                       読み込み中...
                     </>
                   ) : validationErrors.length > 0 ? (
-                    "⚠️ エラーを修正"
+                    "⚠️ 画像を選び直す"
                   ) : (
                     "確認する"
                   )}
