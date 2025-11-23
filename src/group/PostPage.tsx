@@ -587,10 +587,56 @@ console.log('🎯 強化された更新通知システム完了 - 投稿ID:', po
         navigate(`/group/${groupId}/archive`);
       }, 300);
       
-    } catch (error) {
-      console.error("投稿の保存中にエラーが発生しました", error);
-      FileValidator.logSecurityEvent('post_save_failed', { error, groupId });
-      alert("投稿の保存中にエラーが発生しました");
+   } catch (error: any) {
+  console.error("投稿の保存中にエラーが発生しました", error);
+  FileValidator.logSecurityEvent('post_save_failed', { error, groupId });
+  
+  // エラーの種類を判定
+  let errorMessage = "投稿の保存中にエラーが発生しました";
+  
+  if (error?.message?.includes('exceeds the maximum allowed size')) {
+    // Firestoreサイズ制限エラー
+    const match = error.message.match(/(\d+,?\d*)\s*bytes.*maximum.*?(\d+,?\d*)\s*bytes/);
+    if (match) {
+      const actualSize = parseInt(match[1].replace(/,/g, ''));
+      const maxSize = parseInt(match[2].replace(/,/g, ''));
+      const actualMB = (actualSize / (1024 * 1024)).toFixed(2);
+      const maxMB = (maxSize / (1024 * 1024)).toFixed(2);
+      const overageMB = (parseFloat(actualMB) - parseFloat(maxMB)).toFixed(2);
+      
+      // 選択された画像の情報を取得
+      const totalFiles = selectedFiles?.length || 0;
+      const highQualityCount = highQualityIndices?.length || 0;
+      const normalCount = totalFiles - highQualityCount;
+      
+      // 圧縮前のファイルサイズを計算
+      let originalSizeMB = "0.00";
+if (selectedFiles) {
+  const totalBytes = Array.from(selectedFiles).reduce((sum, file) => sum + file.size, 0);
+  originalSizeMB = (totalBytes / (1024 * 1024)).toFixed(2);
+}
+      
+errorMessage = 
+  `⚠️ 画像が多すぎます\n\n` +
+  `選択した画像: ${totalFiles}枚\n` +
+  `（高画質: ${highQualityCount}枚、通常: ${normalCount}枚）\n\n` +
+  `元のサイズ: ${originalSizeMB}MB → 圧縮\n` +
+  `保存サイズ: 約${(parseFloat(actualMB) * 1.6).toFixed(2)}MB（上限: 1.00MB）\n\n` +
+  `💡 解決方法:\n` +
+  `• 高画質を${Math.max(0, highQualityCount - 3)}枚減らす\n` +
+  `または\n` +
+  `• 画像を${Math.ceil(totalFiles / 2)}枚ずつ、2回に分けて投稿`;
+    }
+  } else if (error?.code === 'permission-denied') {
+    errorMessage = "⚠️ 権限エラー\n\n投稿する権限がありません。";
+  } else if (error?.code === 'network-request-failed') {
+    errorMessage = "⚠️ ネットワークエラー\n\nインターネット接続を確認してください。";
+  } else if (error?.message) {
+    errorMessage = `⚠️ エラーが発生しました\n\n${error.message}`;
+  }
+  
+  alert(errorMessage);
+
     }
   }, [groupId, selectedFiles, highQualityIndices, message, tagInput, sanitizeInput, parseTags, clearErrors, navigate]);
 
