@@ -16,6 +16,7 @@ import {
 // 既存のFirebase設定をimportで取得
 import { db } from '../firebase/firestore';
 import { Group, User, Post } from '../types';
+import { getPostImages } from '../firebase/firestore';
 
 
 
@@ -190,7 +191,7 @@ memosSnapshot.forEach(doc => {
 console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(memosByPostId).length, '投稿分');
 */
     
-    querySnapshot.forEach((doc) => {
+    for (const doc of querySnapshot.docs) {
       const data = doc.data();
 
       // 🔍 デバッグコード
@@ -249,11 +250,22 @@ console.log('  - images:', data.images);
 console.log('  - images枚数:', data.images?.length || 0);
 
       
+// 🖼️ サブコレクションから画像を取得
+      let allImages: string[] = [];
+      try {
+        const { documentImages, photoImages } = await getPostImages(doc.id);
+        allImages = [...documentImages, ...photoImages];
+        console.log(`🖼️ [getGroupPosts] 投稿ID ${doc.id} の画像取得: ${allImages.length}枚`);
+      } catch (error) {
+        console.error(`❌ [getGroupPosts] 投稿ID ${doc.id} の画像取得エラー:`, error);
+      }
+
+
       // Post型に変換（メモ情報を含む）
       const post = {
         id: doc.id,
         message: data.message || '',
-        photoUrls: data.photoUrls || data.images || [],
+        photoUrls: allImages.length > 0 ? allImages : (data.photoUrls || data.images || []),
         tags: data.tags || [],
         userId: data.userId || data.createdBy || data.authorId || '',
         authorId: data.authorId || data.userId || data.createdBy || '',
@@ -280,7 +292,7 @@ updatedAt: data.updatedAt
       console.log('  - post.editedAt:', post.editedAt);
       
       posts.push(post);
-    });
+    }
     
     // JavaScript側でソート
     posts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));

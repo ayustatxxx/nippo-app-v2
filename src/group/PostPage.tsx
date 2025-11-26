@@ -621,7 +621,7 @@ errorMessage =
   `選択した画像: ${totalFiles}枚\n` +
   `（高画質: ${highQualityCount}枚、通常: ${normalCount}枚）\n\n` +
   `元のサイズ: ${originalSizeMB}MB → 圧縮\n` +
-  `保存サイズ: 約${(parseFloat(actualMB) * 1.6).toFixed(2)}MB（上限: 1.00MB）\n\n` +
+  `データサイズ: ${actualMB}MB（上限: ${maxMB}MB）\n\n` +
   `💡 解決方法:\n` +
   `• 高画質を${Math.max(0, highQualityCount - 3)}枚減らす\n` +
   `または\n` +
