@@ -106,12 +106,12 @@ type TimelineItem = Post | AlertInfo;
 interface PostCardProps {
   post: Post;
   onViewDetails: (postId: string, groupId: string) => void;
-  onImageClick: (imageUrl: string, allImages: string[]) => void;
+  onImageClick: (imageUrl: string, allImages: string[], imageIndex: number) => void;  // ← imageIndex を追加
   navigate: (path: string) => void;
   onStatusUpdate: (postId: string, newStatus: string) => void;
   getContainerStatusStyle: (status: string) => any;
   userRole: 'admin' | 'user';
-  onMemoClick: (post: Post) => void; // この行を追加
+  onMemoClick: (post: Post) => void;
   onPlusButtonClick: (post: Post) => void;
 }
 
@@ -520,9 +520,34 @@ useEffect(() => {
                 marginTop: index >= 4 ? '0.5rem' : '0',
                 cursor: 'pointer',
               }}
-              onClick={(e) => {
+            onClick={(e) => {
                 e.stopPropagation();
-                onImageClick(url, post.photoUrls || post.images || []);
+                // 🔍 デバッグ: クリック時の投稿データ確認
+  console.log('🔍 [クリック時] 投稿データ:', {
+    postId: (post as any).id?.substring(0, 8),
+    hasPhotoUrls: !!post.photoUrls,
+    photoUrlsLength: post.photoUrls?.length,
+    photoUrlsFirstSize: post.photoUrls?.[0]?.length,
+    imagesFirstSize: post.images?.[0]?.length,
+    hasImages: !!post.images,
+    imagesLength: post.images?.length,
+    hasDocumentImages: !!(post as any).documentImages,
+    documentImagesLength: (post as any).documentImages?.length,
+    hasPhotoImages: !!(post as any).photoImages,
+    photoImagesLength: (post as any).photoImages?.length,
+    thumbnailsKeys: (post as any).thumbnails ? Object.keys((post as any).thumbnails) : [],
+// ⭐ 追加: thumbnails の中身のサイズを確認
+thumbnailsDocFirstSize: (post as any).thumbnails?.documents?.[0]?.length,
+thumbnailsPhotoFirstSize: (post as any).thumbnails?.photos?.[0]?.length
+  });
+                const imageArray = post.photoUrls || post.images || [];
+console.log('🖼️ [PostCard画像クリック]:', {
+  clickedUrl: url.substring(0, 50),
+  foundIndex: index,
+  totalImages: imageArray.length,
+  firstImageUrl: imageArray[0]?.substring(0, 50)
+});
+onImageClick(url, imageArray, index);
               }}
             >
               <img
@@ -1457,20 +1482,24 @@ const PostDetailModal: React.FC<{
                       cursor: 'pointer'
                     }}
                     onClick={() => {
+                       // ⭐ ここに追加！（1465行目）
+  console.log('🖼️ [画像クリック] 投稿データ確認:', {
+    postId: displayPost.id,
+    photoUrls: displayPost.photoUrls,
+    photoUrlsLength: displayPost.photoUrls?.length,
+    thumbnails: (displayPost as any).thumbnails,
+    images: (displayPost as any).images
+  });
+  
   if (!displayPost?.photoUrls || displayPost.photoUrls.length === 0) {
     console.warn('⚠️ 画像データが不完全');
     return;
   }
   
-  const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
-  setGalleryImages([...displayPost.photoUrls]); // ← この行が重要
-  setGalleryIndex(imageIndex);
-  setGalleryOpen(true);
-  
-  console.log('✅ モーダル画像設定完了:', {
-    imageIndex,
-    totalImages: displayPost.photoUrls.length
-  });
+const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
+setGalleryImages(displayPost.photoUrls);
+setGalleryIndex(imageIndex);
+setGalleryOpen(true);
 }}
                   >
                     <img
@@ -1698,12 +1727,11 @@ if (memos.length === 0) {
   };
   
   // 画像をモーダルで表示する関数
-  const handleImageClick = (imageUrl: string, allImages: string[]) => {
-    const imageIndex = allImages.findIndex(url => url === imageUrl);
-    setGalleryImages(allImages);
-    setGalleryIndex(imageIndex);
-    setGalleryOpen(true);
-  };
+  const handleImageClick = (imageUrl: string, allImages: string[], imageIndex: number) => {
+  setGalleryImages(allImages);
+  setGalleryIndex(imageIndex);
+  setGalleryOpen(true);
+};
 
   // 投稿の詳細ページをモーダルに
 // 投稿の詳細ページをモーダルに（メモ取得機能付き）
@@ -2135,13 +2163,25 @@ if (isMounted) {
   });
   
   console.log('✅ [Home] グループ名マージ完了:', postsWithGroupNames.length, '件');
-  
+
+  console.log('🔍 [Home] 取得した投稿の画像データ構造確認:');
+postsWithGroupNames.slice(0, 1).forEach(post => {
+  console.log('投稿ID:', post.id);
+  console.log('  post.photoUrls:', post.photoUrls);
+  console.log('  post.images:', post.images);
+  console.log('  post.thumbnails:', (post as any).thumbnails);
+  console.log('  post全体:', post);
+  console.log('  post.thumbnails.documents:', (post as any).thumbnails?.documents);
+console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
+});
+
   // ⭐ Step 2: ユーザー名と写真を追加マージ
   const enrichedPosts = await Promise.all(
     postsWithGroupNames.map(async (post) => {
       try {
-        // ユーザー名を取得
-        let username = post.username || 'ユーザー';
+  
+  // ユーザー名を取得
+  let username = post.username || 'ユーザー';
         if (post.authorId || post.userId || post.userID) {
           const userId = post.authorId || post.userId || post.userID;
           const displayName = await getDisplayNameSafe(userId);
@@ -2150,33 +2190,108 @@ if (isMounted) {
           }
         }
         
-        // 写真URLを確保（複数の可能性のあるフィールド名に対応）
-        const photos = post.photoUrls || post.images || [];
-        
-        return {
+       
+// 写真URLを確保（複数の可能性のあるフィールド名に対応）
+// ⭐ 修正: thumbnailsから高画質画像URLを取得
+// 🔍 デバッグ: 投稿データの中身を確認
+if ((post as any).id) {
+  console.log('🔍 [画像取得デバッグ] 投稿ID:', (post as any).id?.substring(0, 8), {
+    hasPhotoUrls: !!post.photoUrls,
+    photoUrlsLength: post.photoUrls?.length,
+    photoUrlsFirstSize: post.photoUrls?.[0]?.length,
+    hasImages: !!post.images,
+    imagesLength: post.images?.length,
+    hasDocumentImages: !!(post as any).documentImages,
+    documentImagesLength: (post as any).documentImages?.length,
+    documentImagesFirstSize: (post as any).documentImages?.[0]?.length,
+    hasPhotoImages: !!(post as any).photoImages,
+    photoImagesLength: (post as any).photoImages?.length,
+    hasThumbnails: !!(post as any).thumbnails,
+    thumbnailsDocLength: (post as any).thumbnails?.documents?.length,
+    thumbnailsPhotoLength: (post as any).thumbnails?.photos?.length,
+    thumbnailsDocFirstSize: (post as any).thumbnails?.documents?.[0]?.length
+  });
+}
+
+const photos = (() => {
+  // 1. photoUrls（documentImages + photoImages の結合）
+  if (post.photoUrls?.length > 0) return post.photoUrls;
+  
+  // 2. images フィールド
+  if (post.images?.length > 0) return post.images;
+  
+  // 3. documentImages と photoImages を結合（元画像）
+  const postAny = post as any;
+  const documentImages = postAny.documentImages || [];
+  const photoImages = postAny.photoImages || [];
+  if (documentImages.length > 0 || photoImages.length > 0) {
+    return [...documentImages, ...photoImages];
+  }
+  
+  // 4. 最後の手段としてサムネイル（150px）
+  const thumbnails = postAny.thumbnails;
+  if (thumbnails) {
+    if (thumbnails.documents?.length > 0) {
+      return thumbnails.documents;
+    }
+    if (thumbnails.photos?.length > 0) {
+      return thumbnails.photos;
+    }
+  }
+  
+  return [];
+})();
+
+// console.log('🖼️ [Home] 画像URL取得結果:', {
+//   postId: post.id,
+//   photosCount: photos.length,
+//   photos: photos
+// });
+
+// デバッグ: 最終的な投稿データ
+if (post.id === postsWithGroupNames[0]?.id) {
+  console.log('🔍 [Home] 最終的な投稿データ:', {
+    postId: post.id,
+    username,
+    photoUrls: photos,
+    photosLength: photos?.length
+  });
+}
+
+return {
           ...post,
           username,
           photoUrls: photos,  // ⭐ photoUrls に統一
           images: photos      // ⭐ images も設定（互換性のため）
         };
       } catch (error) {
-        console.error('投稿データ補完エラー:', error);
-        return {
-          ...post,
-          username: post.username || 'ユーザー',
-          photoUrls: post.photoUrls || post.images || [],
-          images: post.photoUrls || post.images || []
-        };
-      }
+  console.error('投稿データ補完エラー:', error);
+  return {
+    ...post,
+    username: post.username || 'ユーザー',
+    photoUrls: (post.photoUrls?.length > 0) ? post.photoUrls :
+           (post.images?.length > 0) ? post.images :
+           ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
+           ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
+           [],
+images: (post.photoUrls?.length > 0) ? post.photoUrls :
+        (post.images?.length > 0) ? post.images :
+        ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
+        ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
+        []
+  };
+}
     })
   );
   
   console.log('✅ [Home] ユーザー名・写真マージ完了:', enrichedPosts.length, '件');
 
-  // ⭐ 以下を追加 ⭐
-console.log('🔍 [デバッグ] 最初の投稿データ:', enrichedPosts[0]);
-console.log('🔍 [デバッグ] photoUrls:', enrichedPosts[0]?.photoUrls);
-console.log('🔍 [デバッグ] images:', enrichedPosts[0]?.images);
+
+
+
+
+
+setPosts(enrichedPosts);
   
   setPosts(enrichedPosts);
   setGroups(allGroups);

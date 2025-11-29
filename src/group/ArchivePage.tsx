@@ -2602,20 +2602,48 @@ console.log('🔍 [バッジ判定] tags:', displayPost.tags);
                           cursor: 'pointer'
                         }}
                         onClick={() => {
-      if (!displayPost?.photoUrls || displayPost.photoUrls.length === 0) {
+  console.log('🔥🔥🔥 ArchivePage画像onClick実行！');
+  
+  if (!displayPost?.photoUrls || displayPost.photoUrls.length === 0) {
         console.warn('⚠️ 画像データが不完全');
         return;
       }
       
-      const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
-      setGalleryImages([...displayPost.photoUrls]); // ← この行が重要
-      setGalleryIndex(imageIndex);
-      setGalleryOpen(true);
-      
-      console.log('✅ モーダル画像設定完了:', {
-        imageIndex,
-        totalImages: displayPost.photoUrls.length
-      });
+      // サムネイルと画像データを取得
+const thumbnailPhotos = [
+  ...(displayPost.thumbnails?.highQuality || []),
+  ...(displayPost.thumbnails?.standard || [])
+];
+const photoUrls = displayPost.photoUrls || [];
+
+// インデックスを取得
+let imageIndex = photoUrls.findIndex(photoUrl => photoUrl === url);
+if (imageIndex === -1) {
+  imageIndex = 0;
+}
+
+// フルサイズ画像を使用
+const fullSizeImages = displayPost.images && displayPost.images.length > 0 
+  ? displayPost.images 
+  : photoUrls;
+
+console.log('🎨 [ArchivePage画像クリック]:', {
+  thumbnailUrl: url.substring(0, 50),
+  thumbnailUrlLength: url.length,
+  thumbnailIndex: imageIndex,
+  hasPostImages: displayPost.images && displayPost.images.length > 0,
+  postImagesLength: displayPost.images?.length,
+  postImagesDataLength: displayPost.images?.[0]?.length,
+  photoUrlsLength: photoUrls.length,
+  photoUrlsDataLength: photoUrls[0]?.length,
+  fullSizeImagesCount: fullSizeImages?.length,
+  fullSizeImageDataLength: fullSizeImages[0]?.length,
+  usingFullSize: displayPost.images && displayPost.images.length > 0
+});
+
+setGalleryImages(fullSizeImages);
+setGalleryIndex(imageIndex);
+setGalleryOpen(true);
     }}
                       >
                         <img
@@ -3712,11 +3740,27 @@ post.tags?.includes('#チェックイン') ? (() => {
                           cursor: 'pointer',
                         }}
                         onClick={() => {
-                          const imageIndex = post.photoUrls.findIndex(photoUrl => photoUrl === url);
-                          setGalleryImages(post.photoUrls);
-                          setGalleryIndex(imageIndex);
-                          setGalleryOpen(true);
-                        }}
+  const imageIndex = post.photoUrls.findIndex(photoUrl => photoUrl === url);
+  
+  // フルサイズ画像を使用
+  const fullSizeImages = post.images && post.images.length > 0 
+    ? post.images 
+    : post.photoUrls;
+  
+  console.log('🎨 [ArchivePage 3742行目] 画像クリック:', {
+    photoUrlsLength: post.photoUrls?.length,
+    photoUrlsDataLength: post.photoUrls?.[0]?.length,
+    postImagesLength: post.images?.length,
+    postImagesDataLength: post.images?.[0]?.length,
+    fullSizeImagesLength: fullSizeImages.length,
+    fullSizeImageDataLength: fullSizeImages[0]?.length,
+    usingFullSize: post.images && post.images.length > 0
+  });
+  
+  setGalleryImages(fullSizeImages);
+  setGalleryIndex(imageIndex);
+  setGalleryOpen(true);
+}}
                       >
                         <img
                           src={url}

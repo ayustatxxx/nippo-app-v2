@@ -430,6 +430,12 @@ try {
         
         // 後方互換性：従来の画像配列
         images: photoUrls,
+
+        photoUrls: photoUrls,
+  
+  // ⭐ 元画像を保存（ここが重要！）
+  documentImages: processedData ? processedData.documentImages : [],
+  photoImages: processedData ? processedData.photoImages : [],
         
         // 2モード設計：新しい画像データ構造
         thumbnails: processedData ? processedData.thumbnails : { documents: [], photos: [] },
@@ -620,11 +626,9 @@ errorMessage =
   `⚠️ 画像が多すぎます\n\n` +
   `選択した画像: ${totalFiles}枚\n` +
   `（高画質: ${highQualityCount}枚、通常: ${normalCount}枚）\n\n` +
-  `元のサイズ: ${originalSizeMB}MB → 圧縮\n` +
-  `データサイズ: ${actualMB}MB（上限: ${maxMB}MB）\n\n` +
   `💡 解決方法:\n` +
   `• 高画質を${Math.max(0, highQualityCount - 3)}枚減らす\n` +
-  `または\n` +
+  `• または` +
   `• 画像を${Math.ceil(totalFiles / 2)}枚ずつ、2回に分けて投稿`;
     }
   } else if (error?.code === 'permission-denied') {

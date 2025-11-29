@@ -43,7 +43,7 @@ const ImageGalleryModal: React.FC<ImageGalleryModalProps> = ({
     setCurrentIndex(initialIndex);
     // ... 以下略
   }
-}, [isOpen, initialIndex, images]);
+}, [isOpen, images, initialIndex]);  // ← 依存配列を追加
 
 
   // キーボードナビゲーション
