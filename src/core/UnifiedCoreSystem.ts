@@ -281,14 +281,28 @@ if (postData.files && postData.files.length > 0) {
         );
         
         const snapshot = await getDocs(q);
-        const posts = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt,
-          } as Post;
-        });
+        const posts = await Promise.all(snapshot.docs.map(async (doc) => {
+  const data = doc.data();
+  const postId = doc.id;
+  
+  // サブコレクションから元画像を取得
+  let fullImages: string[] = [];
+  try {
+    const { getPostImages } = await import('../firebase/firestore');
+    const { documentImages, photoImages } = await getPostImages(postId);
+    fullImages = [...documentImages, ...photoImages];
+  } catch (error) {
+    console.warn(`⚠️ 投稿ID: ${postId} の画像取得エラー:`, error);
+  }
+  
+  return {
+    id: postId,
+    ...data,
+    createdAt: data.createdAt,
+    // サブコレクションの画像がある場合は上書き
+    images: fullImages.length > 0 ? fullImages : (data.images || []),
+  } as Post;
+}));
         
         console.log(`✅ [UnifiedCore] バッチ${i + 1}: ${posts.length}件取得`);
         allPosts.push(...posts);

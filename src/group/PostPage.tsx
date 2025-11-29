@@ -430,12 +430,6 @@ try {
         
         // 後方互換性：従来の画像配列
         images: photoUrls,
-
-        photoUrls: photoUrls,
-  
-  // ⭐ 元画像を保存（ここが重要！）
-  documentImages: processedData ? processedData.documentImages : [],
-  photoImages: processedData ? processedData.photoImages : [],
         
         // 2モード設計：新しい画像データ構造
         thumbnails: processedData ? processedData.thumbnails : { documents: [], photos: [] },
