@@ -14,6 +14,15 @@ import Header from '../components/Header';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
+// 🔥 キャッシュ設定
+const CACHE_DURATION = 300000; // 5分（300,000ミリ秒）
+const PRIORITY_LOAD_COUNT = 10; // 優先的に画像を読み込む投稿数
+
+
+// ⭐ メモリキャッシュ変数を追加 ⭐
+let archivePostsCache: { [groupId: string]: Post[] } = {};
+let archivePostsCacheTime: { [groupId: string]: number } = {};
+
 
 // グローバル関数の型定義
 declare global {
@@ -1268,6 +1277,39 @@ useEffect(() => {
   const fetchPosts = async () => {
     try {
       setLoading(true);
+
+      setLoading(true);
+      
+      
+      // ⭐ メモリキャッシュから読み込み（HomePageと同じ方式）⭐
+const cacheData = archivePostsCache[groupId];
+const cacheTime = archivePostsCacheTime[groupId];
+
+if (cacheData && cacheData.length > 0 && Date.now() - cacheTime < CACHE_DURATION) {
+  const cacheAge = Date.now() - cacheTime;
+  
+  console.log('💾 [ArchivePage] メモリキャッシュから読み込み（画像付き）:', {
+    groupId,
+    cacheAge: `${Math.floor(cacheAge / 1000)}秒前`,
+    postsCount: cacheData.length,
+    remainingTime: `あと${Math.floor((CACHE_DURATION - cacheAge) / 1000)}秒有効`
+  });
+  
+  setPosts(cacheData);
+  setFilteredPosts(cacheData);
+  setLoading(false);
+  
+  console.log('⚡ [ArchivePage] 画像付き高速表示完了: 0ms');
+  return;
+}
+
+console.log('🔍 [ArchivePage] キャッシュなし、Firestoreから取得開始');
+      
+      
+      // 🔥 キャッシュなし or 期限切れ → Firestoreから取得
+      console.log('🔄 [ArchivePage] Firestoreから取得中...', { groupId });
+      
+      // ← ここから既存のコードが続く
       
       // localStorageフラグをチェック
       const updateFlag = localStorage.getItem('daily-report-posts-updated');
@@ -1301,7 +1343,16 @@ useEffect(() => {
       setPosts(fetchedPosts);
       setFilteredPosts(fetchedPosts);
       
-      
+  
+     // ⭐ メモリキャッシュに保存（画像も含めて全部保存）⭐
+archivePostsCache[groupId] = fetchedPosts;
+archivePostsCacheTime[groupId] = Date.now();
+
+console.log('✅ [ArchivePage] メモリキャッシュ保存完了（画像付き）:', {
+  groupId,
+  postsCount: fetchedPosts.length,
+  validUntil: new Date(Date.now() + CACHE_DURATION).toLocaleTimeString('ja-JP')
+});
       
     } catch (error) {
       console.error('❌ [Archive] 投稿データのロード中にエラーが発生しました', error);
@@ -1369,6 +1420,11 @@ window.refreshArchivePage = () => {
     if (!groupId) return;
     try {
       setLoading(true);
+
+            // キャッシュをクリア（手動リフレッシュ時は常に最新データを取得）
+delete archivePostsCache[groupId];
+delete archivePostsCacheTime[groupId];
+console.log('🗑️ [ArchivePage] ステータス更新 - メモリキャッシュクリア');
         
         // 実際のFirestoreからデータを取得する処理をここに実装
         // 現在は空配列で初期化されているため、実際のAPI呼び出しに置き換える必要がある
@@ -1828,6 +1884,11 @@ setFilteredPosts(combinedFiltered);  // HomePage: setFilteredItems(filtered);
     
     // Firestoreから削除
     await deleteDoc(doc(db, 'posts', postId));
+   
+    // キャッシュをクリア
+delete archivePostsCache[groupId];
+delete archivePostsCacheTime[groupId];
+console.log('🗑️ [ArchivePage] 投稿削除 - メモリキャッシュクリア');
     console.log('✅ [Archive] Firestore削除完了:', postId);
 
    
@@ -1908,6 +1969,12 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
       });
       
       console.log('✅ [ArchivePage] Firestore更新完了:', postId, newStatus);
+
+      // キャッシュをクリア
+delete archivePostsCache[groupId];
+delete archivePostsCacheTime[groupId];
+console.log('🔄 [ArchivePage] ステータス更新 - メモリキャッシュクリア');
+
       
     } catch (firestoreError) {
       console.error('❌ [ArchivePage] Firestore更新失敗:', firestoreError);
@@ -4600,5 +4667,19 @@ if (window.refreshArchivePage) {
       <GroupFooterNav activeTab="history" />
     </div>
   );
+};
+
+
+// キャッシュ無効化関数（PostPageなどから呼び出し可能）
+export const invalidateArchiveCache = (groupId?: string) => {
+  if (groupId) {
+    delete archivePostsCache[groupId];
+    delete archivePostsCacheTime[groupId];
+    console.log('🗑️ [ArchivePage] キャッシュを無効化:', groupId);
+  } else {
+    archivePostsCache = {};
+    archivePostsCacheTime = {};
+    console.log('🗑️ [ArchivePage] 全キャッシュを無効化');
+  }
 };
 export default ArchivePage;

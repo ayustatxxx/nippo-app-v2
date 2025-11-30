@@ -60,6 +60,9 @@ function PostPage() {
   const [highQualityIndices, setHighQualityIndices] = useState<number[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 });
+  const [isUploading, setIsUploading] = useState(false);
+const [uploadProgress, setUploadProgress] = useState(0);
+const [uploadStatus, setUploadStatus] = useState('');
 
 
   const navigate = useNavigate();
@@ -318,325 +321,360 @@ function PostPage() {
 
   // 安全な投稿保存処理
   const handleSubmit = useCallback(async () => {
-    try {
-      if (!groupId) {
-        alert("グループIDが取得できませんでした。グループページから再度お試しください。");
-        return;
-      }
-      
-      // ユーザー情報を取得
-      const user = await getCurrentUser();
-      if (!user) {
-        alert('ユーザー情報を取得できませんでした');
-        return;
-      }
-      
-      
-      // 🔥 ローカルストレージから最新のプロフィール情報で上書き
-try {
-  const localUserData = localStorage.getItem("daily-report-user-data");
-  if (localUserData) {
-    const parsedData = JSON.parse(localUserData);
-    if (parsedData.id === user.id && parsedData.profileData?.fullName) {
-      console.log('🔄 投稿作成時にdisplayNameを上書き:', parsedData.profileData.fullName);
-      user.displayName = parsedData.profileData.fullName;
+  try {
+    if (!groupId) {
+      alert("グループIDが取得できませんでした。グループページから再度お試しください。");
+      return;
     }
-  }
-} catch (error) {
-  console.warn('⚠️ ローカルデータ上書きエラー:', error);
-}
-
+    
+    // 🔥 プログレスバー開始
+    setIsUploading(true);
+    setUploadProgress(0);
+    setUploadStatus('準備中...');
+    
+    // ユーザー情報を取得
+    const user = await getCurrentUser();
+    if (!user) {
+      alert('ユーザー情報を取得できませんでした');
+      setIsUploading(false);
+      return;
+    }
+    
+    // 🔥 ローカルストレージから最新のプロフィール情報で上書き
+    try {
+      const localUserData = localStorage.getItem("daily-report-user-data");
+      if (localUserData) {
+        const parsedData = JSON.parse(localUserData);
+        if (parsedData.id === user.id && parsedData.profileData?.fullName) {
+          console.log('🔄 投稿作成時にdisplayNameを上書き:', parsedData.profileData.fullName);
+          user.displayName = parsedData.profileData.fullName;
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ ローカルデータ上書きエラー:', error);
+    }
 
     // ===== 2モード設計：画像処理 =====
-      let photoUrls: string[] = [];
-      let processedData: {
-        documentImages: string[];
-        photoImages: string[];
-        thumbnails: { documents: string[]; photos: string[] };
-      } | null = null;
+    let photoUrls: string[] = [];
+    let processedData: {
+      documentImages: string[];
+      photoImages: string[];
+      thumbnails: { documents: string[]; photos: string[] };
+    } | null = null;
 
-      if (selectedFiles.length > 0) {
-        const result = await FileValidator.validateFiles(selectedFiles);
-        
-        if (result.errors.length > 0) {
-          alert(`ファイルエラー:\n${result.errors.join('\n')}`);
-          return;
-        }
+    if (selectedFiles.length > 0) {
+      const result = await FileValidator.validateFiles(selectedFiles);
+      
+      if (result.errors.length > 0) {
+        alert(`ファイルエラー:\n${result.errors.join('\n')}`);
+        setIsUploading(false);
+        return;
+      }
 
-        if (result.validFiles.length > 0) {
-          try {
-            console.log(`📸 2モード画像処理開始: ${result.validFiles.length}枚（高画質${highQualityIndices.length}枚）`);
-            setIsProcessing(true);
-            setProcessingProgress({ current: 0, total: result.validFiles.length });
+      if (result.validFiles.length > 0) {
+        try {
+          console.log(`📸 2モード画像処理開始: ${result.validFiles.length}枚（高画質${highQualityIndices.length}枚）`);
+          
+          // 🔥 プログレスバー更新: 画像処理開始
+          setUploadStatus(`画像を処理中... (${result.validFiles.length}枚)`);
+          setUploadProgress(10);
 
-            // 2モード処理を実行
-            processedData = await FileValidator.processImagesWithTwoModes(
-              result.validFiles,
-              highQualityIndices
-            );
+          setIsProcessing(true);
+          setProcessingProgress({ current: 0, total: result.validFiles.length });
 
-            // サイズチェック
-            const sizeCheck = FileValidator.checkTwoModeTotalSize(
-              processedData.documentImages,
-              processedData.photoImages
-            );
+          // 2モード処理を実行
+          processedData = await FileValidator.processImagesWithTwoModes(
+            result.validFiles,
+            highQualityIndices
+          );
 
-            if (!sizeCheck.isValid) {
-              alert(sizeCheck.error);
-              setIsProcessing(false);
-              return;
-            }
+          // 🔥 画像処理完了
+          setUploadProgress(70);
+          setUploadStatus('画像処理完了');
 
-            // 後方互換性のため、全画像を1つの配列にも保存
-            photoUrls = [...processedData.documentImages, ...processedData.photoImages];
+          // サイズチェック
+          const sizeCheck = FileValidator.checkTwoModeTotalSize(
+            processedData.documentImages,
+            processedData.photoImages
+          );
 
-            console.log(`✅ 2モード画像処理完了: 図面${processedData.documentImages.length}枚, 写真${processedData.photoImages.length}枚`);
-            console.log(`📊 合計サイズ: ${sizeCheck.totalSizeMB}MB`);
-
-            FileValidator.logSecurityEvent('two_mode_upload', {
-              totalFiles: result.validFiles.length,
-              documentCount: processedData.documentImages.length,
-              photoCount: processedData.photoImages.length,
-              totalSizeMB: sizeCheck.totalSizeMB,
-              groupId: groupId
-            });
-
-            setIsProcessing(false);
-
-          } catch (conversionError) {
-            console.error('画像処理エラー:', conversionError);
-            alert('画像の処理中にエラーが発生しました。画像サイズを確認して再度お試しください。');
+          if (!sizeCheck.isValid) {
+            alert(sizeCheck.error);
+            setIsUploading(false);
             setIsProcessing(false);
             return;
           }
+
+          // 後方互換性のため、全画像を1つの配列にも保存
+          photoUrls = [...processedData.documentImages, ...processedData.photoImages];
+
+          console.log(`✅ 2モード画像処理完了: 図面${processedData.documentImages.length}枚, 写真${processedData.photoImages.length}枚`);
+          console.log(`📊 合計サイズ: ${sizeCheck.totalSizeMB}MB`);
+
+          FileValidator.logSecurityEvent('two_mode_upload', {
+            totalFiles: result.validFiles.length,
+            documentCount: processedData.documentImages.length,
+            photoCount: processedData.photoImages.length,
+            totalSizeMB: sizeCheck.totalSizeMB,
+            groupId: groupId
+          });
+
+          setIsProcessing(false);
+
+        } catch (conversionError) {
+          console.error('画像処理エラー:', conversionError);
+          alert('画像の処理中にエラーが発生しました。画像サイズを確認して再度お試しください。');
+          setIsUploading(false);
+          setIsProcessing(false);
+          return;
         }
       }
-      
-      const sanitizedMessage = sanitizeInput(message).substring(0, 5000);
-      const tags = parseTags(tagInput);
-      const timestamp = Date.now();
-  
+    } else {
+      // 画像なしの場合は進捗を70%に
+      setUploadProgress(70);
+    }
     
-      // Firestore用の投稿データ（2モード設計対応）
-      const newPost = {
-        userId: user.id,
-        userName: user.displayName || localStorage.getItem("daily-report-displayname") || user.username,
-        groupId: groupId,
-        message: sanitizedMessage || "",
-        tags: tags,
-        status: '未確認' as const,
-        isWorkTimePost: false,
-        isEdited: false,
-        
-        // 後方互換性：従来の画像配列
-        images: photoUrls,
-        
-        // 2モード設計：新しい画像データ構造
-        thumbnails: processedData ? processedData.thumbnails : { documents: [], photos: [] },
-        highQualityCount: processedData ? processedData.documentImages.length : 0,
-        standardCount: processedData ? processedData.photoImages.length : 0,
-        totalImageCount: photoUrls.length,
-        
-        // 会社情報（ハイブリッド方式）
-        companyName: user.profileData?.company || user.company || null,
-        companyId: null,  // 将来用
-        
-        // AI準備フィールド（将来用）
-        aiTags: null,
-        aiSummary: null,
-        extractedText: null,
-        scheduleId: null,
-      };
-  
-      // Firestoreに投稿を保存
-      const postId = await createPost(newPost);
-      
-      // IndexedDB用の投稿データ（後方互換性のため）
-      const now = new Date();
-      const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-      const weekday = weekdays[now.getDay()];
-      const date = `${now.getFullYear()} / ${now.getMonth() + 1} / ${now.getDate()}（${weekday}）`;
-      const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  
-      const legacyPost = {
-        id: postId,
-        message: sanitizedMessage || "",
-        time: `${date}　${time}`,
-        photoUrls,
-        tags,
-        userId: user.id,
-        username: user.displayName || localStorage.getItem("daily-report-displayname") || user.username,
-        groupId: groupId,
-        timestamp: timestamp,
-        status: '未確認' as const,
-        
-        // 2モード設計データ
-        thumbnails: processedData ? processedData.thumbnails : { documents: [], photos: [] },
-        highQualityCount: processedData ? processedData.documentImages.length : 0,
-        standardCount: processedData ? processedData.photoImages.length : 0,
-        totalImageCount: photoUrls.length,
-        
-        // 会社情報
-        companyName: user.profileData?.company || user.company || null,
-      };
-  
-      // IndexedDBにも保存（後方互換性のため）
-      const dbUtil = DBUtil.getInstance();
-      await dbUtil.save(STORES.POSTS, legacyPost);
-      console.log('投稿をデータベースに保存完了:', postId);
-  
-      // 更新通知システム
-      console.log('投稿完了 - HomePageに更新を通知開始');
-      
-      // ✅ Step 3: 強化された投稿作成後の更新通知システム
-console.log('🚀 投稿完了 - 強化された更新通知システム開始');
-
-// 1. localStorageフラグを複数設定（確実な検知のため）
-const updateFlag = Date.now().toString();
-localStorage.setItem('daily-report-posts-updated', updateFlag);
-localStorage.setItem('last-updated-group-id', groupId);
-localStorage.setItem('posts-need-refresh', updateFlag);
-localStorage.setItem('archive-posts-updated', updateFlag);
-console.log('📱 localStorageフラグを設定:', updateFlag);
-
-// 2. 複数の更新イベントを即座発火
-const updateEvent = new CustomEvent('postsUpdated', { 
-  detail: { 
-    newPost: legacyPost,
-    timestamp: timestamp,
-    source: 'PostPage',
-    action: 'create'
-  } 
-});
-
-const storageEvent = new CustomEvent('storage', {
-  detail: { key: 'daily-report-posts-updated', newValue: updateFlag }
-});
-
-window.dispatchEvent(updateEvent);
-window.dispatchEvent(storageEvent);
-window.dispatchEvent(new CustomEvent('refreshPosts'));
-console.log('📢 即座更新イベントを発火完了');
-
-// 3. 段階的な追加通知（確実性を高める）
-const notificationSchedule = [100, 300, 500, 1000];
-notificationSchedule.forEach((delay, index) => {
-  setTimeout(() => {
-    console.log(`📢 段階的更新通知 ${index + 1}/${notificationSchedule.length} (${delay}ms後)`);
+    // 🔥 Firestore保存開始
+    setUploadStatus('データを保存中...');
+    setUploadProgress(75);
     
-    // フラグを更新
-    const delayedFlag = (Date.now()).toString();
-    localStorage.setItem('daily-report-posts-updated', delayedFlag);
+    const sanitizedMessage = sanitizeInput(message).substring(0, 5000);
+    const tags = parseTags(tagInput);
+    const timestamp = Date.now();
     
-    // イベントを再発火
-    window.dispatchEvent(new CustomEvent('postsUpdated', { 
+    // Firestore用の投稿データ（2モード設計対応）
+    const newPost = {
+      userId: user.id,
+      userName: user.displayName || localStorage.getItem("daily-report-displayname") || user.username,
+      groupId: groupId,
+      message: sanitizedMessage || "",
+      tags: tags,
+      status: '未確認' as const,
+      isWorkTimePost: false,
+      isEdited: false,
+      
+      // 後方互換性：従来の画像配列
+      images: photoUrls,
+      
+      // 2モード設計：新しい画像データ構造
+      thumbnails: processedData ? processedData.thumbnails : { documents: [], photos: [] },
+      highQualityCount: processedData ? processedData.documentImages.length : 0,
+      standardCount: processedData ? processedData.photoImages.length : 0,
+      totalImageCount: photoUrls.length,
+      
+      // 会社情報（ハイブリッド方式）
+      companyName: user.profileData?.company || user.company || null,
+      companyId: null,  // 将来用
+      
+      // AI準備フィールド（将来用）
+      aiTags: null,
+      aiSummary: null,
+      extractedText: null,
+      scheduleId: null,
+    };
+    
+    // 🔥 Firestoreに保存
+    setUploadProgress(85);
+    const postId = await createPost(newPost);
+    
+    // 🔥 IndexedDB保存
+    setUploadStatus('ローカルに保存中...');
+    setUploadProgress(90);
+    
+    // IndexedDB用の投稿データ（後方互換性のため）
+    const now = new Date();
+    const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    const weekday = weekdays[now.getDay()];
+    const date = `${now.getFullYear()} / ${now.getMonth() + 1} / ${now.getDate()}（${weekday}）`;
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    const legacyPost = {
+      id: postId,
+      message: sanitizedMessage || "",
+      time: `${date}　${time}`,
+      photoUrls,
+      tags,
+      userId: user.id,
+      username: user.displayName || localStorage.getItem("daily-report-displayname") || user.username,
+      groupId: groupId,
+      timestamp: timestamp,
+      status: '未確認' as const,
+      
+      // 2モード設計データ
+      thumbnails: processedData ? processedData.thumbnails : { documents: [], photos: [] },
+      highQualityCount: processedData ? processedData.documentImages.length : 0,
+      standardCount: processedData ? processedData.photoImages.length : 0,
+      totalImageCount: photoUrls.length,
+      
+      // 会社情報
+      companyName: user.profileData?.company || user.company || null,
+    };
+
+    // IndexedDBにも保存（後方互換性のため）
+    const dbUtil = DBUtil.getInstance();
+    await dbUtil.save(STORES.POSTS, legacyPost);
+    console.log('投稿をデータベースに保存完了:', postId);
+    
+    // 🔥 更新通知
+    setUploadStatus('更新を通知中...');
+    setUploadProgress(95);
+    
+    // 更新通知システム
+    console.log('🚀 投稿完了 - 強化された更新通知システム開始');
+    
+    // 1. localStorageフラグを複数設定（確実な検知のため）
+    const updateFlag = Date.now().toString();
+    localStorage.setItem('daily-report-posts-updated', updateFlag);
+    localStorage.setItem('last-updated-group-id', groupId);
+    localStorage.setItem('posts-need-refresh', updateFlag);
+    localStorage.setItem('archive-posts-updated', updateFlag);
+    console.log('📱 localStorageフラグを設定:', updateFlag);
+
+    // 2. 複数の更新イベントを即座発火
+    const updateEvent = new CustomEvent('postsUpdated', { 
       detail: { 
         newPost: legacyPost,
-        timestamp: Date.now(),
-        source: 'PostPage-delayed',
-        delay: delay
+        timestamp: timestamp,
+        source: 'PostPage',
+        action: 'create'
       } 
-    }));
-    
-    // 手動でArchivePageとHomePageのリフレッシュを試行
-    if (window.refreshArchivePage) {
-      window.refreshArchivePage();
+    });
+
+    const storageEvent = new CustomEvent('storage', {
+      detail: { key: 'daily-report-posts-updated', newValue: updateFlag }
+    });
+
+    window.dispatchEvent(updateEvent);
+    window.dispatchEvent(storageEvent);
+    window.dispatchEvent(new CustomEvent('refreshPosts'));
+    console.log('📢 即座更新イベントを発火完了');
+
+    // 3. 段階的な追加通知（確実性を高める）
+    const notificationSchedule = [100, 300, 500, 1000];
+    notificationSchedule.forEach((delay, index) => {
+      setTimeout(() => {
+        console.log(`📢 段階的更新通知 ${index + 1}/${notificationSchedule.length} (${delay}ms後)`);
+        
+        // フラグを更新
+        const delayedFlag = (Date.now()).toString();
+        localStorage.setItem('daily-report-posts-updated', delayedFlag);
+        
+        // イベントを再発火
+        window.dispatchEvent(new CustomEvent('postsUpdated', { 
+          detail: { 
+            newPost: legacyPost,
+            timestamp: Date.now(),
+            source: 'PostPage-delayed',
+            delay: delay
+          } 
+        }));
+        
+        // 手動でArchivePageとHomePageのリフレッシュを試行
+        if (window.refreshArchivePage) {
+          window.refreshArchivePage();
+        }
+        if (window.refreshHomePage) {
+          window.refreshHomePage();
+        }
+        
+      }, delay);
+    });
+
+    // 4. forceRefreshPostsの呼び出し（既存機能との互換性）
+    try {
+      forceRefreshPosts();
+      console.log('✅ forceRefreshPosts実行完了');
+    } catch (error) {
+      console.warn('⚠️ forceRefreshPosts実行エラー:', error);
     }
-    if (window.refreshHomePage) {
-      window.refreshHomePage();
-    }
+
+    console.log('🎯 強化された更新通知システム完了 - 投稿ID:', postId);
     
-  }, delay);
-});
+    // 🔥 完了!
+    setUploadProgress(100);
+    setUploadStatus('完了!');
+    
+    // フォーム状態をクリア
+    setMessage("");
+    setPhotos(null);
+    setPhotoPreviewUrls([]);
+    setTagInput("");
+    setIsConfirmationMode(false);
+    clearErrors();
 
-// 4. forceRefreshPostsの呼び出し（既存機能との互換性）
-try {
-  forceRefreshPosts();
-  console.log('✅ forceRefreshPosts実行完了');
-} catch (error) {
-  console.warn('⚠️ forceRefreshPosts実行エラー:', error);
-}
-
-console.log('🎯 強化された更新通知システム完了 - 投稿ID:', postId);
-      
-      // フォーム状態をクリア
-      setMessage("");
-      setPhotos(null);
-      setPhotoPreviewUrls([]);
-      setTagInput("");
-      setIsConfirmationMode(false);
-      clearErrors();
-
-      // 2モード設計：追加のリセット
-      setSelectedFiles([]);
-      setHighQualityIndices([]);
-      setSelectionStep('select');
-      
-      
+    // 2モード設計：追加のリセット
+    setSelectedFiles([]);
+    setHighQualityIndices([]);
+    setSelectionStep('select');
+    
+    // プログレスバーを少し表示してから消す
+    setTimeout(() => {
+      setIsUploading(false);
       alert("✅ 投稿が保存されました！");
       
       setTimeout(() => {
         console.log('遷移前の最終更新イベント発火');
         window.dispatchEvent(new CustomEvent('postsUpdated'));
-        // ✅ この直前にログを追加
-  console.log('🔐 認証状態確認:', {
-    hasToken: !!localStorage.getItem('daily-report-user-token'),
-    hasUserId: !!localStorage.getItem('daily-report-user-id'),
-    timestamp: Date.now()
-  });
+        console.log('🔐 認証状態確認:', {
+          hasToken: !!localStorage.getItem('daily-report-user-token'),
+          hasUserId: !!localStorage.getItem('daily-report-user-id'),
+          timestamp: Date.now()
+        });
         navigate(`/group/${groupId}/archive`);
       }, 300);
-      
-   } catch (error: any) {
-  console.error("投稿の保存中にエラーが発生しました", error);
-  FileValidator.logSecurityEvent('post_save_failed', { error, groupId });
-  
-  // エラーの種類を判定
-  let errorMessage = "投稿の保存中にエラーが発生しました";
-  
-  if (error?.message?.includes('exceeds the maximum allowed size')) {
-    // Firestoreサイズ制限エラー
-    const match = error.message.match(/(\d+,?\d*)\s*bytes.*maximum.*?(\d+,?\d*)\s*bytes/);
-    if (match) {
-      const actualSize = parseInt(match[1].replace(/,/g, ''));
-      const maxSize = parseInt(match[2].replace(/,/g, ''));
-      const actualMB = (actualSize / (1024 * 1024)).toFixed(2);
-      const maxMB = (maxSize / (1024 * 1024)).toFixed(2);
-      const overageMB = (parseFloat(actualMB) - parseFloat(maxMB)).toFixed(2);
-      
-      // 選択された画像の情報を取得
-      const totalFiles = selectedFiles?.length || 0;
-      const highQualityCount = highQualityIndices?.length || 0;
-      const normalCount = totalFiles - highQualityCount;
-      
-      // 圧縮前のファイルサイズを計算
-      let originalSizeMB = "0.00";
-if (selectedFiles) {
-  const totalBytes = Array.from(selectedFiles).reduce((sum, file) => sum + file.size, 0);
-  originalSizeMB = (totalBytes / (1024 * 1024)).toFixed(2);
-}
-      
-errorMessage = 
-  `⚠️ 画像が多すぎます\n\n` +
-  `選択した画像: ${totalFiles}枚\n` +
-  `（高画質: ${highQualityCount}枚、通常: ${normalCount}枚）\n\n` +
-  `💡 解決方法:\n` +
-  `• 高画質を${Math.max(0, highQualityCount - 3)}枚減らす\n` +
-  `• または` +
-  `• 画像を${Math.ceil(totalFiles / 2)}枚ずつ、2回に分けて投稿`;
+    }, 500);
+    
+  } catch (error: any) {
+    console.error("投稿の保存中にエラーが発生しました", error);
+    FileValidator.logSecurityEvent('post_save_failed', { error, groupId });
+    
+    setIsUploading(false);
+    
+    // エラーの種類を判定
+    let errorMessage = "投稿の保存中にエラーが発生しました";
+    
+    if (error?.message?.includes('exceeds the maximum allowed size')) {
+      // Firestoreサイズ制限エラー
+      const match = error.message.match(/(\d+,?\d*)\s*bytes.*maximum.*?(\d+,?\d*)\s*bytes/);
+      if (match) {
+        const actualSize = parseInt(match[1].replace(/,/g, ''));
+        const maxSize = parseInt(match[2].replace(/,/g, ''));
+        const actualMB = (actualSize / (1024 * 1024)).toFixed(2);
+        const maxMB = (maxSize / (1024 * 1024)).toFixed(2);
+        const overageMB = (parseFloat(actualMB) - parseFloat(maxMB)).toFixed(2);
+        
+        // 選択された画像の情報を取得
+        const totalFiles = selectedFiles?.length || 0;
+        const highQualityCount = highQualityIndices?.length || 0;
+        const normalCount = totalFiles - highQualityCount;
+        
+        // 圧縮前のファイルサイズを計算
+        let originalSizeMB = "0.00";
+        if (selectedFiles) {
+          const totalBytes = Array.from(selectedFiles).reduce((sum, file) => sum + file.size, 0);
+          originalSizeMB = (totalBytes / (1024 * 1024)).toFixed(2);
+        }
+        
+        errorMessage = 
+          `⚠️ 画像が多すぎます\n\n` +
+          `選択した画像: ${totalFiles}枚\n` +
+          `（高画質: ${highQualityCount}枚、通常: ${normalCount}枚）\n\n` +
+          `💡 解決方法:\n` +
+          `• 高画質を${Math.max(0, highQualityCount - 3)}枚減らす\n` +
+          `• または` +
+          `• 画像を${Math.ceil(totalFiles / 2)}枚ずつ、2回に分けて投稿`;
+      }
+    } else if (error?.code === 'permission-denied') {
+      errorMessage = "⚠️ 権限エラー\n\n投稿する権限がありません。";
+    } else if (error?.code === 'network-request-failed') {
+      errorMessage = "⚠️ ネットワークエラー\n\nインターネット接続を確認してください。";
+    } else if (error?.message) {
+      errorMessage = `⚠️ エラーが発生しました\n\n${error.message}`;
     }
-  } else if (error?.code === 'permission-denied') {
-    errorMessage = "⚠️ 権限エラー\n\n投稿する権限がありません。";
-  } else if (error?.code === 'network-request-failed') {
-    errorMessage = "⚠️ ネットワークエラー\n\nインターネット接続を確認してください。";
-  } else if (error?.message) {
-    errorMessage = `⚠️ エラーが発生しました\n\n${error.message}`;
+    
+    alert(errorMessage);
   }
-  
-  alert(errorMessage);
-
-    }
-  }, [groupId, selectedFiles, highQualityIndices, message, tagInput, sanitizeInput, parseTags, clearErrors, navigate]);
+}, [groupId, selectedFiles, highQualityIndices, message, tagInput, sanitizeInput, parseTags, clearErrors, navigate]);
 
   // データベースが初期化されるまで読み込み表示
   if (!dbInitialized) {
@@ -678,6 +716,98 @@ errorMessage =
         flexDirection: "column",
       }}
     >
+
+      {/* 🔥 投稿処理中プログレスバー */}
+    {isUploading && (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000,
+        backdropFilter: 'blur(4px)'
+      }}>
+        <div style={{
+          backgroundColor: '#055A68',
+          padding: '2rem',
+          borderRadius: '20px',
+          width: '85%',
+          maxWidth: '400px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+        }}>
+          {/* タイトル */}
+          <div style={{
+            color: 'white',
+            fontSize: '1.2rem',
+            fontWeight: 'bold',
+            marginBottom: '0.5rem',
+            textAlign: 'center'
+          }}>
+            投稿を処理中...
+          </div>
+          
+          {/* 現在の処理内容 */}
+          <div style={{
+            color: '#F0DB4F',
+            fontSize: '0.9rem',
+            marginBottom: '1.5rem',
+            textAlign: 'center',
+            minHeight: '1.5rem'
+          }}>
+            {uploadStatus}
+          </div>
+          
+          {/* プログレスバー */}
+          <div style={{
+            width: '100%',
+            height: '14px',
+            backgroundColor: 'rgba(255, 255, 255, 0.15)',
+            borderRadius: '7px',
+            overflow: 'hidden',
+            marginBottom: '1rem',
+            boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{
+              width: `${uploadProgress}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, #F0DB4F 0%, #FFE95D 100%)',
+              transition: 'width 0.3s ease',
+              borderRadius: '7px',
+              boxShadow: '0 2px 4px rgba(240, 219, 79, 0.4)'
+            }} />
+          </div>
+          
+          {/* パーセンテージ */}
+          <div style={{
+            color: 'white',
+            fontSize: '1.5rem',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            marginBottom: '1rem'
+          }}>
+            {uploadProgress}%
+          </div>
+          
+          {/* ヒント */}
+          <div style={{
+            color: 'rgba(255, 255, 255, 0.6)',
+            fontSize: '0.8rem',
+            textAlign: 'center',
+            lineHeight: '1.4'
+          }}>
+            処理が完了するまでお待ちください<br />
+            画面を閉じないでください
+          </div>
+        </div>
+      </div>
+    )}
+
+
       {/* 入力画面のみヘッダーを表示 */}
       {!isConfirmationMode && (
        <div
