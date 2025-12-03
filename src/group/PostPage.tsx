@@ -621,6 +621,23 @@ const [uploadStatus, setUploadStatus] = useState('');
           timestamp: Date.now()
         });
         navigate(`/group/${groupId}/archive`);
+
+// ⭐ 遷移後にもイベントを発火（ArchivePageのマウント後に確実に届く）
+setTimeout(() => {
+  console.log('🚀 遷移後の追加イベント発火');
+  const postNavigateEvent = new CustomEvent('postsUpdated', { 
+    detail: { 
+      timestamp: Date.now(),
+      source: 'PostPage-after-navigate'
+    } 
+  });
+  window.dispatchEvent(postNavigateEvent);
+  
+  // 直接リフレッシュも試行
+  if (window.refreshArchivePage) {
+    window.refreshArchivePage();
+  }
+}, 100);
       }, 300);
     }, 500);
     

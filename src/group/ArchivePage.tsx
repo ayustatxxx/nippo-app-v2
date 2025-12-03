@@ -791,6 +791,10 @@ const ArchivePage: React.FC = () => {
 const [hasNewPosts, setHasNewPosts] = useState(false);
 const [latestPostTime, setLatestPostTime] = useState<number>(0);
 
+// ⭐ Phase A3: 段階的読み込み用のState
+const [displayedPostsCount, setDisplayedPostsCount] = useState(5); // 初回は5件
+const POSTS_PER_LOAD = 10; // スクロール時に読み込む件数（初回は5件固定）
+
 
   // 検索関連のステート
   const [searchQuery, setSearchQuery] = useState('');
@@ -1348,6 +1352,31 @@ console.log('🔍 [ArchivePage] キャッシュなし、Firestoreから取得開
       setPosts(fetchedPosts);
       setFilteredPosts(fetchedPosts);
       
+// ⭐ 追加: データ更新時に最新投稿時刻を更新（バナー消去判定用）
+if (fetchedPosts.length > 0) {
+  const validTimestamps = fetchedPosts
+    .map(p => p.createdAt)
+    .filter(t => t !== null && t !== undefined && typeof t === 'object' && t && 'seconds' in t)
+.map(t => (t as any).seconds * 1000);
+  
+  if (validTimestamps.length > 0) {
+    const latestTimestamp = Math.max(...validTimestamps);
+    setLatestPostTime(latestTimestamp);
+    localStorage.setItem(
+      `archive-latest-post-${groupId}`,
+      JSON.stringify({
+        timestamp: latestTimestamp,
+        date: new Date(latestTimestamp).toLocaleString('ja-JP')
+      })
+    );
+    console.log('📌 [ArchivePage] 最新投稿時刻を記録:', {
+      timestamp: latestTimestamp,
+      date: new Date(latestTimestamp).toLocaleString('ja-JP'),
+      postsCount: fetchedPosts.length,
+      validTimestamps: validTimestamps.length
+    });
+  }
+}
   
      // ⭐ メモリキャッシュに保存（画像も含めて全部保存）⭐
 archivePostsCache[groupId] = fetchedPosts;
@@ -1411,6 +1440,28 @@ const interval = setInterval(() => {
       clearInterval(checkInterval);
     };
   }, [groupId, latestPostTime]); // latestPostTimeが更新されたら再設定
+
+  // ⭐ Phase A3: スクロール検知（段階的読み込み）
+useEffect(() => {
+  const handleScroll = () => {
+    const scrollPosition = window.innerHeight + window.scrollY;
+    const pageHeight = document.documentElement.scrollHeight;
+    
+    // 下から300px以内に到達したら追加読み込み
+    if (pageHeight - scrollPosition < 300) {
+      if (displayedPostsCount < filteredPosts.length) {
+        setDisplayedPostsCount(prev => {
+          const newCount = Math.min(prev + POSTS_PER_LOAD, filteredPosts.length);
+          console.log('📜 [ArchivePage] 追加読み込み:', prev, '→', newCount, '/', filteredPosts.length);
+          return newCount;
+        });
+      }
+    }
+  };
+
+  window.addEventListener('scroll', handleScroll);
+  return () => window.removeEventListener('scroll', handleScroll);
+}, [displayedPostsCount, filteredPosts.length, POSTS_PER_LOAD]);
 
   // ⭐ 投稿取得時に最新タイムスタンプを記録 ⭐
 useEffect(() => {
@@ -1500,23 +1551,33 @@ if (refreshedPosts && refreshedPosts.length > 0) {
     refreshData();
   };
   
-  // PostPage.tsxからの更新イベント監視
+
+// PostPage.tsxからの更新イベント監視
 const handlePostsUpdate = (event: any) => {
   console.log('📢 [ArchivePage] 投稿更新イベントを受信:', event.detail);
   
   // 該当するグループの投稿かチェック
   if (event.detail && event.detail.newPost && event.detail.newPost.groupId === groupId) {
     console.log('✅ [ArchivePage] 該当グループの投稿更新:', event.detail.newPost.groupId);
+    
+    // ⭐ Phase A2b: 新着バナーを表示 ⭐
+    setHasNewPosts(true);
+    console.log('🆕 [ArchivePage] 投稿イベント受信 → 新着バナー表示ON');
+    
     // データ再取得
     if (window.refreshArchivePage) {
       window.refreshArchivePage();
     }
-  } else if (!event.detail) {
-    // 詳細情報がない場合は安全のため更新
-    console.log('🔄 [ArchivePage] 詳細不明のため安全のため更新');
-    
-    // ⭐ localStorageをチェックしてメモ保存かどうか確認 ⭐
-    const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
+ } else if (!event.detail) {
+  // 詳細情報がない場合は安全のため更新
+  console.log('🔄 [ArchivePage] 詳細不明のため安全のため更新');
+  
+  // ⭐ Phase A2b: 詳細不明でも新着バナーを表示 ⭐
+  setHasNewPosts(true);
+  console.log('🆕 [ArchivePage] 詳細不明イベント → 新着バナー表示ON');
+  
+  // ★ localStorageをチェックしてメモ保存かどうか確認 ★
+  const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
     if (lastUpdate.startsWith('memo_saved')) {
       console.log('🔄 [ArchivePage] メモ保存と判定：500ms後にリフレッシュ');
       setTimeout(() => {
@@ -1863,11 +1924,17 @@ if (startDate || endDate) {
 }
 
 setFilteredPosts(combinedFiltered);  // HomePage: setFilteredItems(filtered);
+
+// ⭐ Phase A3: 検索・フィルター実行時は表示件数をリセット
+setDisplayedPostsCount(5);
 }, [searchQuery, posts, startDate, endDate, selectAll]);
     
 
   const groupedPosts = React.useMemo(() => {
-    const groups = filteredPosts.reduce((acc: Record<string, Post[]>, post) => {
+  // ⭐ Phase A3: 表示件数制限を適用
+  const displayedFilteredPosts = filteredPosts.slice(0, displayedPostsCount);
+  
+  const groups = displayedFilteredPosts.reduce((acc: Record<string, Post[]>, post) => {
       const dateTimeParts = post.time.split('　');
       const dateKey = dateTimeParts[0];
 
@@ -1907,7 +1974,7 @@ setFilteredPosts(combinedFiltered);  // HomePage: setFilteredItems(filtered);
         );
       })
     );
-  }, [filteredPosts]);
+  }, [filteredPosts, displayedPostsCount]);
 
   const clearSearch = () => {
     setSearchQuery('');
