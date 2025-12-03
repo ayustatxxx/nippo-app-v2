@@ -787,6 +787,11 @@ const ArchivePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
 
+// ⭐ 新着チェック用のState ⭐
+const [hasNewPosts, setHasNewPosts] = useState(false);
+const [latestPostTime, setLatestPostTime] = useState<number>(0);
+
+
   // 検索関連のステート
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredPosts, setFilteredPosts] = useState<Post[]>([]);
@@ -1389,6 +1394,49 @@ const interval = setInterval(() => {
   };
 }, [groupId]);
 
+  // ⭐ 新着チェックタイマー（30秒ごと） ⭐
+  useEffect(() => {
+    if (!groupId) return;
+
+    console.log('⏰ [ArchivePage] 新着チェックタイマー開始');
+
+    // 30秒ごとに新着チェックを実行
+    const checkInterval = setInterval(() => {
+      checkForNewPosts();
+    }, 30000); // 30秒 = 30,000ミリ秒
+
+    // クリーンアップ
+    return () => {
+      console.log('🛑 [ArchivePage] 新着チェックタイマー停止');
+      clearInterval(checkInterval);
+    };
+  }, [groupId, latestPostTime]); // latestPostTimeが更新されたら再設定
+
+  // ⭐ 投稿取得時に最新タイムスタンプを記録 ⭐
+useEffect(() => {
+  if (posts.length > 0) {
+    const timestamps = posts
+      .map(p => {
+        const createdAt = p.createdAt;
+        if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'object' && typeof (createdAt as any).toMillis === 'function') {
+          return (createdAt as any).toMillis();
+        }
+        return createdAt || 0;
+      })
+      .filter(t => t > 0);
+    
+    if (timestamps.length > 0) {
+      const latest = Math.max(...timestamps);
+      setLatestPostTime(latest);
+      console.log('📌 [ArchivePage] 最新投稿時刻を記録:', {
+        timestamp: latest,
+        date: new Date(latest).toLocaleString('ja-JP'),
+        postsCount: posts.length,
+        validTimestamps: timestamps.length
+      });
+    }
+  }
+}, [posts]);
 
 // ★ モーダル自動表示用のuseEffect（EditPageから戻ってきた時） ★
 useEffect(() => {
@@ -1937,6 +1985,65 @@ setTimeout(() => {
 };
 
   
+// ⭐ 新着チェック関数 ⭐
+const checkForNewPosts = async () => {
+  if (!groupId) return;
+  
+  try {
+    console.log('🔍 [ArchivePage] 新着チェック開始');
+    console.log('📊 [ArchivePage] 現在の最新投稿時刻:', new Date(latestPostTime).toLocaleString('ja-JP'));
+    
+    // Firestoreから最新の投稿のタイムスタンプのみ取得
+    const { collection, query, where, orderBy, limit, getDocs } = await import('firebase/firestore');
+    const { getFirestore } = await import('firebase/firestore');
+    const db = getFirestore();
+    
+    const postsRef = collection(db, 'posts');
+    const q = query(
+      postsRef,
+      where('groupId', '==', groupId),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+    
+    const snapshot = await getDocs(q);
+    
+    if (!snapshot.empty) {
+  const latestPost = snapshot.docs[0].data();
+  // Timestamp型を数値に変換
+const latestTime = latestPost.createdAt?.toMillis 
+  ? latestPost.createdAt.toMillis() 
+  : (typeof latestPost.createdAt === 'number' ? latestPost.createdAt : 0);
+  
+  console.log('🔍 [新着チェック] Firestoreから取得したデータ:', {
+    latestPostId: snapshot.docs[0].id,
+    createdAt: latestPost.createdAt,
+    createdAtType: typeof latestPost.createdAt,
+    latestTime: latestTime,
+    latestDate: latestTime > 0 ? new Date(latestTime).toLocaleString('ja-JP') : 'Invalid'
+  });
+  
+  console.log('🔍 [新着チェック] 最新投稿時刻:', {
+    latest: latestTime > 0 ? new Date(latestTime).toLocaleString('ja-JP') : 'Invalid',
+    current: latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : 'Invalid',
+    差分: latestTime - latestPostTime,
+    新着あり: latestTime > latestPostTime
+  });
+      
+      // 現在表示中の最新投稿より新しい投稿があれば通知
+      if (latestPostTime > 0 && latestTime > latestPostTime) {
+        console.log('🆕 [ArchivePage] 新着投稿を検知！バナー表示ON');
+        setHasNewPosts(true);
+      } else {
+        console.log('ℹ️ [ArchivePage] 新着投稿なし');
+      }
+    } else {
+      console.log('⚠️ [ArchivePage] 投稿が見つかりませんでした');
+    }
+  } catch (error) {
+    console.error('❌ [ArchivePage] 新着チェック失敗:', error);
+  }
+};
 
 // ステータス更新処理の修正版（デバッグログ強化 + Firestore直接更新）
 const handleStatusUpdate = async (postId: string, newStatus: string) => {
@@ -3430,6 +3537,75 @@ setGalleryOpen(true);
         )}
 
         
+        {/* ⭐ 新着通知バナー（画面上部固定表示） ⭐ */}
+{hasNewPosts && (
+  <div
+    style={{
+      position: 'fixed',
+      top: '100px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 1000,
+      backgroundColor: '#FFFFFF',
+      color: '#055A68',
+      padding: '15px 25px',  
+      borderRadius: '10px',
+      boxShadow: '0 0 12px rgba(0,0,0,0.3)',
+      cursor: 'pointer',
+      display: 'flex',
+      flexDirection: 'row', 
+      alignItems: 'center',
+      gap: '8px',
+      fontSize: '0.9rem',
+      fontWeight: '500',
+      maxWidth: 'calc(100% - 32px)',
+    }}
+    onClick={async () => {
+      console.log('🔄 [ArchivePage] 新着バナーをクリック - 再取得開始');
+      setHasNewPosts(false);
+      setLoading(true);
+      
+      // キャッシュクリア
+      delete archivePostsCache[groupId || ''];
+      delete archivePostsCacheTime[groupId || ''];
+      
+      // 最新データ取得
+      const userId = localStorage.getItem('daily-report-user-id') || '';
+      const freshPosts = await UnifiedCoreSystem.getGroupPosts(groupId || '', userId);
+      
+      setPosts(freshPosts);
+      setFilteredPosts(freshPosts);
+
+      // ⭐ 最新タイムスタンプを更新（バナー再表示を防ぐ） ⭐
+  if (freshPosts.length > 0) {
+    const timestamps = freshPosts
+  .map(p => {
+    // Firestoreから取得した直後なので、Timestamp型の可能性がある
+    const createdAt = p.createdAt;
+if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'object' && typeof (createdAt as any).toMillis === 'function') {
+  return (createdAt as any).toMillis();
+}
+    return p.createdAt || 0;
+  })
+  .filter(t => t > 0);
+    if (timestamps.length > 0) {
+      const latest = Math.max(...timestamps);
+      setLatestPostTime(latest);
+      console.log('✅ [ArchivePage] バナークリック後、最新時刻を更新:', new Date(latest).toLocaleString('ja-JP'));
+    }
+  }
+
+      setLoading(false);
+      
+      console.log('✅ [ArchivePage] 最新データ取得完了:', freshPosts.length, '件');
+    }}
+  >
+<span style={{ whiteSpace: 'nowrap' }}>新しい投稿があります。</span>
+<span style={{ whiteSpace: 'nowrap' }}>
+<span style={{ textDecoration: 'underline' }}>  更新</span>
+</span>
+  </div>
+)}
 
 
 
@@ -3681,7 +3857,10 @@ post.tags?.includes('#チェックイン') ? (() => {
     : null;
   
   return (
-    <div>
+       
+        <div>
+          
+
       {/* 作業開始・終了を1行に */}
       {(timeInfo.startTime || timeInfo.endTime) && (
         <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
