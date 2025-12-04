@@ -126,46 +126,46 @@ useEffect(() => {
 }, [groupId]);
 
 
-// ★ EditPageからの更新を検知してリフレッシュ ★
-useEffect(() => {
-  console.log('🎧 [GroupTopPage] 投稿更新イベント監視を開始');
+// // ★ EditPageからの更新を検知してリフレッシュ ★
+// useEffect(() => {
+//   console.log('🎧 [GroupTopPage] 投稿更新イベント監視を開始');
   
-  const handlePostsUpdate = async () => {
-    console.log('📢 [GroupTopPage] 投稿更新イベントを受信');
-    // チェックイン状態を再確認
-    const userIdFromStorage = localStorage.getItem("daily-report-user-id");
-    if (userIdFromStorage && groupId) {
-      console.log('🔄 [GroupTopPage] チェックイン状態を再確認中...');
-      await checkTodayWorkTimePost(userIdFromStorage);
-    }
-  };
+//   const handlePostsUpdate = async () => {
+//     console.log('📢 [GroupTopPage] 投稿更新イベントを受信');
+//     // チェックイン状態を再確認
+//     const userIdFromStorage = localStorage.getItem("daily-report-user-id");
+//     if (userIdFromStorage && groupId) {
+//       console.log('🔄 [GroupTopPage] チェックイン状態を再確認中...');
+//       await checkTodayWorkTimePost(userIdFromStorage);
+//     }
+//   };
   
-  // localStorageフラグ監視
-  let lastUpdateFlag = localStorage.getItem('daily-report-posts-updated') || '';
-  const checkForUpdates = () => {
-    const currentFlag = localStorage.getItem('daily-report-posts-updated') || '';
-    if (currentFlag !== lastUpdateFlag && currentFlag !== '') {
-      console.log('📱 [GroupTopPage] localStorageフラグ変更を検知:', currentFlag);
-      lastUpdateFlag = currentFlag;
-      handlePostsUpdate();
-    }
-  };
+//   // localStorageフラグ監視
+//   let lastUpdateFlag = localStorage.getItem('daily-report-posts-updated') || '';
+//   const checkForUpdates = () => {
+//     const currentFlag = localStorage.getItem('daily-report-posts-updated') || '';
+//     if (currentFlag !== lastUpdateFlag && currentFlag !== '') {
+//       console.log('📱 [GroupTopPage] localStorageフラグ変更を検知:', currentFlag);
+//       lastUpdateFlag = currentFlag;
+//       handlePostsUpdate();
+//     }
+//   };
   
-  // イベントリスナーの設定
-  window.addEventListener('postsUpdated', handlePostsUpdate);
-  window.addEventListener('refreshPosts', handlePostsUpdate);
+//   // イベントリスナーの設定
+//   window.addEventListener('postsUpdated', handlePostsUpdate);
+//   window.addEventListener('refreshPosts', handlePostsUpdate);
   
-  // ポーリング開始（1秒間隔）
-  const pollingInterval = setInterval(checkForUpdates, 1000);
+//   // ポーリング開始（1秒間隔）
+//   const pollingInterval = setInterval(checkForUpdates, 1000);
   
-  // クリーンアップ
-  return () => {
-    console.log('🔌 [GroupTopPage] 更新イベント監視を終了');
-    window.removeEventListener('postsUpdated', handlePostsUpdate);
-    window.removeEventListener('refreshPosts', handlePostsUpdate);
-    clearInterval(pollingInterval);
-  };
-}, [groupId]);
+//   // クリーンアップ
+//   return () => {
+//     console.log('🔌 [GroupTopPage] 更新イベント監視を終了');
+//     window.removeEventListener('postsUpdated', handlePostsUpdate);
+//     window.removeEventListener('refreshPosts', handlePostsUpdate);
+//     clearInterval(pollingInterval);
+//   };
+// }, [groupId]);
 
 useEffect(() => {
   // データ読み込み処理
@@ -457,32 +457,8 @@ const handleBack = () => {
   
 // チェックイン・チェックアウト処理（完全版 - ガード強化）
 const handleCheckInOut = async () => {
-  // 🔍 診断ログ追加（ここから）
-  console.log('🔍🔍🔍 ===== handleCheckInOut 呼び出し診断 =====');
-  console.log('📞 呼び出し元のスタックトレース:');
-  console.log(new Error().stack);
-  console.log('📊 現在の状態:');
-  console.log({
-    isCheckedIn,
-    isProcessing,
-    isLoadingCheckInState,
-    checkInPostId,
-    checkInTime
-  });
-  console.log('🔍🔍🔍 =========================================');
-
-    // ここから追加 ↓
-  console.log('🎯 イベント情報詳細:');
-  console.log('- イベントタイプ:', window.event?.type);
-  console.log('- イベント全体:', window.event);
-  console.log('- フォーカス中の要素:', document.activeElement);
-  console.log('- フォーカス中の要素タグ:', document.activeElement?.tagName);
-  
-  const button = document.activeElement;
-  if (button?.tagName === 'BUTTON') {
-    console.log('- ボタンのテキスト:', button.textContent);
-    console.log('- ボタンのdisabled:', button.hasAttribute('disabled'));
-  }
+  // デバッグログ
+  console.log('🔍 handleCheckInOut 実行:', { isCheckedIn, isProcessing });
 
 
   // 強力なガード：処理中は実行しない
