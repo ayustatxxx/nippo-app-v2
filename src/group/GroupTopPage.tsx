@@ -409,10 +409,15 @@ await checkTodayWorkTimePost(userIdFromStorage);
       console.log('遷移先:', `/group/${groupId}/post`);
       navigate(`/group/${groupId}/post`);
       break;
-    case 'history':
-      console.log('遷移先:', `/group/${groupId}/archive`);
-      navigate(`/group/${groupId}/archive`);
-      break;
+case 'history':
+  console.log('遷移先:', `/group/${groupId}/archive`);
+  // ⭐ Archiveページ遷移前にキャッシュをクリア
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem(`archiveCache_${groupId}`);
+    console.log('🗑️ [GroupTopPage] Archiveキャッシュをクリア');
+  }
+  navigate(`/group/${groupId}/archive`);
+  break;
     case 'members':
       console.log('遷移先:', `/group/${groupId}/members`);
       navigate(`/group/${groupId}/members`);
