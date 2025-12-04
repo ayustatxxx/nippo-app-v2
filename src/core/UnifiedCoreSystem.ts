@@ -231,7 +231,146 @@ if (postData.files && postData.files.length > 0) {
       console.error('❌ グループ投稿取得エラー:', error);
       return []; // エラーの場合は空配列を返す（安全）
     }
-  }
+     }
+    /**
+   * グループの投稿を段階的に取得（ページネーション対応）
+   * Phase A4: Firestore段階的取得の実装
+   * ArchivePage専用の最適化された実装
+   * 
+   * @param groupId - グループID
+   * @param userId - ユーザーID
+   * @param limit - 取得件数（デフォルト10件）
+   * @param startAfterDoc - 前回取得の最終ドキュメント（次のページ取得時に使用）
+   * @returns 投稿配列、最終ドキュメント、追加データの有無
+   */
+  static async getGroupPostsPaginated(
+    groupId: string,
+    userId: string,
+    limit: number = 10,
+    startAfterDoc?: any
+  ): Promise<{ posts: Post[]; lastDoc: any; hasMore: boolean }> {
+    
+    try {
+      console.log(`📥 [UnifiedCore-Paginated] 段階的取得開始: groupId=${groupId}, limit=${limit}, startAfter=${startAfterDoc?.id || 'なし'}`);
+      
+      // Step 1: ユーザーのグループ参加権限を確認
+      const userGroups = await this.getUserGroups(userId);
+      const hasAccess = userGroups.some(g => g.id === groupId);
+      
+      if (!hasAccess) {
+        console.warn(`⚠️ [UnifiedCore-Paginated] ユーザー ${userId} はグループ ${groupId} へのアクセス権限がありません`);
+        return { posts: [], lastDoc: null, hasMore: false };
+      }
+
+      console.log('✅ [UnifiedCore-Paginated] 権限確認OK');
+
+      // Step 2: Firestoreクエリ作成
+      const db = getFirestore();
+      const postsRef = collection(db, 'posts');  // ← トップレベルコレクション
+      let q;
+
+      // 前回の最終ドキュメントがあれば、その後から取得
+      if (startAfterDoc) {
+        q = query(
+          postsRef,
+          where('groupId', '==', groupId),  // ← この行を追加！
+          orderBy('createdAt', 'desc'),     // ← timestamp → createdAt に変更
+          startAfter(startAfterDoc),
+          limitQuery(limit)
+        );
+        console.log('📄 [UnifiedCore-Paginated] 続きから取得モード');
+      } else {
+        // 初回取得
+        q = query(
+          postsRef,
+          where('groupId', '==', groupId),  // ← この行を追加！
+          orderBy('createdAt', 'desc'),     // ← timestamp → createdAt に変更
+          limitQuery(limit)
+        );
+        console.log('📄 [UnifiedCore-Paginated] 初回取得モード');
+      }
+
+      // Step 3: データ取得
+      const querySnapshot = await getDocs(q);
+      
+      // 最終ドキュメントを保存（次回のページネーション用）
+      const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
+      
+      // まだデータがあるかチェック
+      const hasMore = querySnapshot.docs.length === limit;
+
+ 
+// Step 4: データ整形（画像サブコレクション取得を含む）
+const posts = await Promise.all(
+  querySnapshot.docs.map(async (doc) => {
+    const data = doc.data() as any;
+    
+// 🖼️ 2モード設計：サブコレクションから画像を取得
+let imageUrls: string[] = [];
+try {
+  // 図面・書類画像を取得
+  const documentImagesRef = collection(db, 'posts', doc.id, 'documentImages');
+  const documentSnapshot = await getDocs(query(documentImagesRef, orderBy('order')));
+  const documentImages = documentSnapshot.docs.map(imgDoc => imgDoc.data().image as string);
+  
+  // 現場写真を取得
+  const photoImagesRef = collection(db, 'posts', doc.id, 'photoImages');
+  const photoSnapshot = await getDocs(query(photoImagesRef, orderBy('order')));
+  const photoImages = photoSnapshot.docs.map(imgDoc => imgDoc.data().image as string);
+  
+  // 2つの配列を結合
+  imageUrls = [...documentImages, ...photoImages];
+  
+  console.log('🖼️ [画像取得完了]', {
+    postId: doc.id,
+    documentCount: documentImages.length,
+    photoCount: photoImages.length,
+    totalCount: imageUrls.length
+  });
+} catch (error) {
+  console.warn('⚠️ [画像取得エラー]', doc.id, error);
+}
+    
+    // timeフィールドを生成（存在しない場合）
+    let timeString = data.time;
+    if (!timeString && data.createdAt) {
+      try {
+        const date = data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
+        const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+        const weekday = weekdays[date.getDay()];
+        const dateStr = `${date.getFullYear()} / ${date.getMonth() + 1} / ${date.getDate()}（${weekday}）`;
+        const timeStr = date.toLocaleTimeString('ja-JP', { hour: "2-digit", minute: "2-digit" });
+        timeString = `${dateStr}　${timeStr}`;
+      } catch (error) {
+        console.error('❌ [UnifiedCore] time生成エラー:', error);
+        timeString = '日付不明　00:00';
+      }
+    }
+    
+    return {
+      id: doc.id,
+      ...(data as any),
+      time: timeString || '日付不明　00:00',
+      timestamp: data.timestamp || data.createdAt || Date.now(),
+      username: data.username || data.userName || data.authorName || 'ユーザー',
+      photoUrls: imageUrls,  // ✅ サブコレクションから取得した画像
+      images: imageUrls,      // ✅ 同じデータを両方のフィールドに
+      userId: data.userId || data.authorId || data.createdBy || '',
+      authorId: data.authorId || data.userId || data.createdBy || ''
+    } as Post;
+  })
+);
+
+console.log(`✅ [UnifiedCore-Paginated] 取得完了: ${posts.length}件, hasMore: ${hasMore}`);
+
+return { posts, lastDoc, hasMore };
+
+} catch (error) {
+  console.error('❌ [UnifiedCore-Paginated] 段階的投稿取得エラー:', error);
+  throw error;
+}
+
+}
 
 
   /**

@@ -786,13 +786,32 @@ const ArchivePage: React.FC = () => {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Phase A4: ユーザー情報取得
+  const [user, setUser] = useState<{ uid: string } | null>(null);
+
+  // ユーザー情報を取得
+  useEffect(() => {
+    const initUser = async () => {
+      const userId = localStorage.getItem('daily-report-user-id') || '';
+const fetchedUser = await getUser(userId);
+      if (fetchedUser) {
+        setUser({ uid: fetchedUser.id });
+      }
+    };
+    initUser();
+  }, []);
+
 
 // ⭐ 新着チェック用のState ⭐
 const [hasNewPosts, setHasNewPosts] = useState(false);
 const [latestPostTime, setLatestPostTime] = useState<number>(0);
 
 // ⭐ Phase A3: 段階的読み込み用のState
-const [displayedPostsCount, setDisplayedPostsCount] = useState(5); // 初回は5件
+const [displayedPostsCount, setDisplayedPostsCount] = useState(10); // 初回は10件
+// Phase A4: ページネーション用のState
+  const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 const POSTS_PER_LOAD = 10; // スクロール時に読み込む件数（初回は5件固定）
 
 
@@ -1323,6 +1342,12 @@ console.log('🔍 [ArchivePage] キャッシュなし、Firestoreから取得開
       // localStorageフラグをチェック
       const updateFlag = localStorage.getItem('daily-report-posts-updated');
       console.log('🔍 [Archive] 投稿データ取得開始');
+
+      // 🔥 Phase A4: キャッシュをクリア（段階的取得に移行）
+if (groupId) {
+  localStorage.removeItem(`archive-cache-${groupId}`);
+  console.log('🔥 [ArchivePage-A4] キャッシュクリア完了');
+}
       
       if (!groupId) {
         console.error('groupIdが見つかりません');
@@ -1333,12 +1358,43 @@ console.log('🔍 [ArchivePage] キャッシュなし、Firestoreから取得開
       // ✅ ユーザーIDを取得
       const userId = localStorage.getItem('daily-report-user-id') || '';
     
-      // APIが未実装のため空データで初期化
-      console.log('🔍 [Archive] Firestoreから投稿を取得中...');
-      console.log('📄 [Archive] UnifiedCoreSystem統合開始');
-      const fetchedPosts = await UnifiedCoreSystem.getGroupPosts(groupId, userId);  // ✅ 修正
-      console.log('✅ [Archive] データ取得完了:', fetchedPosts.length, '件');
-      console.log('✅ [Archive] 投稿取得完了:', fetchedPosts.length, '件');
+      // Phase A4: 段階的取得（初回10件のみ）
+     console.log('🔄 [Archive] Firestore段階的取得開始...');
+console.log('📦 [Archive] UnifiedCoreSystem.getGroupPostsPaginated使用');
+
+// ⏱️ パフォーマンス計測開始
+const startTime = performance.now();
+
+// Phase A4: 段階的取得（初回10件のみ）
+const result = await UnifiedCoreSystem.getGroupPostsPaginated(
+  groupId,
+  userId,
+  10  // 初回10件のみ取得
+);
+
+
+setLastVisibleDoc(result.lastDoc);
+setHasMorePosts(result.hasMore);
+
+// ⏱️ パフォーマンス計測終了
+const endTime = performance.now();
+const duration = endTime - startTime;
+
+console.log('✅ [Archive] 初回取得完了:', result.posts.length, '件');
+console.log('📊 [Archive] 続きあり:', result.hasMore);
+console.log('⏱️ [性能計測] ArchivePage初回表示:', {
+  合計時間: `${duration.toFixed(0)}ms`,
+  投稿数: result.posts.length,
+  平均_1件: `${(duration / result.posts.length).toFixed(0)}ms`,
+  画像込み: 'YES'
+});
+      
+      const fetchedPosts = result.posts;
+      setLastVisibleDoc(result.lastDoc);
+      setHasMorePosts(result.hasMore);
+      
+      console.log('✅ [Archive] 初回取得完了:', result.posts.length, '件');
+      console.log('📊 [Archive] 続きあり:', result.hasMore);
 
       fetchedPosts.forEach(post => {
        if (post.id === 'C3ZW1j0GDORx5XKi7vLw') { 
@@ -1441,27 +1497,84 @@ const interval = setInterval(() => {
     };
   }, [groupId, latestPostTime]); // latestPostTimeが更新されたら再設定
 
-  // ⭐ Phase A3: スクロール検知（段階的読み込み）
-useEffect(() => {
-  const handleScroll = () => {
-    const scrollPosition = window.innerHeight + window.scrollY;
-    const pageHeight = document.documentElement.scrollHeight;
-    
-    // 下から300px以内に到達したら追加読み込み
-    if (pageHeight - scrollPosition < 300) {
-      if (displayedPostsCount < filteredPosts.length) {
-        setDisplayedPostsCount(prev => {
-          const newCount = Math.min(prev + POSTS_PER_LOAD, filteredPosts.length);
-          console.log('📜 [ArchivePage] 追加読み込み:', prev, '→', newCount, '/', filteredPosts.length);
-          return newCount;
-        });
-      }
-    }
-  };
 
-  window.addEventListener('scroll', handleScroll);
-  return () => window.removeEventListener('scroll', handleScroll);
-}, [displayedPostsCount, filteredPosts.length, POSTS_PER_LOAD]);
+// ★ Phase A3 + A4: スクロール検知（2段階読み込み）
+  useEffect(() => {
+    const handleScroll = async () => {
+      const scrollPosition = window.innerHeight + window.scrollY;
+      const pageHeight = document.documentElement.scrollHeight;
+      
+      // 下から300px以内に到達したら追加読み込み
+      if (pageHeight - scrollPosition < 300) {
+        
+        // Phase A3: まずメモリ内のデータを表示
+        if (displayedPostsCount < filteredPosts.length) {
+          setDisplayedPostsCount(prev => {
+            const newCount = Math.min(prev + POSTS_PER_LOAD, filteredPosts.length);
+            console.log('📜 [ArchivePage-A3] メモリ内追加:', prev, '→', newCount, '/', filteredPosts.length);
+            return newCount;
+          });
+        }
+        // Phase A4: メモリ内のデータを全部表示したら、Firestoreから追加取得
+        else if (!isLoadingMore && hasMorePosts && groupId && user?.uid) {
+          setIsLoadingMore(true);
+          
+          try {
+            console.log('📦 [ArchivePage-A4] Firestore追加取得開始...');
+
+// ⏱️ パフォーマンス計測開始
+const scrollStartTime = performance.now();
+const result = await UnifiedCoreSystem.getGroupPostsPaginated(
+  groupId,
+  user.uid,
+  10,
+  lastVisibleDoc
+);
+
+// ⏱️ パフォーマンス計測終了
+const scrollEndTime = performance.now();
+const scrollDuration = scrollEndTime - scrollStartTime;
+
+console.log('✅ [ArchivePage-A4] 追加取得完了:', result.posts.length, '件');
+console.log('📊 [ArchivePage-A4] 続きあり:', result.hasMore);
+console.log('⏱️ [性能計測] スクロール追加読み込み:', {
+  合計時間: `${scrollDuration.toFixed(0)}ms`,
+  投稿数: result.posts.length,
+  平均_1件: `${(scrollDuration / result.posts.length).toFixed(0)}ms`
+});
+            
+            console.log('✅ [ArchivePage-A4] 追加取得完了:', result.posts.length, '件');
+            console.log('📊 [ArchivePage-A4] 続きあり:', result.hasMore);
+            
+            // 既存の投稿に追加
+setPosts(prev => {
+  const existingIds = new Set(prev.map(p => p.id));
+  const newPosts = result.posts.filter(p => !existingIds.has(p.id));
+  return [...prev, ...newPosts];
+});
+setFilteredPosts(prev => {
+  const existingIds = new Set(prev.map(p => p.id));
+  const newPosts = result.posts.filter(p => !existingIds.has(p.id));
+  return [...prev, ...newPosts];
+});
+            setLastVisibleDoc(result.lastDoc);
+            setHasMorePosts(result.hasMore);
+            
+            // 表示件数も増やす
+            setDisplayedPostsCount(prev => prev + result.posts.length);
+            
+          } catch (error) {
+            console.error('❌ [ArchivePage-A4] 追加取得エラー:', error);
+          } finally {
+            setIsLoadingMore(false);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [displayedPostsCount, filteredPosts.length, isLoadingMore, hasMorePosts, lastVisibleDoc, groupId, user?.uid, POSTS_PER_LOAD]);
 
   // ⭐ 投稿取得時に最新タイムスタンプを記録 ⭐
 useEffect(() => {
@@ -1935,13 +2048,19 @@ setDisplayedPostsCount(5);
   const displayedFilteredPosts = filteredPosts.slice(0, displayedPostsCount);
   
   const groups = displayedFilteredPosts.reduce((acc: Record<string, Post[]>, post) => {
-      const dateTimeParts = post.time.split('　');
-      const dateKey = dateTimeParts[0];
+  // timeフィールドが存在しない場合の安全な処理
+  if (!post.time) {
+    console.warn('⚠️ [ArchivePage] timeフィールドがありません:', post.id);
+    return acc;  // この投稿をスキップ
+  }
+  
+  const dateTimeParts = post.time.split('　');
+  const dateKey = dateTimeParts[0];
 
-      if (!acc[dateKey]) acc[dateKey] = [];
-      acc[dateKey].push(post);
-      return acc;
-    }, {});
+  if (!acc[dateKey]) acc[dateKey] = [];
+  acc[dateKey].push(post);
+  return acc;
+}, {});
 
     // 各日付内でのさらなるソート
     Object.keys(groups).forEach((date) => {
