@@ -11,7 +11,7 @@ import { DisplayNameResolver } from '../utils/displayNameResolver';
 import { getUser } from '../firebase/firestore';
 import { MemoService } from '../utils/memoService';
 import Header from '../components/Header';
-import { deleteDoc, doc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 // 🔥 キャッシュ設定
@@ -809,7 +809,12 @@ const [latestPostTime, setLatestPostTime] = useState<number>(0);
 // ⭐ Phase A3: 段階的読み込み用のState
 const [displayedPostsCount, setDisplayedPostsCount] = useState(10); // 初回は10件
 // Phase A4: ページネーション用のState
-  const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
+ const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(() => {
+  // ページ遷移から戻ってきた時にlastVisibleDocIdを復元
+  const savedDocId = localStorage.getItem(`lastVisibleDocId_${groupId}`);
+  console.log('🔄 [Phase A4] lastVisibleDoc初期化:', savedDocId || 'なし');
+  return null; // 実際のDocオブジェクトはFirestore取得後に設定
+});
   const [hasMorePosts, setHasMorePosts] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 const POSTS_PER_LOAD = 10; // スクロール時に読み込む件数（初回は5件固定）
@@ -1326,8 +1331,26 @@ if (cacheData && cacheData.length > 0 && Date.now() - cacheTime < CACHE_DURATION
   setPosts(cacheData);
   setFilteredPosts(cacheData);
   setLoading(false);
+
+  // Phase A4: lastVisibleDocを復元
+      const savedDocId = localStorage.getItem(`lastVisibleDocId_${groupId}`);
+      if (savedDocId) {
+        console.log('🔄 [Phase A4] キャッシュ復元時にlastVisibleDoc復元開始:', savedDocId);
+        const restoredDoc = await restoreLastVisibleDoc(savedDocId);
+        if (restoredDoc) {
+          setLastVisibleDoc(restoredDoc);
+          console.log('✅ [Phase A4] キャッシュ復元時にlastVisibleDoc復元完了');
+        }
+      }
+
   
   console.log('⚡ [ArchivePage] 画像付き高速表示完了: 0ms');
+  return;
+}
+
+// Phase A4: キャッシュから復元できた場合は初回取得をスキップ
+if (posts.length > 0) {
+  console.log('✅ [Phase A4] キャッシュから復元済み、Firestore初回取得スキップ');
   return;
 }
 
@@ -1343,11 +1366,6 @@ console.log('🔍 [ArchivePage] キャッシュなし、Firestoreから取得開
       const updateFlag = localStorage.getItem('daily-report-posts-updated');
       console.log('🔍 [Archive] 投稿データ取得開始');
 
-      // 🔥 Phase A4: キャッシュをクリア（段階的取得に移行）
-if (groupId) {
-  localStorage.removeItem(`archive-cache-${groupId}`);
-  console.log('🔥 [ArchivePage-A4] キャッシュクリア完了');
-}
       
       if (!groupId) {
         console.error('groupIdが見つかりません');
@@ -1374,6 +1392,13 @@ const result = await UnifiedCoreSystem.getGroupPostsPaginated(
 
 
 setLastVisibleDoc(result.lastDoc);
+
+// Phase A4: lastVisibleDocId を localStorage に保存
+if (result.lastDoc?.id) {
+  localStorage.setItem(`lastVisibleDocId_${groupId}`, result.lastDoc.id);
+  console.log('💾 [Phase A4] 初回取得後 lastVisibleDocId保存:', result.lastDoc.id);
+}
+
 setHasMorePosts(result.hasMore);
 
 // ⏱️ パフォーマンス計測終了
@@ -1455,15 +1480,14 @@ console.log('✅ [ArchivePage] メモリキャッシュ保存完了（画像付�
 
   fetchPosts();
   
-  // localStorage更新フラグを監視
-  const handleStorageChange = () => {
-    fetchPosts();
-  };
-  
-  window.addEventListener('storage', handleStorageChange);
-  
- 
-  // 定期的な更新チェック
+ // localStorage更新フラグを監視
+const handleStorageChange = () => {
+  fetchPosts();
+};
+
+window.addEventListener('storage', handleStorageChange);
+
+/* ❌ 定期的な更新チェックを無効化（30秒の新着チェックで十分）
 const interval = setInterval(() => {
   const currentFlag = localStorage.getItem('daily-report-posts-updated');
   if (currentFlag && currentFlag !== localStorage.getItem('last-archive-update')) {
@@ -1472,16 +1496,16 @@ const interval = setInterval(() => {
     fetchPosts();
   }
 }, 5000);
-  
-  return () => {
-    window.removeEventListener('storage', handleStorageChange);
-    clearInterval(interval);
-  };
+*/
+
+return () => {
+  window.removeEventListener('storage', handleStorageChange);
+};
 }, [groupId]);
 
-  // ⭐ 新着チェックタイマー（30秒ごと） ⭐
-  useEffect(() => {
-    if (!groupId) return;
+// ⭐ 新着チェックタイマー（30秒ごと）⭐
+useEffect(() => {
+  if (!groupId) return;
 
     console.log('⏰ [ArchivePage] 新着チェックタイマー開始');
 
@@ -1495,7 +1519,7 @@ const interval = setInterval(() => {
       console.log('🛑 [ArchivePage] 新着チェックタイマー停止');
       clearInterval(checkInterval);
     };
-  }, [groupId, latestPostTime]); // latestPostTimeが更新されたら再設定
+  }, []); // 初回のみ実行
 
 
 // ★ Phase A3 + A4: スクロール検知（2段階読み込み）
@@ -1521,6 +1545,15 @@ const interval = setInterval(() => {
           
           try {
             console.log('📦 [ArchivePage-A4] Firestore追加取得開始...');
+
+           // ← ここに以下を追加
+console.log('🔍 [ArchivePage-A4] 現在の状態:', {
+  lastVisibleDocId: lastVisibleDoc?.id || 'なし',
+  isLoadingMore,
+  hasMorePosts,
+  displayedPostsCount,
+  filteredPostsLength: filteredPosts.length
+}); 
 
 // ⏱️ パフォーマンス計測開始
 const scrollStartTime = performance.now();
@@ -1558,6 +1591,13 @@ setFilteredPosts(prev => {
   return [...prev, ...newPosts];
 });
             setLastVisibleDoc(result.lastDoc);
+
+            // Phase A4: lastVisibleDocId を localStorage に保存
+if (result.lastDoc?.id) {
+  localStorage.setItem(`lastVisibleDocId_${groupId}`, result.lastDoc.id);
+  console.log('💾 [Phase A4] スクロール追加後 lastVisibleDocId保存:', result.lastDoc.id);
+}
+
             setHasMorePosts(result.hasMore);
             
             // 表示件数も増やす
@@ -1575,6 +1615,27 @@ setFilteredPosts(prev => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, [displayedPostsCount, filteredPosts.length, isLoadingMore, hasMorePosts, lastVisibleDoc, groupId, user?.uid, POSTS_PER_LOAD]);
+
+
+    // 📦 Phase A4: lastVisibleDocIdからDocumentSnapshotを復元
+  const restoreLastVisibleDoc = async (docId: string): Promise<any> => {
+    try {
+      console.log('🔄 [Phase A4] DocumentSnapshot復元開始:', docId);
+      const docRef = doc(db, 'posts', docId);
+      const docSnapshot = await getDoc(docRef);
+      
+      if (docSnapshot.exists()) {
+        console.log('✅ [Phase A4] DocumentSnapshot復元成功:', docId);
+        return docSnapshot;
+      } else {
+        console.warn('⚠️ [Phase A4] ドキュメントが存在しません:', docId);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ [Phase A4] DocumentSnapshot復元エラー:', error);
+      return null;
+    }
+  };
 
   // ⭐ 投稿取得時に最新タイムスタンプを記録 ⭐
 useEffect(() => {

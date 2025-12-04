@@ -251,6 +251,15 @@ if (postData.files && postData.files.length > 0) {
   ): Promise<{ posts: Post[]; lastDoc: any; hasMore: boolean }> {
     
     try {
+
+      // ⏱️ パフォーマンス計測開始
+  const startTime = performance.now();
+  console.log('⏱️ [性能計測] 取得開始:', {
+    groupId,
+    limit,
+    hasCursor: !!startAfterDoc
+  });
+      
       console.log(`📥 [UnifiedCore-Paginated] 段階的取得開始: groupId=${groupId}, limit=${limit}, startAfter=${startAfterDoc?.id || 'なし'}`);
       
       // Step 1: ユーザーのグループ参加権限を確認
@@ -362,6 +371,15 @@ try {
 );
 
 console.log(`✅ [UnifiedCore-Paginated] 取得完了: ${posts.length}件, hasMore: ${hasMore}`);
+
+// ⏱️ パフォーマンス計測終了
+const endTime = performance.now();
+const duration = endTime - startTime;
+console.log('⏱️ [性能計測] Firestore取得完了:', {
+  投稿数: posts.length,
+  画像取得時間含む: `${duration.toFixed(0)}ms`,
+  平均_1件あたり: `${(duration / posts.length).toFixed(0)}ms`
+});
 
 return { posts, lastDoc, hasMore };
 
