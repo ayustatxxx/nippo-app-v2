@@ -772,6 +772,8 @@ const extractTimeInfo = (message: string) => {
   };
 };
 
+// ★ 追加: 削除直後フラグ（グローバル変数）
+let isJustDeleted = false;
 
 const ArchivePage: React.FC = () => {
  
@@ -804,6 +806,7 @@ const fetchedUser = await getUser(userId);
 
 // ⭐ 新着チェック用のState ⭐
 const [hasNewPosts, setHasNewPosts] = useState(false);
+const [justDeleted, setJustDeleted] = useState(false); // ← 追加
 const [latestPostTime, setLatestPostTime] = useState<number>(0);
 
 // ⭐ Phase A3: 段階的読み込み用のState
@@ -1503,16 +1506,16 @@ return () => {
 };
 }, [groupId]);
 
-// ⭐ 新着チェックタイマー（30秒ごと）⭐
+// ⭐ 新着チェックタイマー（60秒ごと）⭐
 useEffect(() => {
   if (!groupId) return;
 
     console.log('⏰ [ArchivePage] 新着チェックタイマー開始');
 
-    // 30秒ごとに新着チェックを実行
+    // 60秒ごとに新着チェックを実行
     const checkInterval = setInterval(() => {
       checkForNewPosts();
-    }, 30000); // 30秒 = 30,000ミリ秒
+    }, 60000);// 60秒 = 60,000ミリ秒
 
     // クリーンアップ
     return () => {
@@ -1744,11 +1747,15 @@ const handlePostsUpdate = (event: any) => {
     }
  } else if (!event.detail) {
   // 詳細情報がない場合は安全のため更新
-  console.log('🔄 [ArchivePage] 詳細不明のため安全のため更新');
+  console.log('⚠️ [ArchivePage] 詳細不明のため安全のため更新');
   
-  // ⭐ Phase A2b: 詳細不明でも新着バナーを表示 ⭐
+  // ★ 修正: 削除直後はバナーを表示しない
+if (isJustDeleted) {  // ← justDeleted → isJustDeleted に変更
+  console.log('⏭️ [ArchivePage] 削除直後のため新着バナー表示をスキップ');
+} else {
   setHasNewPosts(true);
-  console.log('🆕 [ArchivePage] 詳細不明イベント → 新着バナー表示ON');
+  console.log('📩 [ArchivePage] 詳細不明イベント → 新着バナー表示ON');
+}
   
   // ★ localStorageをチェックしてメモ保存かどうか確認 ★
   const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
@@ -2186,6 +2193,20 @@ delete archivePostsCacheTime[groupId];
 console.log('🗑️ [ArchivePage] 投稿削除 - メモリキャッシュクリア');
     console.log('✅ [Archive] Firestore削除完了:', postId);
 
+// ★ 追加: 削除時は新着バナーを非表示
+console.log('🚫 [削除デバッグ] 新着バナーを非表示にします');
+setHasNewPosts(false);
+setJustDeleted(true);
+isJustDeleted = true;  // ← 追加: グローバル変数も更新
+console.log('✅ [削除デバッグ] setHasNewPosts(false)実行完了');
+
+// 5秒後に削除フラグをクリア
+setTimeout(() => {
+  setJustDeleted(false);
+  isJustDeleted = false;  // ← 追加: グローバル変数もクリア
+  console.log('🔄 [削除デバッグ] 削除フラグをクリア');
+}, 5000);
+
    
 
     // ⭐ 修正1: HomePageのキャッシュを無効化
@@ -2234,6 +2255,12 @@ setTimeout(() => {
   
 // ⭐ 新着チェック関数 ⭐
 const checkForNewPosts = async () => {
+   // ★ 追加: 削除直後はチェックをスキップ
+  if (isJustDeleted) {  // ← justDeleted → isJustDeleted に変更
+  console.log('⏭️ [新着チェック] 削除直後のためスキップ');
+  return;
+}
+
   if (!groupId) return;
   
   try {
@@ -3818,10 +3845,11 @@ setGalleryOpen(true);
       
       // 最新データ取得
       const userId = localStorage.getItem('daily-report-user-id') || '';
-      const freshPosts = await UnifiedCoreSystem.getGroupPosts(groupId || '', userId);
-      
-      setPosts(freshPosts);
-      setFilteredPosts(freshPosts);
+     const result = await UnifiedCoreSystem.getGroupPostsPaginated(groupId || '', userId, 10);
+const freshPosts = result.posts;  // ← 投稿データだけを取り出す
+
+setPosts(freshPosts);
+setFilteredPosts(freshPosts);
 
       // ⭐ 最新タイムスタンプを更新（バナー再表示を防ぐ） ⭐
   if (freshPosts.length > 0) {
