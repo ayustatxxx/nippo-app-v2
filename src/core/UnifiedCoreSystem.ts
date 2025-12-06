@@ -143,36 +143,36 @@ if (postData.files && postData.files.length > 0) {
   console.log('🔍 UnifiedCoreSystem: 統一投稿取得開始', postId);
   
   try {
-    const userGroups = await this.getUserGroups(userId);
+    // ✅ 改善：投稿IDで直接Firestoreから1件だけ取得（37秒 → 数秒に短縮）
+    const db = getFirestore();
+    const postRef = doc(db, 'posts', postId);
+    const postSnap = await getDoc(postRef);
     
-    for (const group of userGroups) {
-      const posts = await getGroupPosts(group.id);
-      const post = posts.find(p => p.id === postId);
-      
-      if (post) {
-        console.log('✅ 投稿発見完了:', postId);
-        console.log('🔍 [getPost] 取得した画像枚数:', post.photoUrls?.length || 0);
-        console.log('📝 [getPost編集情報-取得直後]');
-      console.log('  - post.isEdited:', post.isEdited);
-      console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
-      console.log('  - post.editedAt:', post.editedAt);
-        
-        const dbUtil = DBUtil.getInstance();
-        await dbUtil.initDB();
-        await dbUtil.save(STORES.POSTS, post);
-        console.log('✅ [getPost] IndexedDB同期完了');
-
-        console.log('📝 [getPost編集情報-return直前]');
-      console.log('  - post.isEdited:', post.isEdited);
-      console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
-      console.log('  - post.editedAt:', post.editedAt);
-        
-        return post;
-      }
+    if (!postSnap.exists()) {
+      console.warn('⚠️ 投稿が見つかりません:', postId);
+      return null;
     }
     
-    console.warn('⚠️ 投稿が見つかりません:', postId);
-    return null;
+    const post = { id: postSnap.id, ...postSnap.data() } as Post;
+    
+    console.log('✅ 投稿発見完了:', postId);
+    console.log('🔍 [getPost] 取得した画像枚数:', post.photoUrls?.length || 0);
+    console.log('📝 [getPost編集情報-取得直後]');
+    console.log('  - post.isEdited:', post.isEdited);
+    console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
+    console.log('  - post.editedAt:', post.editedAt);
+    
+    // IndexedDBに保存
+    const dbUtil = DBUtil.getInstance();
+    await dbUtil.initDB();
+    await dbUtil.save(STORES.POSTS, post);
+    console.log('✅ [getPost] IndexedDB同期完了');
+    console.log('📝 [getPost編集情報-return直前]');
+    console.log('  - post.isEdited:', post.isEdited);
+    console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
+    console.log('  - post.editedAt:', post.editedAt);
+    
+    return post;
   } catch (error) {
     console.error('❌ 投稿取得エラー:', error);
     return null;
