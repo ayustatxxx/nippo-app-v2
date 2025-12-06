@@ -201,7 +201,7 @@ useEffect(() => {
   return () => {
     isMounted = false;
   };
-}, [editedPhotos, validateAndProcess, clearErrors]);
+}, [editedPhotos]);
   
   // 変更検知
   useEffect(() => {

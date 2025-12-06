@@ -700,46 +700,21 @@ export const createPost = async (post: Omit<Post, 'id' | 'createdAt'>) => {
     // 画像データを除外（2重保存を防ぐ）
     const { images, ...postWithoutImages } = post as any;
     
-    const postData = {
-      ...postWithoutImages,  // 画像以外のデータのみ展開
-      createdAt: new Date(),
-      images: [],  // メインドキュメントには空配列（サブコレクションに保存）
-    };
+    // 画像を配列として保存（新形式）
+    const photoUrls = post.images || [];
     
+    const postData = {
+      ...postWithoutImages,
+      createdAt: new Date(),
+      images: [],  // 後方互換性のため空配列を保持
+      photoUrls: photoUrls,  // ✅ 新形式：配列で保存
+    };
     
     // メインドキュメントを作成
     const docRef = await addDoc(collection(db, 'posts'), postData);
     const postId = docRef.id;
-    console.log('投稿を作成しました:', postId);
-
-    // 2モード設計：画像をサブコレクションに保存
-    if (post.images && post.images.length > 0) {
-      const highQualityCount = (post as any).highQualityCount || 0;
-      const documentImages = post.images.slice(0, highQualityCount);
-      const photoImages = post.images.slice(highQualityCount);
-
-      // 図面・書類画像をサブコレクションに保存
-      for (let i = 0; i < documentImages.length; i++) {
-        await addDoc(collection(db, 'posts', postId, 'documentImages'), {
-          postId: postId,
-          image: documentImages[i],
-          order: i,
-          uploadedAt: Date.now(),
-        });
-      }
-      console.log(`📄 図面画像 ${documentImages.length}枚をサブコレクションに保存`);
-
-      // 現場写真をサブコレクションに保存
-      for (let i = 0; i < photoImages.length; i++) {
-        await addDoc(collection(db, 'posts', postId, 'photoImages'), {
-          postId: postId,
-          image: photoImages[i],
-          order: i,
-          uploadedAt: Date.now(),
-        });
-      }
-      console.log(`📷 現場写真 ${photoImages.length}枚をサブコレクションに保存`);
-    }
+    console.log('✅ 投稿を作成しました:', postId);
+    console.log(`📸 画像 ${photoUrls.length}枚を配列で保存（新形式）`);
 
     return postId;
   } catch (error) {

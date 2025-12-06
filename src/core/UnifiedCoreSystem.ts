@@ -154,6 +154,10 @@ if (postData.files && postData.files.length > 0) {
     }
     
     const post = { id: postSnap.id, ...postSnap.data() } as Post;
+
+// 🔍 デバッグ：Firestoreから取得した生データを確認
+console.log('🔍 [getPost] Firestoreから取得した生データ:', postSnap.data());
+console.log('🔍 [getPost] 変換後のpostオブジェクト:', post);
     
     console.log('✅ 投稿発見完了:', postId);
     console.log('🔍 [getPost] 取得した画像枚数:', post.photoUrls?.length || 0);
