@@ -7,6 +7,7 @@ import { DBUtil, STORES } from "../utils/dbUtil";
 import { Post } from '../types';
 import { FileValidator, useFileValidation } from '../utils/fileValidation'; // 新しく追加
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
+import { invalidateArchiveCache } from '../group/ArchivePage'; 
 
 
 const EditPostPage: React.FC = () => {
@@ -519,6 +520,12 @@ try {
   console.log('✅ EditPage: 投稿更新完了');
   setSyncStatus('completed');
 
+  // キャッシュをクリアして最新データを表示
+  if (post.groupId) {  // ✅ post.groupIdを使う
+    invalidateArchiveCache(post.groupId);
+    console.log('🗑️ [EditPage] ArchivePageのキャッシュをクリア');
+  }
+
 const userId = localStorage.getItem("daily-report-user-id");
 if (userId) {
   console.log('🔍 [EditPage] 最新データ取得開始...');
@@ -586,6 +593,11 @@ console.log('💾 [EditPostPage] 保存完了・ナビゲーション開始:', {
   戻り先: from || 'post詳細',
   現在時刻: new Date().toISOString()
 });
+
+// メモリキャッシュをクリアして最新データを表示
+sessionStorage.removeItem('archive_posts_cache');
+sessionStorage.removeItem('archive_last_updated');
+console.log('🗑️ [EditPage] メモリキャッシュをクリア（最新データを表示するため）');
 
 // 保存完了後、元のページに戻りモーダルを開く
 if (from === 'archive' && groupId) {

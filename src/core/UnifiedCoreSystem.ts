@@ -318,30 +318,41 @@ const posts = await Promise.all(
   querySnapshot.docs.map(async (doc) => {
     const data = doc.data() as any;
     
-// 🖼️ 2モード設計：サブコレクションから画像を取得
+// 🖼️ 画像取得の優先順位: photoUrls（新形式）→ サブコレクション（旧形式）
 let imageUrls: string[] = [];
-try {
-  // 図面・書類画像を取得
-  const documentImagesRef = collection(db, 'posts', doc.id, 'documentImages');
-  const documentSnapshot = await getDocs(query(documentImagesRef, orderBy('order')));
-  const documentImages = documentSnapshot.docs.map(imgDoc => imgDoc.data().image as string);
+
+// ✅ 新形式: photoUrls フィールドがあればそれを使用
+if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
+  imageUrls = data.photoUrls;
+  console.log(`✅ [新形式] 投稿ID: ${doc.id} - photoUrls から ${imageUrls.length}枚取得`);
   
-  // 現場写真を取得
-  const photoImagesRef = collection(db, 'posts', doc.id, 'photoImages');
-  const photoSnapshot = await getDocs(query(photoImagesRef, orderBy('order')));
-  const photoImages = photoSnapshot.docs.map(imgDoc => imgDoc.data().image as string);
+// ✅ 中間形式: images フィールドをチェック（旧データ対応）
+} else if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+  imageUrls = data.images;
+  console.log(`✅ [中間形式] 投稿ID: ${doc.id} - images から ${imageUrls.length}枚取得`);
   
-  // 2つの配列を結合
-  imageUrls = [...documentImages, ...photoImages];
-  
-  console.log('🖼️ [画像取得完了]', {
-    postId: doc.id,
-    documentCount: documentImages.length,
-    photoCount: photoImages.length,
-    totalCount: imageUrls.length
-  });
-} catch (error) {
-  console.warn('⚠️ [画像取得エラー]', doc.id, error);
+} else {
+  // 📦 旧形式: サブコレクションから取得（後方互換性）
+  try {
+    // 図面・書類画像を取得
+    const documentImagesRef = collection(db, 'posts', doc.id, 'documentImages');
+    const documentSnapshot = await getDocs(query(documentImagesRef, orderBy('order')));
+    const documentImages = documentSnapshot.docs.map(imgDoc => imgDoc.data().image as string);
+    
+    // 現場写真を取得
+    const photoImagesRef = collection(db, 'posts', doc.id, 'photoImages');
+    const photoSnapshot = await getDocs(query(photoImagesRef, orderBy('order')));
+    const photoImages = photoSnapshot.docs.map(imgDoc => imgDoc.data().image as string);
+    
+    // 2つの配列を結合
+    imageUrls = [...documentImages, ...photoImages];
+    
+    if (imageUrls.length > 0) {
+      console.log(`📦 [旧形式] 投稿ID: ${doc.id} - サブコレクションから ${imageUrls.length}枚取得`);
+    }
+  } catch (error) {
+    console.warn('⚠️ [画像取得エラー]', doc.id, error);
+  }
 }
     
     // timeフィールドを生成（存在しない場合）
@@ -446,21 +457,38 @@ return { posts, lastDoc, hasMore };
   const data = doc.data();
   const postId = doc.id;
   
-  // サブコレクションから元画像を取得
+  // 画像取得の優先順位: photoUrls（新形式） → サブコレクション（古い形式）
   let fullImages: string[] = [];
-  try {
-    const { getPostImages } = await import('../firebase/firestore');
-    const { documentImages, photoImages } = await getPostImages(postId);
-    fullImages = [...documentImages, ...photoImages];
-  } catch (error) {
-    console.warn(`⚠️ 投稿ID: ${postId} の画像取得エラー:`, error);
+  
+  // ✅ 新形式: photoUrls フィールドがあればそれを使用
+if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
+  fullImages = data.photoUrls;
+  console.log(`✅ [新形式] 投稿ID: ${postId} - photoUrls から ${fullImages.length}枚取得`);
+  
+// ✅ 中間形式: images フィールドをチェック（旧データ対応）
+} else if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+  fullImages = data.images;
+  console.log(`✅ [中間形式] 投稿ID: ${postId} - images から ${fullImages.length}枚取得`);
+  
+} else {
+  
+    // 古い形式：サブコレクションから取得（移行前の投稿用）
+    try {
+      const { getPostImages } = await import('../firebase/firestore');
+      const { documentImages, photoImages } = await getPostImages(postId);
+      fullImages = [...documentImages, ...photoImages];
+      if (fullImages.length > 0) {
+       console.log(`📦 [旧形式] 投稿ID: ${postId} - サブコレクションから ${fullImages.length}枚取得`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ 投稿ID: ${postId} の画像取得エラー:`, error);
+    }
   }
   
   return {
     id: postId,
     ...data,
     createdAt: data.createdAt,
-    // サブコレクションの画像がある場合は上書き
     images: fullImages.length > 0 ? fullImages : (data.images || []),
   } as Post;
 }));

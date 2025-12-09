@@ -729,6 +729,30 @@ export const getPostImages = async (postId: string): Promise<{
   photoImages: string[];
 }> => {
   try {
+    // まず投稿ドキュメント自体を取得して photoUrls をチェック
+    const postRef = doc(db, 'posts', postId);
+    const postSnap = await getDoc(postRef);
+    
+    if (!postSnap.exists()) {
+      console.warn(`投稿が見つかりません: ${postId}`);
+      return { documentImages: [], photoImages: [] };
+    }
+    
+    const postData = postSnap.data();
+    
+    // 🆕 新形式: photoUrls フィールドがあればそれを使用
+    if (postData.photoUrls && Array.isArray(postData.photoUrls) && postData.photoUrls.length > 0) {
+      console.log(`✅ [新形式] 投稿ID: ${postId} - photoUrls から ${postData.photoUrls.length}枚取得`);
+      
+      // photoUrls を返す
+      return {
+        documentImages: [], // 新形式では区別しない
+        photoImages: postData.photoUrls
+      };
+    }
+    
+    // 📦 旧形式: サブコレクションから取得（後方互換性）
+    console.log(`📦 [旧形式] 投稿ID: ${postId} - サブコレクションから取得中...`);
     // 図面・書類画像を取得
     const documentImagesRef = collection(db, 'posts', postId, 'documentImages');
     const documentSnapshot = await getDocs(query(documentImagesRef, orderBy('order')));
