@@ -139,4 +139,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 src/pages/HomePage.tsx.backup_*
 src/pages/HomePage.tsx.bak
+
+# Firebase Admin SDK（機密情報）
 firebase-admin-key.json

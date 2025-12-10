@@ -7,6 +7,8 @@ import { DBUtil, STORES } from '../utils/dbUtil';
 import GroupFooterNav from '../components/GroupFooterNav';
 import { getGroupWithFirestore } from '../utils/dbUtil';
 import UnifiedCoreSystem from '../core/UnifiedCoreSystem';
+import { invalidateArchiveCache } from './ArchivePage';
+
 
 
 
@@ -540,6 +542,12 @@ if (savedPost) {
 
     console.log('📢 [GroupTopPage] チェックイン通知を送信');
 
+     // 🆕 キャッシュをクリアして最新データを表示
+    if (groupId) {
+      invalidateArchiveCache(groupId);
+      console.log('🗑️ [CheckIn] ArchivePageのキャッシュをクリア');
+    }
+
     // ⭐ さらに追加：HomePageのキャッシュを強制無効化 ⭐
     if (window.forceRefreshPosts) {
       window.forceRefreshPosts();
@@ -849,6 +857,12 @@ if (startTimeStr) {
     window.dispatchEvent(new CustomEvent('refreshPosts'));
     
     console.log('📢 [GroupTopPage] チェックアウト通知を送信');
+
+    // 🆕 キャッシュをクリアして最新データを表示
+    if (groupId) {
+      invalidateArchiveCache(groupId);
+      console.log('🗑️ [CheckOut] ArchivePageのキャッシュをクリア');
+    }
     
     // 状態をリセット
     setIsCheckedIn(false);
