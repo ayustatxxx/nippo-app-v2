@@ -14,6 +14,44 @@ import Header from '../components/Header';
 import { deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
+// 🔸 新着バナー用：「最後に見た時刻」を保存・読み込みするためのキー
+const LAST_VIEWED_KEY_PREFIX = 'archive-last-viewed-';
+
+const getLastViewedKey = (groupId: string) =>
+  `${LAST_VIEWED_KEY_PREFIX}${groupId}`;
+
+// 「最後に見た時刻」を保存
+const saveLastViewedTimestamp = (groupId: string, latestMs: number) => {
+  if (!Number.isFinite(latestMs) || latestMs <= 0) return;
+
+  const key = getLastViewedKey(groupId);
+  localStorage.setItem(key, String(latestMs));
+  console.log('[新着保存] lastViewedTimestamp を保存しました', {
+    key,
+    value: latestMs,
+  });
+};
+
+// 「最後に見た時刻」を読み込み
+const loadLastViewedTimestamp = (groupId: string): number | null => {
+  const key = getLastViewedKey(groupId);
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+
+  const ms = Number(raw);
+  if (!Number.isFinite(ms) || ms <= 0) {
+    console.warn('[新着チェック] Invalid な lastViewed を検出したのでリセットします', {
+      key,
+      raw,
+    });
+    localStorage.removeItem(key);
+    return null;
+  }
+
+  return ms;
+};
+
+
 // 🔥 キャッシュ設定
 const CACHE_DURATION = 300000; // 5分（300,000ミリ秒）
 const PRIORITY_LOAD_COUNT = 10; // 優先的に画像を読み込む投稿数
@@ -807,7 +845,15 @@ const fetchedUser = await getUser(userId);
 // ⭐ 新着チェック用のState ⭐
 const [hasNewPosts, setHasNewPosts] = useState(false);
 const [justDeleted, setJustDeleted] = useState(false); // ← 追加
-const [latestPostTime, setLatestPostTime] = useState<number>(0);
+const [latestPostTime, setLatestPostTime] = useState<number>(() => {
+  const saved = localStorage.getItem(`latestPostTime_${groupId}`);
+  console.log('🔄 [ArchivePage] latestPostTime初期化:', {
+    groupId,
+    saved,
+    復元値: saved ? parseInt(saved) : 0
+  });
+  return saved ? parseInt(saved) : 0;
+});
 
 // ⭐ Phase A3: 段階的読み込み用のState
 const [displayedPostsCount, setDisplayedPostsCount] = useState(10); // 初回は10件
@@ -1656,7 +1702,14 @@ useEffect(() => {
     if (timestamps.length > 0) {
       const latest = Math.max(...timestamps);
       setLatestPostTime(latest);
-      console.log('📌 [ArchivePage] 最新投稿時刻を記録:', {
+localStorage.setItem(`latestPostTime_${groupId}`, latest.toString());
+console.log('✅ [ArchivePage] latestPostTime を設定しました:', {
+  設定値: latest,
+  日時: new Date(latest).toLocaleString('ja-JP'),
+  localStorage保存: 'OK'
+});
+console.log('📌 [ArchivePage] 最新投稿時刻を記録:', {
+
         timestamp: latest,
         date: new Date(latest).toLocaleString('ja-JP'),
         postsCount: posts.length,
@@ -1737,9 +1790,17 @@ const handlePostsUpdate = (event: any) => {
   if (event.detail && event.detail.newPost && event.detail.newPost.groupId === groupId) {
     console.log('✅ [ArchivePage] 該当グループの投稿更新:', event.detail.newPost.groupId);
     
-    // ⭐ Phase A2b: 新着バナーを表示 ⭐
-    setHasNewPosts(true);
-    console.log('🆕 [ArchivePage] 投稿イベント受信 → 新着バナー表示ON');
+    // ⭐ Phase A2b: 新着バナーを表示（メモ保存以外） ⭐
+// localStorage をチェックしてメモ保存でないことを確認
+const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
+const timeDiff = Date.now() - parseInt(lastUpdate.replace('memo_saved_', ''));
+
+if (!lastUpdate.startsWith('memo_saved_') || timeDiff >= 70000) {
+  setHasNewPosts(true);
+  console.log('🆕 [ArchivePage] 投稿イベント受信 → 新着バナー表示ON');
+} else {
+  console.log('📝 [ArchivePage] メモ保存イベントのため新着バナー非表示');
+}
     
     // データ再取得
     if (window.refreshArchivePage) {
@@ -1750,15 +1811,20 @@ const handlePostsUpdate = (event: any) => {
   console.log('⚠️ [ArchivePage] 詳細不明のため安全のため更新');
   
   // ★ 修正: 削除直後はバナーを表示しない
-if (isJustDeleted) {  // ← justDeleted → isJustDeleted に変更
+// ⭐ 修正: 削除直後とメモ保存直後はバナーを表示しない
+const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
+const timeDiff = Date.now() - parseInt(lastUpdate.replace('memo_saved_', ''));
+
+if (isJustDeleted) {
   console.log('⏭️ [ArchivePage] 削除直後のため新着バナー表示をスキップ');
+} else if (lastUpdate.startsWith('memo_saved_') && timeDiff < 70000) {
+  console.log('📝 [ArchivePage] メモ保存後70秒以内のため新着バナー表示をスキップ');
 } else {
   setHasNewPosts(true);
   console.log('📩 [ArchivePage] 詳細不明イベント → 新着バナー表示ON');
 }
   
   // ★ localStorageをチェックしてメモ保存かどうか確認 ★
-  const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
     if (lastUpdate.startsWith('memo_saved')) {
       console.log('🔄 [ArchivePage] メモ保存と判定：500ms後にリフレッシュ');
       setTimeout(() => {
@@ -2303,12 +2369,44 @@ const latestTime = latestPost.createdAt?.toMillis
     差分: latestTime - latestPostTime,
     新着あり: latestTime > latestPostTime
   });
-      
-      // 現在表示中の最新投稿より新しい投稿があれば通知
-      if (latestPostTime > 0 && latestTime > latestPostTime) {
-        console.log('🆕 [ArchivePage] 新着投稿を検知！バナー表示ON');
-        setHasNewPosts(true);
-      } else {
+
+    // 現在表示中の最新投稿より新しい投稿があれば通知
+  if (latestTime > 0 && latestPostTime > 0 && latestTime > latestPostTime) {
+    // ⭐ ここにデバッグログを追加 ⭐
+  console.log('🔍🔍🔍 [新着チェック詳細]', {
+    latestPostTime,
+    latestTime,
+    差分: latestTime - latestPostTime,
+    latestPostTimeの日時: new Date(latestPostTime).toLocaleString('ja-JP'),
+    latestTimeの日時: new Date(latestTime).toLocaleString('ja-JP')
+  });
+  
+  const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
+  console.log('🔍🔍🔍 [localStorage確認]', {
+    lastUpdate,
+    isMemoSaved: lastUpdate.startsWith('memo_saved_'),
+    生のlastUpdate: lastUpdate
+  });
+  const timeDiff = Date.now() - parseInt(lastUpdate.replace('memo_saved_', ''));
+
+  // ⭐ ここから追加 ⭐
+console.log('⏱️⏱️⏱️ [timeDiff計算詳細]', {
+  現在時刻: Date.now(),
+  lastUpdate,
+  lastUpdateから抽出したタイムスタンプ: parseInt(lastUpdate.replace('memo_saved_', '')),
+  timeDiff,
+  判定結果: lastUpdate.startsWith('memo_saved_') && timeDiff < 70000
+});
+  
+  if (lastUpdate.startsWith('memo_saved_') && timeDiff < 70000) {
+  console.log('📝 [ArchivePage] メモ保存後70秒以内のため、新着バナーは表示しません');
+  console.log('⏱️ [ArchivePage] メモ保存からの経過時間:', timeDiff, 'ms');
+} else {
+  console.log('🆕 [ArchivePage] 新着投稿を検知！バナー表示ON');
+  setHasNewPosts(true);
+}
+} else {
+
         console.log('ℹ️ [ArchivePage] 新着投稿なし');
       }
     } else {
