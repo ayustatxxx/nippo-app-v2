@@ -3340,8 +3340,8 @@ const PostDetailModal: React.FC<{
                           cursor: 'pointer',
                         }}
                         onClick={() => {
-                          const imageIndex = post.photoUrls.findIndex(photoUrl => photoUrl === url);
-                          setGalleryImages(post.photoUrls);
+                          const imageIndex = (post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images).findIndex(photoUrl => photoUrl === url);
+                          setGalleryImages(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images);
                           setGalleryIndex(imageIndex);
                           setGalleryOpen(true);
                         }}
