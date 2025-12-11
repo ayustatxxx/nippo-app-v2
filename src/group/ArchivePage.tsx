@@ -2338,9 +2338,9 @@ const PostDetailModal: React.FC<{
         return;
       }
       
-      const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
-      setGalleryImages([...displayPost.photoUrls]); // ← この行が重要
-      setGalleryIndex(imageIndex);
+      const imageIndex = (displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images).findIndex(photoUrl => photoUrl === url);
+setGalleryImages(displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images);
+setGalleryIndex(imageIndex);
       setGalleryOpen(true);
       
       console.log('✅ モーダル画像設定完了:', {
@@ -3340,8 +3340,8 @@ const PostDetailModal: React.FC<{
                           cursor: 'pointer',
                         }}
                         onClick={() => {
-                          const imageIndex = post.photoUrls.findIndex(photoUrl => photoUrl === url);
-                          setGalleryImages(post.photoUrls);
+                          const imageIndex = (post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images).findIndex(photoUrl => photoUrl === url);
+setGalleryImages(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images);
                           setGalleryIndex(imageIndex);
                           setGalleryOpen(true);
                         }}

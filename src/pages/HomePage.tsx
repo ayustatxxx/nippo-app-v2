@@ -353,7 +353,7 @@ useEffect(() => {
           }}
         >
           {/* 写真サムネイル表示（最大7枚まで表示、8枚以上で+X表示） */}
-          {(post.photoUrls || post.images || []).slice(0, Math.min(7, (post.photoUrls || post.images || []).length)).map((url, index) => (
+          {((post.photoUrls && post.photoUrls.length > 0) ? post.photoUrls : (post.images || [])).slice(0, Math.min(7, ((post.photoUrls && post.photoUrls.length > 0) ? post.photoUrls : (post.images || [])).length)).map((url, index) => (
             <div
               key={index}
               style={{
@@ -366,7 +366,7 @@ useEffect(() => {
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                onImageClick(url, post.photoUrls || post.images || []);
+                onImageClick(url, (post.photoUrls && post.photoUrls.length > 0) ? post.photoUrls : (post.images || []));
               }}
             >
               <img
@@ -383,7 +383,7 @@ useEffect(() => {
           ))}
           
           {/* 8枚以上ある場合、最後の枠に+X表示 - こちらも詳細ページに遷移 */}
-         {(post.photoUrls || post.images || []).length > 7 && (
+         {((post.photoUrls && post.photoUrls.length > 0) ? post.photoUrls : (post.images || [])).length > 7 && (
   <div
     style={{
       width: 'calc((100% - 1.5rem) / 4)',
@@ -404,7 +404,7 @@ useEffect(() => {
   onPlusButtonClick(post);
 }}
   >
-    +{(post.photoUrls || post.images || []).length - 7}
+    +{((post.photoUrls && post.photoUrls.length > 0) ? post.photoUrls : (post.images || [])).length - 7}
   </div>
 )}
         </div>
@@ -1237,9 +1237,9 @@ const PostDetailModal: React.FC<{
     return;
   }
   
-  const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
-  setGalleryImages([...displayPost.photoUrls]); // ← この行が重要
-  setGalleryIndex(imageIndex);
+ const imageIndex = (displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images).findIndex(photoUrl => photoUrl === url);
+setGalleryImages(displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images);
+setGalleryIndex(imageIndex);
   setGalleryOpen(true);
   
   console.log('✅ モーダル画像設定完了:', {
@@ -1926,7 +1926,9 @@ if (isMounted) {
         }
         
         // 写真URLを確保（複数の可能性のあるフィールド名に対応）
-        const photos = post.photoUrls || post.images || [];
+       const photos = (post.photoUrls && post.photoUrls.length > 0) 
+  ? post.photoUrls 
+  : (post.images || []);
         
         return {
           ...post,
