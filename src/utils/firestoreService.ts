@@ -248,7 +248,7 @@ console.log('  - images枚数:', data.images?.length || 0);
       const post = {
         id: doc.id,
         message: data.message || '',
-        photoUrls: data.photoUrls || data.images || [],
+        photoUrls: (data.photoUrls && data.photoUrls.length > 0) ? data.photoUrls : (data.images || []),
         tags: data.tags || [],
         userId: data.userId || data.createdBy || data.authorId || '',
         authorId: data.authorId || data.userId || data.createdBy || '',

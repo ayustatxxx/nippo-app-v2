@@ -849,7 +849,7 @@ ${latestPost ? `最新の投稿内容「${latestPost.message.substring(0, 50)}..
 投稿データから検出された注意点：
 - 未確認投稿：${posts.filter(p => p.status === '未確認').length}件
 - 編集された投稿：${posts.filter(p => p.isEdited).length}件
-- 写真なし投稿：${posts.filter(p => !p.photoUrls || p.photoUrls.length === 0).length}件
+- 写真なし投稿：${posts.filter(p => (!p.photoUrls || p.photoUrls.length === 0) && (!p.images || p.images.length === 0)).length}件
 
 **AIが検出した改善機会：**
 1. 投稿確認プロセスの迅速化
@@ -1952,11 +1952,11 @@ const getModalStatusStyle = (status: string) => {
         }
         
         ${
-          post.photoUrls && post.photoUrls.length > 0
-            ? `
-          <div class="post-images">
-            ${post.photoUrls
-              .map(
+  ((post.photoUrls && post.photoUrls.length > 0) || (post.images && post.images.length > 0))
+    ? `
+  <div class="post-images">
+    ${(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images)
+      .map(
                 (url) => `<img class="post-image" src="${url}" alt="投稿画像">`
               )
               .join('')}
@@ -2045,10 +2045,10 @@ ${selectedPosts
     }
     
     ${
-      post.photoUrls && post.photoUrls.length > 0
+      ((post.photoUrls && post.photoUrls.length > 0) || (post.images && post.images.length > 0))
         ? `
       <div class="post-images">
-        ${post.photoUrls
+       ${(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images)
           .map((url) => `<img class="post-image" src="${url}" alt="投稿画像">`)
           .join('')}
       </div>
@@ -2322,7 +2322,7 @@ const PostDetailModal: React.FC<{
                                         'repeat(3, 1fr)',
                     gap: '0.5rem'
                   }}>
-                    {displayPost.photoUrls.map((url, index) => (
+                   {(displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images).map((url, index) => (
                       <div
                         key={index}
                         style={{
@@ -2333,19 +2333,19 @@ const PostDetailModal: React.FC<{
                           cursor: 'pointer'
                         }}
                         onClick={() => {
-      if (!displayPost?.photoUrls || displayPost.photoUrls.length === 0) {
+      if ((!displayPost?.photoUrls || displayPost.photoUrls.length === 0) && (!displayPost?.images || displayPost.images.length === 0)) {
         console.warn('⚠️ 画像データが不完全');
         return;
       }
       
       const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
-      setGalleryImages([...displayPost.photoUrls]); // ← この行が重要
+      setGalleryImages([...(displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images)]);
       setGalleryIndex(imageIndex);
       setGalleryOpen(true);
       
       console.log('✅ モーダル画像設定完了:', {
         imageIndex,
-        totalImages: displayPost.photoUrls.length
+        totalImages: (displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images).length
       });
     }}
                       >
@@ -3317,7 +3317,7 @@ const PostDetailModal: React.FC<{
                 </div>
               )}
 
-              {post.photoUrls && post.photoUrls.length > 0 && (
+              {((post.photoUrls && post.photoUrls.length > 0) || (post.images && post.images.length > 0)) && (
                 <div
                   style={{
                     display: 'flex',
@@ -3326,8 +3326,8 @@ const PostDetailModal: React.FC<{
                     marginTop: '1.5rem',
                   }}
                 >
-                  {post.photoUrls
-                    .slice(0, Math.min(7, post.photoUrls.length))
+                 {(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images)
+  .slice(0, Math.min(7, (post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images).length))
                     .map((url, index) => (
                       <div
                         key={index}
@@ -3359,7 +3359,7 @@ const PostDetailModal: React.FC<{
                       </div>
                     ))}
 
-                  {post.photoUrls.length > 7 && (
+                 {(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images).length > 7 && (
                     <div
                       style={{
                         width: 'calc((100% - 1.5rem) / 4)',
@@ -3380,7 +3380,7 @@ const PostDetailModal: React.FC<{
                         handleEditPost(post.id);
                       }}
                     >
-                      +{post.photoUrls.length - 7}
+                     +{(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images).length - 7}
                     </div>
                   )}
                 </div>
