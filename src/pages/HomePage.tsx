@@ -1926,7 +1926,9 @@ if (isMounted) {
         }
         
         // 写真URLを確保（複数の可能性のあるフィールド名に対応）
-        const photos = post.photoUrls || post.images || [];
+        const photos = (post.photoUrls && post.photoUrls.length > 0) 
+  ? post.photoUrls 
+  : (post.images || []);
         
         return {
           ...post,
