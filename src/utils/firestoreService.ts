@@ -16,7 +16,6 @@ import {
 // 既存のFirebase設定をimportで取得
 import { db } from '../firebase/firestore';
 import { Group, User, Post } from '../types';
-import { getPostImages } from '../firebase/firestore';
 
 
 
@@ -191,7 +190,7 @@ memosSnapshot.forEach(doc => {
 console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(memosByPostId).length, '投稿分');
 */
     
-    for (const doc of querySnapshot.docs) {
+    querySnapshot.forEach((doc) => {
       const data = doc.data();
 
       // 🔍 デバッグコード
@@ -203,11 +202,6 @@ console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(mem
         authorIdフィールド: data.authorId,
         readByフィールド: data.readBy
       });
-
-      console.log('📝 [編集情報デバッグ] 投稿ID:', doc.id);
-console.log('  - data.isEdited:', data.isEdited);
-console.log('  - data.isManuallyEdited:', data.isManuallyEdited);
-console.log('  - data.editedAt:', data.editedAt);
       
       // Timestamp型の安全な変換
       let createdAtTimestamp;
@@ -250,22 +244,11 @@ console.log('  - images:', data.images);
 console.log('  - images枚数:', data.images?.length || 0);
 
       
-// 🖼️ サブコレクションから画像を取得
-      let allImages: string[] = [];
-      try {
-        const { documentImages, photoImages } = await getPostImages(doc.id);
-        allImages = [...documentImages, ...photoImages];
-        console.log(`🖼️ [getGroupPosts] 投稿ID ${doc.id} の画像取得: ${allImages.length}枚`);
-      } catch (error) {
-        console.error(`❌ [getGroupPosts] 投稿ID ${doc.id} の画像取得エラー:`, error);
-      }
-
-
       // Post型に変換（メモ情報を含む）
       const post = {
         id: doc.id,
         message: data.message || '',
-        photoUrls: allImages.length > 0 ? allImages : (data.photoUrls || data.images || []),
+        photoUrls: (data.photoUrls && data.photoUrls.length > 0) ? data.photoUrls : (data.images || []),
         tags: data.tags || [],
         userId: data.userId || data.createdBy || data.authorId || '',
         authorId: data.authorId || data.userId || data.createdBy || '',
@@ -273,26 +256,15 @@ console.log('  - images枚数:', data.images?.length || 0);
         username: displayName,
         groupId: data.groupId || groupId,
         status: data.status || '未確認',
-        isWorkTimePost: data.tags?.includes('#出退勤時間') &&
-                data.tags?.includes('#チェックイン') &&
-                data.tags?.includes('#チェックアウト'),
-        isEdited: data.isEdited === true,
-isManuallyEdited: data.isManuallyEdited === true,
-editedAt: data.editedAt || null,  // ⬇️ この行を追加
-time: timeString,
+        isWorkTimePost: data.isWorkTimePost || false,
+        isEdited: data.isEdited || false,
+        time: timeString,
         timestamp: createdAtTimestamp,
-        memos: postMemos, // ⭐ メモ情報を追加
-        createdAt: data.createdAt,
-updatedAt: data.updatedAt
+        memos: postMemos // ⭐ メモ情報を追加
       };
-
-      console.log('📝 [変換後の投稿] 投稿ID:', post.id);
-      console.log('  - post.isEdited:', post.isEdited);
-      console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
-      console.log('  - post.editedAt:', post.editedAt);
       
       posts.push(post);
-    }
+    });
     
     // JavaScript側でソート
     posts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));

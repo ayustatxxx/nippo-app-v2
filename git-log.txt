@@ -1,0 +1,49 @@
+commit 4b96cdcaca49042c6ae7ea943e8f73e098fbe76c
+Author: Fukuda Tatsuya <ayustatxxx@gmail.com>
+Date:   Thu Dec 11 01:22:16 2025 +0900
+
+    chore: その他の修正を追加
+
+ .gitignore                 |  2 ++
+ src/group/GroupTopPage.tsx | 14 ++++++++++++++
+ src/utils/memoService.ts   |  5 +++--
+ 3 files changed, 19 insertions(+), 2 deletions(-)
+
+commit a5b52104f0404cd4b3794b94b8dd1f4492d9531e
+Author: Fukuda Tatsuya <ayustatxxx@gmail.com>
+Date:   Thu Dec 11 01:21:10 2025 +0900
+
+    fix: メモ追加時の新着バナー誤表示を修正
+    
+    主な変更:
+    - メモ判定時間を5秒→70秒に延長（定期チェック60秒+余裕10秒）
+    - latestPostTimeをlocalStorageで永続化
+    - 初回読み込み時の新着チェックをスキップ
+    
+    修正箇所:
+    - 1783行目: イベント受信時の判定 (timeDiff >= 70000)
+    - 1805行目: 詳細不明時の判定 (timeDiff < 70000)
+    - 2359行目: 初回読み込みスキップ (latestPostTime > 0)
+    - 2386行目: 定期チェック時の判定 (timeDiff < 70000)
+    - 848-856行目: latestPostTime初期化（localStorage復元）
+    - 1705行目: latestPostTime保存（localStorage）
+    
+    動作確認:
+    - メモ追加時に新着バナーが表示されない ✓
+    - 70秒以内は新着バナーを抑制 ✓
+    - リロード後も状態が保持される ✓
+    - 本当の新着投稿は正しく検知される ✓
+
+ src/group/ArchivePage.tsx | 124 +++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 111 insertions(+), 13 deletions(-)
+
+commit 98bfc67ab6921f2e7a4282d471a4e6a4cecbb742
+Author: Fukuda Tatsuya <ayustatxxx@gmail.com>
+Date:   Wed Dec 10 01:46:34 2025 +0900
+
+    fix: 編集後に画像削除が即座に反映されるよう修正
+
+ src/core/UnifiedCoreSystem.ts | 86 ++++++++++++++++++++++++++++---------------
+ src/firebase/firestore.ts     | 24 ++++++++++++
+ src/pages/EditPostPage.tsx    | 12 ++++++
+ 3 files changed, 93 insertions(+), 29 deletions(-)

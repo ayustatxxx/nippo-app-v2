@@ -10,61 +10,11 @@ import { getCurrentUser, isAdmin, getUserRole, getUserDisplayName } from '../uti
 import { DisplayNameResolver } from '../utils/displayNameResolver';
 import { UnifiedDataManager } from '../utils/unifiedDataManager';
 import { getDisplayNameSafe } from '../core/SafeUnifiedDataManager';
-import { getUser, getPostImages } from '../firebase/firestore';
+import { getUser } from '../firebase/firestore';
 import MemoModal from '../components/MemoModal';
 import { MemoService } from '../utils/memoService'; 
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 
-
-// 🆕 作業時間を計算する関数
-  const calculateWorkDuration = (message: string): string | null => {
-    const startTimeMatch = message.match(/作業開始:\s*(\d{2}):(\d{2})/);
-    const endTimeMatch = message.match(/作業終了:\s*(\d{2}):(\d{2})/);
-    
-    if (!startTimeMatch || !endTimeMatch) {
-      return null;
-    }
-    
-    const startHour = parseInt(startTimeMatch[1]);
-    const startMinute = parseInt(startTimeMatch[2]);
-    const endHour = parseInt(endTimeMatch[1]);
-    const endMinute = parseInt(endTimeMatch[2]);
-    
-    const startTotalMinutes = startHour * 60 + startMinute;
-    let endTotalMinutes = endHour * 60 + endMinute;
-    
-    if (endTotalMinutes < startTotalMinutes) {
-      endTotalMinutes += 24 * 60;
-    }
-    
-    const durationMinutes = endTotalMinutes - startTotalMinutes;
-    const hours = Math.floor(durationMinutes / 60);
-    const minutes = durationMinutes % 60;
-    
-    return `${hours}時間${minutes}分`;
-  };
-
-// 🆕 メッセージから時刻情報を削除する関数
-const removeTimeInfo = (message: string): string => {
-  return message
-    .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
-    .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
-    .replace(/日付:[^\n]+\n?/g, '')
-    .trim();
-};
-
-// 🆕 時刻情報を抽出する関数
-const extractTimeInfo = (message: string) => {
-  const startTimeMatch = message.match(/作業開始:\s*(\d{2}:\d{2})/);
-  const endTimeMatch = message.match(/作業終了:\s*(\d{2}:\d{2})/);
-  const dateMatch = message.match(/日付:\s*(.+?)(?:\n|$)/);
-  
-  return {
-    startTime: startTimeMatch?.[1] || null,
-    endTime: endTimeMatch?.[1] || null,
-    date: dateMatch?.[1] || null,
-  };
-};
 
 
 // ★自分の画像用の設定を追加★
@@ -106,12 +56,12 @@ type TimelineItem = Post | AlertInfo;
 interface PostCardProps {
   post: Post;
   onViewDetails: (postId: string, groupId: string) => void;
-  onImageClick: (imageUrl: string, allImages: string[], imageIndex: number) => void;  // ← imageIndex を追加
+  onImageClick: (imageUrl: string, allImages: string[]) => void;
   navigate: (path: string) => void;
   onStatusUpdate: (postId: string, newStatus: string) => void;
   getContainerStatusStyle: (status: string) => any;
   userRole: 'admin' | 'user';
-  onMemoClick: (post: Post) => void;
+  onMemoClick: (post: Post) => void; // この行を追加
   onPlusButtonClick: (post: Post) => void;
 }
 
@@ -285,109 +235,13 @@ useEffect(() => {
             color: '#055A68',
           }}
         >
-         {/* チェックイン投稿は整形表示、通常投稿は120文字制限 */}
-         {post.tags?.includes('#チェックイン') ? (
-  (() => {
-    const timeInfo = extractTimeInfo(post.message || '');
-    const cleanMessage = removeTimeInfo(post.message || '');
-    const duration = post.tags?.includes('#チェックアウト') 
-      ? calculateWorkDuration(post.message || '') 
-      : null;
-    
-    return (
-      <div>
-      {(timeInfo.startTime || timeInfo.endTime) && (
-  <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
-    {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
-    {timeInfo.startTime && timeInfo.endTime && '  ー  '}
-    {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
-  </div>
-)}
-
-{duration && (
-  <>
-    <div style={{ 
-      borderTop: '1px solid rgba(5, 90, 104, 0.3)',
-      width: '65%',
-      margin: '0.5rem 0'
-    }} />
-    <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
-     ■ 作業時間: {duration} 
-    </div>
-    <div style={{ 
-      borderTop: '1px solid rgba(5, 90, 104, 0.3)',
-      width: '65%',
-      margin: '0.5rem 0'
-    }} />
-  </>
-)}
-
-{timeInfo.date && (
-  <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
-    日付: {timeInfo.date}
-  </div>
-)}
-        
-        {cleanMessage && cleanMessage.length > 120 ? (
-          <>
-            {`${cleanMessage.substring(0, 120)}...`}
-            {post.isEdited && (
-              <span style={{
-                color: 'rgba(5, 90, 104, 0.8)',
-                fontSize: '0.8rem',
-                marginLeft: '0.5rem'
-              }}>
-                （編集済み）
-              </span>
-            )}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewDetails(post.id, post.groupId);
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#055A68',
-                fontWeight: 'bold',
-                fontSize: '0.85rem',
-                padding: '0.2rem 0',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                marginTop: '0.3rem',
-                display: 'block',
-              }}
-            >
-              more
-            </button>
-          </>
-        ) : cleanMessage ? (
-          <>
-            {cleanMessage}
-            {post.isEdited && (
-              <span style={{
-                color: 'rgba(5, 90, 104, 0.8)',
-                fontSize: '0.8rem',
-                marginLeft: '0.5rem'
-              }}>
-                （編集済み）
-              </span>
-            )}
-          </>
-        ) : null}
-      </div>
-    );
-  })()
-) : post.message.length > 120
+          {/* メッセージが120文字より長い場合は省略表示 */}
+          {post.message.length > 120 
             ? (
               <div>
                 {`${post.message.substring(0, 120)}...`}
-                {post.isEdited && !(
-  post.tags?.includes('#出退勤時間') && 
-  post.tags?.includes('#チェックイン') && 
-  post.tags?.includes('#チェックアウト')
-) && (
-  <span style={{
+                {post.isEdited && (
+                  <span style={{
                     color: 'rgba(5, 90, 104, 0.8)',
                     fontSize: '0.8rem',
                     marginLeft: '0.5rem'
@@ -420,12 +274,8 @@ useEffect(() => {
             : (
               <div>
                 {post.message}
-               {post.isEdited && !(
-  post.tags?.includes('#出退勤時間') && 
-  post.tags?.includes('#チェックイン') && 
-  post.tags?.includes('#チェックアウト')
-) && (
-  <span style={{
+                {post.isEdited && (
+                  <span style={{
                     color: 'rgba(5, 90, 104, 0.8)',
                     fontSize: '0.8rem',
                     marginLeft: '0.5rem'
@@ -440,12 +290,8 @@ useEffect(() => {
       )}
 
       {/* メッセージがない場合の編集済み表示 */}
-      {(!post.message || post.message.length === 0) && post.isEdited && !(
-  post.tags?.includes('#出退勤時間') && 
-  post.tags?.includes('#チェックイン') && 
-  post.tags?.includes('#チェックアウト')
-) && (
-  <div style={{
+      {(!post.message || post.message.length === 0) && post.isEdited && (
+        <div style={{
           marginBottom: '0.8rem',
           color: 'rgba(5, 90, 104, 0.8)',
           fontSize: '0.8rem',
@@ -480,8 +326,6 @@ useEffect(() => {
               {tag}
             </span>
           ))}
-
-
           {post.tags.length > 3 && (
             <span
               style={{
@@ -520,34 +364,9 @@ useEffect(() => {
                 marginTop: index >= 4 ? '0.5rem' : '0',
                 cursor: 'pointer',
               }}
-            onClick={(e) => {
+              onClick={(e) => {
                 e.stopPropagation();
-                // 🔍 デバッグ: クリック時の投稿データ確認
-  console.log('🔍 [クリック時] 投稿データ:', {
-    postId: (post as any).id?.substring(0, 8),
-    hasPhotoUrls: !!post.photoUrls,
-    photoUrlsLength: post.photoUrls?.length,
-    photoUrlsFirstSize: post.photoUrls?.[0]?.length,
-    imagesFirstSize: post.images?.[0]?.length,
-    hasImages: !!post.images,
-    imagesLength: post.images?.length,
-    hasDocumentImages: !!(post as any).documentImages,
-    documentImagesLength: (post as any).documentImages?.length,
-    hasPhotoImages: !!(post as any).photoImages,
-    photoImagesLength: (post as any).photoImages?.length,
-    thumbnailsKeys: (post as any).thumbnails ? Object.keys((post as any).thumbnails) : [],
-// ⭐ 追加: thumbnails の中身のサイズを確認
-thumbnailsDocFirstSize: (post as any).thumbnails?.documents?.[0]?.length,
-thumbnailsPhotoFirstSize: (post as any).thumbnails?.photos?.[0]?.length
-  });
-                const imageArray = post.photoUrls || post.images || [];
-console.log('🖼️ [PostCard画像クリック]:', {
-  clickedUrl: url.substring(0, 50),
-  foundIndex: index,
-  totalImages: imageArray.length,
-  firstImageUrl: imageArray[0]?.substring(0, 50)
-});
-onImageClick(url, imageArray, index);
+                onImageClick(url, post.photoUrls || post.images || []);
               }}
             >
               <img
@@ -623,10 +442,6 @@ onImageClick(url, imageArray, index);
     const readStatus = getPostReadStatus(post, currentUserId);
     
     if (readStatus.isAuthor) {
-  // ⭐ チェックイン投稿の場合は既読を非表示
-  if (post.tags?.includes('#出退勤時間')) {
-    return null;
-  }
       // 投稿者の場合：既読カウント表示（インスタグラム風）
       return (
         <div style={{
@@ -658,10 +473,7 @@ onImageClick(url, imageArray, index);
         </div>
       );
     } else {
-  // ⭐ チェックイン投稿の場合はステータスボタンも非表示
-  if (post.tags?.includes('#出退勤時間')) {
-    return null;
-  }
+      // 投稿者以外の場合：ステータス切り替えボタン表示（アーカイブと同じ）
       return (
         <span 
           style={{
@@ -1129,7 +941,6 @@ const calculateSearchScoreForHome = (item: TimelineItem, keywords: string[]): nu
 
 // 5. メインのHomePageコンポーネント
 const HomePage: React.FC = () => {
-  
   // 権限管理用の状態を追加
   const [userRole, setUserRole] = useState<'admin' | 'user'>('user');
 
@@ -1347,93 +1158,32 @@ const PostDetailModal: React.FC<{
                 fontSize: '1rem',
                 marginBottom: '1.5rem'
               }}>
-                {/* チェックイン投稿は整形表示、通常投稿はそのまま表示 */}
-{displayPost.tags?.includes('#チェックイン') ? (
-  (() => {
-    const timeInfo = extractTimeInfo(displayPost.message || '');
-    const cleanMessage = removeTimeInfo(displayPost.message || '');
-    const duration = displayPost.tags?.includes('#チェックアウト') 
-      ? calculateWorkDuration(displayPost.message || '') 
-      : null;
-    
-    return (
-      <div>
-        {(timeInfo.startTime || timeInfo.endTime) && (
-          <div style={{ marginBottom: '0.5rem', color: '#333' }}>
-            {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
-            {timeInfo.startTime && timeInfo.endTime && '  ー  '}
-            {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
-          </div>
-        )}
-
-        {duration && (
-          <>
-            <div style={{ 
-              borderTop: '1px solid rgba(5, 90, 104, 0.3)',
-              width: '65%',
-              margin: '0.5rem 0'
-            }} />
-            <div style={{ marginBottom: '0.5rem', color: '#333' }}>
-              ■ 作業時間: {duration} 
-            </div>
-            <div style={{ 
-              borderTop: '1px solid rgba(5, 90, 104, 0.3)',
-              width: '65%',
-              margin: '0.5rem 0'
-            }} />
-          </>
-        )}
-
-        {timeInfo.date && (
-          <div style={{ marginBottom: '0.5rem', color: '#333' }}>
-            日付: {timeInfo.date}
-          </div>
-        )}
-        
-        {cleanMessage && (
-          <div style={{ marginTop: '0.8rem' }}>
-            {cleanMessage}
-            {displayPost.isEdited && !(
-              displayPost.tags?.includes('#出退勤時間') && 
-              displayPost.tags?.includes('#チェックイン') && 
-              displayPost.tags?.includes('#チェックアウト')
-            ) && (
-              <span style={{
-                color: 'rgba(5, 90, 104, 0.7)',
-                fontSize: '0.85rem',
-                marginLeft: '0.5rem'
-              }}>
-                （編集済み）
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  })()
-) : (
-  <div>
-    {displayPost.message}
-    {displayPost.isEdited && !(
-      displayPost.tags?.includes('#出退勤時間') && 
-      displayPost.tags?.includes('#チェックイン') && 
-      displayPost.tags?.includes('#チェックアウト')
-    ) && (
-      <span style={{
-        color: 'rgba(5, 90, 104, 0.7)',
-        fontSize: '0.85rem',
-        marginLeft: '0.5rem'
-      }}>
-        （編集済み）
-      </span>
-    )}
-  </div>
-)}
-                
+                {displayPost.message}
+                {displayPost.isEdited && (
+                  <span style={{
+                    color: 'rgba(5, 90, 104, 0.7)',
+                    fontSize: '0.85rem',
+                    marginLeft: '0.5rem'
+                  }}>
+                    （編集済み）
+                  </span>
+                )}
               </div>
             )}
 
-           
+            {/* メッセージがない場合の編集済み表示 */}
+            {!displayPost.message && displayPost.isEdited && (
+              <div style={{
+                whiteSpace: 'pre-wrap',
+                lineHeight: '1.6',
+                color: 'rgba(255, 255, 255, 0.8)',
+                fontSize: '0.85rem',
+                marginBottom: '1.5rem',
+                fontStyle: 'italic'
+              }}>
+                （編集済み）
+              </div>
+            )}
             
             {/* タグ */}
             {displayPost.tags && displayPost.tags.length > 0 && (
@@ -1482,24 +1232,20 @@ const PostDetailModal: React.FC<{
                       cursor: 'pointer'
                     }}
                     onClick={() => {
-                       // ⭐ ここに追加！（1465行目）
-  console.log('🖼️ [画像クリック] 投稿データ確認:', {
-    postId: displayPost.id,
-    photoUrls: displayPost.photoUrls,
-    photoUrlsLength: displayPost.photoUrls?.length,
-    thumbnails: (displayPost as any).thumbnails,
-    images: (displayPost as any).images
-  });
-  
   if (!displayPost?.photoUrls || displayPost.photoUrls.length === 0) {
     console.warn('⚠️ 画像データが不完全');
     return;
   }
   
-const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
-setGalleryImages(displayPost.photoUrls);
-setGalleryIndex(imageIndex);
-setGalleryOpen(true);
+  const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
+  setGalleryImages([...displayPost.photoUrls]); // ← この行が重要
+  setGalleryIndex(imageIndex);
+  setGalleryOpen(true);
+  
+  console.log('✅ モーダル画像設定完了:', {
+    imageIndex,
+    totalImages: displayPost.photoUrls.length
+  });
 }}
                   >
                     <img
@@ -1727,11 +1473,12 @@ if (memos.length === 0) {
   };
   
   // 画像をモーダルで表示する関数
-  const handleImageClick = (imageUrl: string, allImages: string[], imageIndex: number) => {
-  setGalleryImages(allImages);
-  setGalleryIndex(imageIndex);
-  setGalleryOpen(true);
-};
+  const handleImageClick = (imageUrl: string, allImages: string[]) => {
+    const imageIndex = allImages.findIndex(url => url === imageUrl);
+    setGalleryImages(allImages);
+    setGalleryIndex(imageIndex);
+    setGalleryOpen(true);
+  };
 
   // 投稿の詳細ページをモーダルに
 // 投稿の詳細ページをモーダルに（メモ取得機能付き）
@@ -2163,25 +1910,13 @@ if (isMounted) {
   });
   
   console.log('✅ [Home] グループ名マージ完了:', postsWithGroupNames.length, '件');
-
-  console.log('🔍 [Home] 取得した投稿の画像データ構造確認:');
-postsWithGroupNames.slice(0, 1).forEach(post => {
-  console.log('投稿ID:', post.id);
-  console.log('  post.photoUrls:', post.photoUrls);
-  console.log('  post.images:', post.images);
-  console.log('  post.thumbnails:', (post as any).thumbnails);
-  console.log('  post全体:', post);
-  console.log('  post.thumbnails.documents:', (post as any).thumbnails?.documents);
-console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
-});
-
+  
   // ⭐ Step 2: ユーザー名と写真を追加マージ
   const enrichedPosts = await Promise.all(
     postsWithGroupNames.map(async (post) => {
       try {
-  
-  // ユーザー名を取得
-  let username = post.username || 'ユーザー';
+        // ユーザー名を取得
+        let username = post.username || 'ユーザー';
         if (post.authorId || post.userId || post.userID) {
           const userId = post.authorId || post.userId || post.userID;
           const displayName = await getDisplayNameSafe(userId);
@@ -2190,108 +1925,35 @@ console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
           }
         }
         
-       
-// 写真URLを確保（複数の可能性のあるフィールド名に対応）
-// ⭐ 修正: thumbnailsから高画質画像URLを取得
-// 🔍 デバッグ: 投稿データの中身を確認
-if ((post as any).id) {
-  console.log('🔍 [画像取得デバッグ] 投稿ID:', (post as any).id?.substring(0, 8), {
-    hasPhotoUrls: !!post.photoUrls,
-    photoUrlsLength: post.photoUrls?.length,
-    photoUrlsFirstSize: post.photoUrls?.[0]?.length,
-    hasImages: !!post.images,
-    imagesLength: post.images?.length,
-    hasDocumentImages: !!(post as any).documentImages,
-    documentImagesLength: (post as any).documentImages?.length,
-    documentImagesFirstSize: (post as any).documentImages?.[0]?.length,
-    hasPhotoImages: !!(post as any).photoImages,
-    photoImagesLength: (post as any).photoImages?.length,
-    hasThumbnails: !!(post as any).thumbnails,
-    thumbnailsDocLength: (post as any).thumbnails?.documents?.length,
-    thumbnailsPhotoLength: (post as any).thumbnails?.photos?.length,
-    thumbnailsDocFirstSize: (post as any).thumbnails?.documents?.[0]?.length
-  });
-}
-
-const photos = (() => {
-  // 1. photoUrls（documentImages + photoImages の結合）
-  if (post.photoUrls?.length > 0) return post.photoUrls;
-  
-  // 2. images フィールド
-  if (post.images?.length > 0) return post.images;
-  
-  // 3. documentImages と photoImages を結合（元画像）
-  const postAny = post as any;
-  const documentImages = postAny.documentImages || [];
-  const photoImages = postAny.photoImages || [];
-  if (documentImages.length > 0 || photoImages.length > 0) {
-    return [...documentImages, ...photoImages];
-  }
-  
-  // 4. 最後の手段としてサムネイル（150px）
-  const thumbnails = postAny.thumbnails;
-  if (thumbnails) {
-    if (thumbnails.documents?.length > 0) {
-      return thumbnails.documents;
-    }
-    if (thumbnails.photos?.length > 0) {
-      return thumbnails.photos;
-    }
-  }
-  
-  return [];
-})();
-
-// console.log('🖼️ [Home] 画像URL取得結果:', {
-//   postId: post.id,
-//   photosCount: photos.length,
-//   photos: photos
-// });
-
-// デバッグ: 最終的な投稿データ
-if (post.id === postsWithGroupNames[0]?.id) {
-  console.log('🔍 [Home] 最終的な投稿データ:', {
-    postId: post.id,
-    username,
-    photoUrls: photos,
-    photosLength: photos?.length
-  });
-}
-
-return {
+        // 写真URLを確保（複数の可能性のあるフィールド名に対応）
+        const photos = (post.photoUrls && post.photoUrls.length > 0) 
+  ? post.photoUrls 
+  : (post.images || []);
+        
+        return {
           ...post,
           username,
           photoUrls: photos,  // ⭐ photoUrls に統一
           images: photos      // ⭐ images も設定（互換性のため）
         };
       } catch (error) {
-  console.error('投稿データ補完エラー:', error);
-  return {
-    ...post,
-    username: post.username || 'ユーザー',
-    photoUrls: (post.photoUrls?.length > 0) ? post.photoUrls :
-           (post.images?.length > 0) ? post.images :
-           ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
-           ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
-           [],
-images: (post.photoUrls?.length > 0) ? post.photoUrls :
-        (post.images?.length > 0) ? post.images :
-        ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
-        ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
-        []
-  };
-}
+        console.error('投稿データ補完エラー:', error);
+        return {
+          ...post,
+          username: post.username || 'ユーザー',
+          photoUrls: post.photoUrls || post.images || [],
+          images: post.photoUrls || post.images || []
+        };
+      }
     })
   );
   
   console.log('✅ [Home] ユーザー名・写真マージ完了:', enrichedPosts.length, '件');
 
-
-
-
-
-
-setPosts(enrichedPosts);
+  // ⭐ 以下を追加 ⭐
+console.log('🔍 [デバッグ] 最初の投稿データ:', enrichedPosts[0]);
+console.log('🔍 [デバッグ] photoUrls:', enrichedPosts[0]?.photoUrls);
+console.log('🔍 [デバッグ] images:', enrichedPosts[0]?.images);
   
   setPosts(enrichedPosts);
   setGroups(allGroups);
