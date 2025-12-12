@@ -14,6 +14,9 @@ import Header from '../components/Header';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
+// ⭐ キャッシュ変数
+let archivePostsCache: { [groupId: string]: Post[] } = {};
+let archivePostsCacheTime: { [groupId: string]: number } = {};
 
 // グローバル関数の型定義
 declare global {
@@ -4178,5 +4181,17 @@ if (window.refreshArchivePage) {
       <GroupFooterNav activeTab="history" />
     </div>
   );
+};
+// キャッシュ無効化関数（GroupTopPageなどから呼び出し可能）
+export const invalidateArchiveCache = (groupId?: string) => {
+  if (groupId) {
+    delete archivePostsCache[groupId];
+    delete archivePostsCacheTime[groupId];
+    console.log('🗑️ [ArchivePage] キャッシュを無効化:', groupId);
+  } else {
+    archivePostsCache = {};
+    archivePostsCacheTime = {};
+    console.log('🗑️ [ArchivePage] 全キャッシュを無効化');
+  }
 };
 export default ArchivePage;
