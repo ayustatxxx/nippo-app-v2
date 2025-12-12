@@ -14,6 +14,9 @@ import Header from '../components/Header';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
+// ⭐ キャッシュ変数
+let archivePostsCache: { [groupId: string]: Post[] } = {};
+let archivePostsCacheTime: { [groupId: string]: number } = {};
 
 // グローバル関数の型定義
 declare global {
@@ -2338,8 +2341,8 @@ const PostDetailModal: React.FC<{
         return;
       }
       
-      const imageIndex = displayPost.photoUrls.findIndex(photoUrl => photoUrl === url);
-      setGalleryImages([...(displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images)]);
+      const imageIndex = (displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images).findIndex(photoUrl => photoUrl === url);
+      setGalleryImages(displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images);
       setGalleryIndex(imageIndex);
       setGalleryOpen(true);
       
@@ -3340,8 +3343,8 @@ const PostDetailModal: React.FC<{
                           cursor: 'pointer',
                         }}
                         onClick={() => {
-                          const imageIndex = (post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images).findIndex(photoUrl => photoUrl === url);
-                          setGalleryImages(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images);
+                        const imageIndex = (post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images).findIndex(photoUrl => photoUrl === url);
+                        setGalleryImages(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images);
                           setGalleryIndex(imageIndex);
                           setGalleryOpen(true);
                         }}
@@ -4178,5 +4181,17 @@ if (window.refreshArchivePage) {
       <GroupFooterNav activeTab="history" />
     </div>
   );
+};
+// キャッシュ無効化関数（GroupTopPageなどから呼び出し可能）
+export const invalidateArchiveCache = (groupId?: string) => {
+  if (groupId) {
+    delete archivePostsCache[groupId];
+    delete archivePostsCacheTime[groupId];
+    console.log('🗑️ [ArchivePage] キャッシュを無効化:', groupId);
+  } else {
+    archivePostsCache = {};
+    archivePostsCacheTime = {};
+    console.log('🗑️ [ArchivePage] 全キャッシュを無効化');
+  }
 };
 export default ArchivePage;
