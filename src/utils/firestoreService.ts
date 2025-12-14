@@ -11,6 +11,7 @@ import {
   getFirestore, 
   increment,
   limit as limitFirestore,
+  deleteField, 
 } from 'firebase/firestore';
 
 // 既存のFirebase設定をimportで取得
@@ -447,6 +448,33 @@ export const markPostAsRead = async (postId: string, userId: string): Promise<vo
     console.log('✅ 既読マーク完了:', postId);
   } catch (error) {
     console.error('❌ 既読マークエラー:', error);
+    throw error;
+  }
+};
+
+// 既読を削除する関数
+export const removePostAsRead = async (postId: string, userId: string): Promise<void> => {
+  try {
+    console.log('🗑️ 既読削除開始:', postId, userId);
+    
+    const postRef = doc(db, 'posts', postId);
+    
+    // 既読情報が存在するか確認
+    const postSnap = await getDoc(postRef);
+    if (!postSnap.exists() || !postSnap.data().readBy?.[userId]) {
+      console.log('ℹ️ 既読情報なし:', postId, userId);
+      return;
+    }
+    
+    // 既読情報を削除
+    await updateDoc(postRef, {
+      [`readBy.${userId}`]: deleteField(),
+      readCount: increment(-1)
+    });
+    
+    console.log('✅ 既読削除完了:', postId);
+  } catch (error) {
+    console.error('❌ 既読削除エラー:', error);
     throw error;
   }
 };

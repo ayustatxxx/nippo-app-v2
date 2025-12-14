@@ -5,7 +5,7 @@ import * as html2pdflib from 'html2pdf.js';
 import { Post, Memo } from '../types';
 import MemoModal, { MemoDisplay } from '../components/MemoModal';
 import ImageGalleryModal from '../components/ImageGalleryModal';
-import { getGroupPosts, markPostAsRead, getPostReadStatus } from "../utils/firestoreService";
+import { getGroupPosts, markPostAsRead, removePostAsRead, getPostReadStatus } from "../utils/firestoreService";
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 import { DisplayNameResolver } from '../utils/displayNameResolver';  
 import { getUser } from '../firebase/firestore';
@@ -529,32 +529,6 @@ if (readStatus.isAuthor) {
             target.dataset.processing = 'true';
             
             try {
-              if (!readStatus.isRead) {
-                try {
-                  await markPostAsRead(post.id, currentUserId);
-console.log('✅ 既読マーク完了:', post.id);
-
-// 🎯 即座にローカルStateを更新（画面に即反映）
-setPosts(prevPosts => 
-  prevPosts.map(p => 
-    p.id === post.id 
-      ? { ...p, readBy: { ...(p.readBy || {}), [currentUserId]: Date.now() } }
-      : p
-  )
-);
-setFilteredPosts(prevPosts => 
-  prevPosts.map(p => 
-    p.id === post.id 
-      ? { ...p, readBy: { ...(p.readBy || {}), [currentUserId]: Date.now() } }
-      : p
-  )
-);
-
-
-                } catch (error) {
-                  console.error('❌ 既読マークエラー:', error);
-                }
-              }
               
               setSelectedPostForStatus(post.id);
             } finally {
@@ -2331,6 +2305,44 @@ setTimeout(() => {
   }
 };
 
+// ⭐ バックグラウンド更新関数（ローディング表示なし）⭐
+const backgroundRefresh = async () => {
+  if (!groupId) return;
+  
+  try {
+    console.log('🔄 [ArchivePage] バックグラウンド更新開始（既読反映用）');
+    
+    const userId = localStorage.getItem('daily-report-user-id') || '';
+    const result = await UnifiedCoreSystem.getGroupPostsPaginated(groupId, userId, 10);
+    const freshPosts = result.posts;
+    
+    // ローディング表示なしでデータ更新
+    setPosts(freshPosts);
+    setFilteredPosts(freshPosts);
+    
+    // 最新タイムスタンプ更新
+    if (freshPosts.length > 0) {
+      const timestamps = freshPosts
+        .map(p => {
+          const createdAt = p.createdAt;
+          if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'object' && typeof (createdAt as any).toMillis === 'function') {
+            return (createdAt as any).toMillis();
+          }
+          return p.createdAt || 0;
+        })
+        .filter(t => t > 0);
+      
+      if (timestamps.length > 0) {
+        const latest = Math.max(...timestamps);
+        setLatestPostTime(prev => Math.max(prev, latest));
+      }
+    }
+    
+    console.log('✅ [ArchivePage] バックグラウンド更新完了:', freshPosts.length, '件');
+  } catch (error) {
+    console.error('❌ [ArchivePage] バックグラウンド更新エラー:', error);
+  }
+};
   
 // ⭐ 新着チェック関数 ⭐
 const checkForNewPosts = async () => {
@@ -2430,9 +2442,20 @@ setLatestPostTime(latestTime);  // ← この1行を追加
 console.log('✅ [ArchivePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
 }
 } else {
-
-        console.log('ℹ️ [ArchivePage] 新着投稿なし');
-      }
+  console.log('ℹ️ [ArchivePage] 新着投稿なし');
+  
+  // ⭐ キャッシュ期限切れならバックグラウンド更新（既読反映用） ⭐
+  const now = Date.now();
+  const lastCacheTime = archivePostsCacheTime[groupId || ''] || 0;
+  const cacheAge = now - lastCacheTime;
+  
+  if (cacheAge > CACHE_DURATION) {
+    console.log('🔄 [ArchivePage] キャッシュ期限切れ（' + Math.floor(cacheAge/1000) + '秒経過）、バックグラウンド更新実行');
+    await backgroundRefresh();
+  } else {
+    console.log('✅ [ArchivePage] キャッシュ有効（残り' + Math.floor((CACHE_DURATION - cacheAge)/1000) + '秒）、更新不要');
+  }
+}
     } else {
       console.log('⚠️ [ArchivePage] 投稿が見つかりませんでした');
     }
@@ -2473,6 +2496,18 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
       
       console.log('✅ [ArchivePage] Firestore更新完了:', postId, newStatus);
 
+      // ⭐ ステータスに応じて既読を操作 ⭐
+if (newStatus === '確認済み') {
+  // 確認済みにした場合は既読をつける
+  await markPostAsRead(postId, currentUserId);
+  console.log('✅ [ArchivePage] 既読マーク追加:', postId);
+} else if (newStatus === '未確認') {
+  // 未確認に戻した場合は既読を削除
+  await removePostAsRead(postId, currentUserId);
+  console.log('✅ [ArchivePage] 既読マーク削除:', postId);
+}
+
+
       // キャッシュをクリア
 delete archivePostsCache[groupId];
 delete archivePostsCacheTime[groupId];
@@ -2488,24 +2523,53 @@ console.log('🔄 [ArchivePage] ステータス更新 - メモリキャッシュ
     // 2. ローカル状態を更新
     console.log('🔄 [ArchivePage] ローカル状態更新開始');
     
-    const updatedPosts = posts.map(post => 
-      post.id === postId ? { 
-        ...post, 
-        status: newStatus as '未確認' | '確認済み',
-        statusUpdatedAt: Date.now(),
-        statusUpdatedBy: currentUserId
-      } : post
-    );
+    const updatedPosts = posts.map(post => {
+  if (post.id !== postId) return post;
+  
+  // ステータス更新と既読情報の同期
+  const updatedPost = {
+    ...post,
+    status: newStatus as '未確認' | '確認済み',
+    statusUpdatedAt: Date.now(),
+    statusUpdatedBy: currentUserId
+  };
+  
+  // 既読情報も更新
+  if (newStatus === '確認済み') {
+    // 既読追加
+    updatedPost.readBy = { ...(post.readBy || {}), [currentUserId]: Date.now() };
+  } else if (newStatus === '未確認' && post.readBy?.[currentUserId]) {
+    // 既読削除
+    const { [currentUserId]: removed, ...remainingReadBy } = post.readBy;
+    updatedPost.readBy = remainingReadBy;
+  }
+  
+  return updatedPost;
+});
     
     setPosts(updatedPosts);
-    setFilteredPosts(filteredPosts.map(post => 
-      post.id === postId ? { 
-        ...post, 
-        status: newStatus as '未確認' | '確認済み',
-        statusUpdatedAt: Date.now(),
-        statusUpdatedBy: currentUserId
-      } : post
-    ));
+   setFilteredPosts(filteredPosts.map(post => {
+  if (post.id !== postId) return post;
+  
+  // updatedPostsと同じロジックで更新
+  const updatedPost = {
+    ...post,
+    status: newStatus as '未確認' | '確認済み',
+    statusUpdatedAt: Date.now(),
+    statusUpdatedBy: currentUserId
+  };
+  
+  // 既読情報も更新
+  if (newStatus === '確認済み') {
+    updatedPost.readBy = { ...(post.readBy || {}), [currentUserId]: Date.now() };
+  } else if (newStatus === '未確認' && post.readBy?.[currentUserId]) {
+    const { [currentUserId]: removed, ...remainingReadBy } = post.readBy;
+    updatedPost.readBy = remainingReadBy;
+  }
+  
+  return updatedPost;
+}));
+  
     
     setSelectedPostForStatus(null);
     
@@ -4554,33 +4618,6 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
             target.dataset.processing = 'true';
             
             try {
-              // まず既読マークを実行
-              if (!readStatus.isRead) {
-                try {
-                  await markPostAsRead(post.id, currentUserId);
-                  console.log('✅ 既読マーク完了:', post.id);
-                  
-// 🎯 即座にローカルStateを更新（画面に即反映）
-setPosts(prevPosts =>
-  prevPosts.map(p =>
-    p.id === post.id
-      ? { ...p, readBy: { ...(p.readBy || {}), [currentUserId]: Date.now() } }
-      : p
-  )
-);
-setFilteredPosts(prevPosts =>
-  prevPosts.map(p =>
-    p.id === post.id
-      ? { ...p, readBy: { ...(p.readBy || {}), [currentUserId]: Date.now() } }
-      : p
-  )
-);
-
-                  
-                } catch (error) {
-                  console.error('❌ 既読マークエラー:', error);
-                }
-              }
               
               // ステータス選択ポップアップを表示
               setSelectedPostForStatus(post.id);
