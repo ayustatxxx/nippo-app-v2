@@ -2372,6 +2372,11 @@ const latestTime = latestPost.createdAt?.toMillis
 
     // 現在表示中の最新投稿より新しい投稿があれば通知
   if (latestTime > 0 && latestPostTime > 0 && latestTime > latestPostTime) {
+  const latestPostAuthorId = latestPost.authorId || latestPost.userId || latestPost.createdBy;
+  const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+
+
+
     // ⭐ ここにデバッグログを追加 ⭐
   console.log('🔍🔍🔍 [新着チェック詳細]', {
     latestPostTime,
@@ -2401,8 +2406,12 @@ console.log('⏱️⏱️⏱️ [timeDiff計算詳細]', {
   if (lastUpdate.startsWith('memo_saved_') && timeDiff < 70000) {
   console.log('📝 [ArchivePage] メモ保存後70秒以内のため、新着バナーは表示しません');
   console.log('⏱️ [ArchivePage] メモ保存からの経過時間:', timeDiff, 'ms');
+} else if (latestPostAuthorId === currentUserId) {
+  // ⭐ 自分の投稿の場合は新着バナーを表示しない
+  console.log('⏭️ [ArchivePage] 自分の投稿のため新着バナー非表示');
 } else {
-  console.log('🆕 [ArchivePage] 新着投稿を検知！バナー表示ON');
+  // ⭐ 他人の投稿の場合のみ新着バナーを表示
+  console.log('🆕 [ArchivePage] メンバーの新着投稿を検知！バナー表示ON');
   setHasNewPosts(true);
 }
 } else {
