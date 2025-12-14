@@ -53,7 +53,7 @@ const loadLastViewedTimestamp = (groupId: string): number | null => {
 
 
 // 🔥 キャッシュ設定
-const CACHE_DURATION = 300000; // 5分（300,000ミリ秒）
+const CACHE_DURATION = 30000; // 30秒（30,000ミリ秒）-
 const PRIORITY_LOAD_COUNT = 10; // 優先的に画像を読み込む投稿数
 
 
@@ -532,12 +532,24 @@ if (readStatus.isAuthor) {
               if (!readStatus.isRead) {
                 try {
                   await markPostAsRead(post.id, currentUserId);
-                  console.log('✅ 既読マーク完了:', post.id);
+console.log('✅ 既読マーク完了:', post.id);
 
-                     // WorkTimePostCard内では親のリフレッシュ機能のみ使用
-      if (window.refreshArchivePage) {
-        window.refreshArchivePage();
-      }
+// 🎯 即座にローカルStateを更新（画面に即反映）
+setPosts(prevPosts => 
+  prevPosts.map(p => 
+    p.id === post.id 
+      ? { ...p, readBy: { ...(p.readBy || {}), [currentUserId]: Date.now() } }
+      : p
+  )
+);
+setFilteredPosts(prevPosts => 
+  prevPosts.map(p => 
+    p.id === post.id 
+      ? { ...p, readBy: { ...(p.readBy || {}), [currentUserId]: Date.now() } }
+      : p
+  )
+);
+
 
                 } catch (error) {
                   console.error('❌ 既読マークエラー:', error);
@@ -1490,8 +1502,8 @@ if (fetchedPosts.length > 0) {
 .map(t => (t as any).seconds * 1000);
   
   if (validTimestamps.length > 0) {
-    const latestTimestamp = Math.max(...validTimestamps);
-    setLatestPostTime(latestTimestamp);
+   const latestTimestamp = Math.max(...validTimestamps);
+setLatestPostTime(prev => Math.max(prev, latestTimestamp));
     localStorage.setItem(
       `archive-latest-post-${groupId}`,
       JSON.stringify({
@@ -1568,7 +1580,7 @@ useEffect(() => {
       console.log('🛑 [ArchivePage] 新着チェックタイマー停止');
       clearInterval(checkInterval);
     };
-  }, []); // 初回のみ実行
+  }, [latestPostTime]); // 初回のみ実行
 
 
 // ★ Phase A3 + A4: スクロール検知（2段階読み込み）
@@ -1700,8 +1712,9 @@ useEffect(() => {
       .filter(t => t > 0);
     
     if (timestamps.length > 0) {
-      const latest = Math.max(...timestamps);
-      setLatestPostTime(latest);
+    const latest = Math.max(...timestamps);
+// 現在の値より新しい場合のみ更新
+setLatestPostTime(prev => Math.max(prev, latest));
 localStorage.setItem(`latestPostTime_${groupId}`, latest.toString());
 console.log('✅ [ArchivePage] latestPostTime を設定しました:', {
   設定値: latest,
@@ -1760,7 +1773,7 @@ console.log('🗑️ [ArchivePage] ステータス更新 - メモリキャッシ
         
         // 暫定的な処理（将来的にFirestore APIに置き換え）
         // Firestoreから実際のデータを取得
-        const refreshedPosts = await getGroupPosts(groupId);
+       const refreshedPosts = await getGroupPosts(groupId);
 
 if (refreshedPosts && refreshedPosts.length > 0) {
   setPosts(refreshedPosts);
@@ -2411,8 +2424,10 @@ console.log('⏱️⏱️⏱️ [timeDiff計算詳細]', {
   console.log('⏭️ [ArchivePage] 自分の投稿のため新着バナー非表示');
 } else {
   // ⭐ 他人の投稿の場合のみ新着バナーを表示
-  console.log('🆕 [ArchivePage] メンバーの新着投稿を検知！バナー表示ON');
-  setHasNewPosts(true);
+console.log('🆕 [ArchivePage] メンバーの新着投稿を検知！バナー表示ON');
+setHasNewPosts(true);
+setLatestPostTime(latestTime);  // ← この1行を追加
+console.log('✅ [ArchivePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
 }
 } else {
 
@@ -4545,18 +4560,22 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
                   await markPostAsRead(post.id, currentUserId);
                   console.log('✅ 既読マーク完了:', post.id);
                   
-            // 既読マーク後の状態更新処理
-if (window.refreshArchivePage) {
-  const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
-  if (lastUpdate.startsWith('memo_saved')) {
-    console.log('⏱️ [ArchivePage] メモ保存直後：1000ms待機してからリフレッシュ');
-    setTimeout(() => {
-      window.refreshArchivePage();
-    }, 1000);
-  } else {
-    window.refreshArchivePage();
-  }
-}
+// 🎯 即座にローカルStateを更新（画面に即反映）
+setPosts(prevPosts =>
+  prevPosts.map(p =>
+    p.id === post.id
+      ? { ...p, readBy: { ...(p.readBy || {}), [currentUserId]: Date.now() } }
+      : p
+  )
+);
+setFilteredPosts(prevPosts =>
+  prevPosts.map(p =>
+    p.id === post.id
+      ? { ...p, readBy: { ...(p.readBy || {}), [currentUserId]: Date.now() } }
+      : p
+  )
+);
+
                   
                 } catch (error) {
                   console.error('❌ 既読マークエラー:', error);
