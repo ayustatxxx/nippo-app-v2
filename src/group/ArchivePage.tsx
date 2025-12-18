@@ -861,6 +861,13 @@ const POSTS_PER_LOAD = 10; // スクロール時に読み込む件数（初回�
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
 
+  // 🆕 検索結果の総件数
+const [searchResultCount, setSearchResultCount] = useState<number | null>(null);
+const [isCountingResults, setIsCountingResults] = useState(false);
+
+const [isSearchActive, setIsSearchActive] = useState(false);
+const [searchInput, setSearchInput] = useState('');
+
   // 初期表示を「false」に変更
   const [showFilter, setShowFilter] = useState(false);
 
@@ -1542,6 +1549,12 @@ return () => {
 useEffect(() => {
   if (!groupId) return;
 
+  // 検索中は自動更新をスキップ
+  if (isSearchActive) {
+    console.log('🔍 検索中のため自動更新を停止');
+    return;
+  }
+
     console.log('⏰ [ArchivePage] 新着チェックタイマー開始');
 
     // 60秒ごとに新着チェックを実行
@@ -1554,12 +1567,17 @@ useEffect(() => {
       console.log('🛑 [ArchivePage] 新着チェックタイマー停止');
       clearInterval(checkInterval);
     };
-  }, [latestPostTime]); // 初回のみ実行
+  }, [latestPostTime, isSearchActive]);  // isSearchActiveを追加
 
 
 // ★ Phase A3 + A4: スクロール検知（2段階読み込み）
   useEffect(() => {
     const handleScroll = async () => {
+       // 検索中はスクロール追加読み込みをスキップ
+    if (isSearchActive) {
+      console.log('🔍 検索中のためスクロール追加読み込みをスキップ');
+      return;
+    }
       const scrollPosition = window.innerHeight + window.scrollY;
       const pageHeight = document.documentElement.scrollHeight;
       
@@ -1926,242 +1944,336 @@ window.addEventListener('archiveDelete', handleArchiveDelete as EventListener);
     };
   }, [showFilter, selectedPostIds.size, startDate, endDate, searchQuery]); // 依存配列を追加
 
+  
+
+// 🆕 Firestoreで検索条件に合う投稿数をカウント
+const countSearchResults = async (
+  groupId: string,
+  searchQuery: string,
+  startDate: Date | null,
+  endDate: Date | null
+): Promise<number> => {
+  try {
+    console.log('📊 [検索カウント] 開始:', { searchQuery, startDate, endDate });
+    
+    const { collection, query, where, getDocs, getFirestore } = await import('firebase/firestore');
+    const db = getFirestore();
+    
+    const postsRef = collection(db, 'posts');
+    let q = query(postsRef, where('groupId', '==', groupId));
+    
+    // 日付フィルターを追加
+    if (startDate) {
+      const startTimestamp = startDate.getTime();
+      q = query(q, where('timestamp', '>=', startTimestamp));
+    }
+    if (endDate) {
+      const endTimestamp = new Date(endDate).setHours(23, 59, 59, 999);
+      q = query(q, where('timestamp', '<=', endTimestamp));
+    }
+    
+    const snapshot = await getDocs(q);
+    const allPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
+    
+    console.log('📊 [検索カウント] Firestoreから取得:', allPosts.length, '件');
+    
+    // キーワード検索を適用
+    if (!searchQuery) {
+      return allPosts.length;
+    }
+    
+    const keywords = searchQuery.toLowerCase().split(/[\s,]+/).filter(Boolean);
+    const textKeywords = keywords.filter(k => !k.startsWith('#'));
+    const tagKeywords = keywords.filter(k => k.startsWith('#')).map(k => k.substring(1));
+    
+    const matchedPosts = allPosts.filter(post => {
+      // タグ検索
+      if (tagKeywords.length > 0) {
+        const hasAllTags = tagKeywords.every(keyword =>
+          post.tags?.some(tag => tag.toLowerCase().includes(keyword))
+        );
+        if (!hasAllTags) return false;
+      }
+      
+      // テキスト検索
+      if (textKeywords.length > 0) {
+        const message = (post.message || '').toLowerCase();
+        const username = (post.username || '').toLowerCase();
+        const status = (post.status || '未確認').toLowerCase();
+        const memoContent = (post as any).memos 
+          ? (post as any).memos.map((memo: any) => memo.content).join(' ').toLowerCase()
+          : '';
+        
+        const tags = (post.tags || []).join(' ').toLowerCase();
+        
+        const hasAllKeywords = textKeywords.every(keyword =>
+          message.includes(keyword) || 
+          username.includes(keyword) ||
+          status.includes(keyword) ||
+          memoContent.includes(keyword) ||
+          tags.includes(keyword)
+        );
+        if (!hasAllKeywords) return false;
+      }
+      
+      return true;
+    });
+    
+    console.log('✅ [検索カウント] マッチ:', matchedPosts.length, '件');
+    return matchedPosts.length;
+    
+  } catch (error) {
+    console.error('❌ [検索カウント] エラー:', error);
+    return 0;
+  }
+};
 
 
-
-useEffect(() => {
+  useEffect(() => {
   console.log('🔍 [検索デバッグ] 検索開始:', searchQuery);
   
-  const keywords = searchQuery
-    .toLowerCase()
-    .split(/[\s,]+/)
-    .filter(Boolean);
-
-  const tagKeywords = keywords.filter((keyword) => keyword.startsWith('#'));
-  const textKeywords = keywords.filter((keyword) => !keyword.startsWith('#'));
-
-  console.log('🔍 [検索デバッグ] テキストキーワード:', textKeywords);
-  console.log('🔍 [検索デバッグ] タグキーワード:', tagKeywords);
-
-  if (keywords.length === 0) {
-    // 検索クエリが空の場合、すべての投稿を表示
-    const filtered = posts.filter(post => {
-      const postDate = new Date(post.timestamp);
-      const isInDateRange = (!startDate || postDate >= startDate) && 
-                           (!endDate || postDate <= endDate);
-      return isInDateRange;
-    });
-    setFilteredPosts(filtered);
-    return;
-  }
-
-  console.log('🔍 [検索デバッグ] テキスト検索を開始します');
-
-  const textFiltered = posts.filter((post) => {
-    console.log('🔍 [検索デバッグ] 投稿', post.id + ':');
-
-    const message = post.message.toLowerCase();
-    const username = (post.username || '').toLowerCase();
+ // 🆕 検索条件がある場合、Firestoreから全件取得して検索
+  if (searchQuery || startDate || endDate) {
+    setIsCountingResults(true);
+    setIsSearchActive(true);
     
-    // ★ ステータス検索を追加 ★
-    const status = (post.status || '未確認').toLowerCase();
-    console.log('🔍 [検索デバッグ] ステータス:', post.status);
-
-    // メモの内容を取得して結合
-    const memoContent = (post as PostWithMemos).memos 
-      ? (post as PostWithMemos).memos!.map(memo => `${memo.content}`).join(' ').toLowerCase()
-      : '';
-
-    console.log('🔍 [検索デバッグ] メモ内容:', memoContent);
-
-    // ★ ステータスも検索対象に追加 ★
-    const matchesText = textKeywords.some(
-      (keyword) => 
-        message.includes(keyword) || 
-        username.includes(keyword) ||
-        status.includes(keyword) ||  // ← ステータス検索を追加
-        memoContent.includes(keyword)
-    );
-
-    console.log('🔍 [検索デバッグ] テキストマッチ結果:', matchesText);
-
-    if (matchesText) {
-      console.log('✅ [検索デバッグ] 投稿', post.id, 'がマッチしました');
-    }
-
-    return matchesText;
-  });
-
-  console.log('🔍 [検索デバッグ] テキスト検索後の結果数:', textFiltered.length);
-
- 
- // 優先度付き検索の実装
-let combinedFiltered = posts;
-
-if (textKeywords.length > 0 || tagKeywords.length > 0) {
-  // 全てのキーワードを統合
-  const allKeywords = [...textKeywords, ...tagKeywords.map(tag => tag.substring(1))];
-  
-  console.log('🔍 [検索デバッグ] 統合キーワード:', allKeywords);
-  
-  // 各投稿にスコアを付けて、スコアが0より大きいもののみを抽出
-  const scoredPosts = posts.map(post => ({
-    post: post as PostWithMemos,
-    score: calculateSearchScore(post as PostWithMemos, allKeywords)
-  }));
-  
-  console.log('🔍 [検索デバッグ] スコア付き投稿サンプル:', 
-    scoredPosts.slice(0, 3).map(item => ({ 
-      message: item.post.message.substring(0, 30), 
-      score: item.score 
-    }))
-  );
-  
-  combinedFiltered = scoredPosts
-    .filter(item => item.score > 0) // スコアが0より大きい投稿のみ
-    .sort((a, b) => b.score - a.score) // スコアの高い順にソート
-    .map(item => item.post); // 投稿データのみを取り出し
-}
-
-console.log('🔍 [検索デバッグ] 優先度付き検索後の結果数:', combinedFiltered.length);
-
-// 日付フィルター
-// ⭐⭐⭐ 日付フィルターの正しい実装（修正版） ⭐⭐⭐
-if (startDate || endDate) {
-  console.log('📅 [日付フィルター] 開始:', { 
-    startDate, 
-    endDate,
-    投稿数: combinedFiltered.length  // HomePage: filtered.length
-  });
-  
-  combinedFiltered = combinedFiltered.filter(post => {  // HomePage: filtered = filtered.filter
-    try {
-      // timestampを使用（最も確実）
-      if (post.timestamp) {
-        const postDate = new Date(post.timestamp);
+    
+    // 非同期処理で全件取得
+    (async () => {
+      try {
+        // 1. Firestoreから全投稿を取得
+        const userId = localStorage.getItem('daily-report-user-id') || '';
+        console.log('📥 [検索] Firestoreから全件取得開始...');
         
-        console.log('📅 投稿日付チェック:', {
-          投稿ID: post.id,
-          timestamp: post.timestamp,
-          日付JST: postDate.toLocaleString('ja-JP'),
-          日付のみ: postDate.toLocaleDateString('ja-JP'),
-          開始日: startDate,
-          終了日: endDate
+        const result = await UnifiedCoreSystem.getGroupPostsPaginated(
+          groupId || '',
+          userId,
+          999  // 大きな数値で全件取得
+        );
+        
+        const allPosts = result.posts;
+        console.log('📥 [検索] Firestoreから全件取得完了:', allPosts.length, '件');
+        
+        // 2. postsを更新（これでクライアント検索が全件を対象にできる）
+        setPosts(allPosts);
+        
+         // 3. カウント取得（クライアント検索の結果を使用）
+        // countSearchResults は username を持っていないため使用しない
+        // const count = await countSearchResults(groupId || '', searchQuery, startDate, endDate);
+        // setSearchResultCount(count);
+        // setIsCountingResults(false);
+        
+       // console.log('📊 [検索結果] 総件数:', count);
+        // console.log('📊 [検索結果] posts更新完了:', allPosts.length, '件');
+        
+        // 🆕 クライアント検索を実行（allPostsを直接使う）
+        const keywords = searchQuery
+          .toLowerCase()
+          .split(/[\s,]+/)
+          .filter(Boolean);
+        
+        const tagKeywords = keywords.filter((keyword) => keyword.startsWith('#'));
+        const textKeywords = keywords.filter((keyword) => !keyword.startsWith('#'));
+        
+        console.log('🔍 [検索デバッグ] テキストキーワード:', textKeywords);
+        console.log('🔍 [検索デバッグ] タグキーワード:', tagKeywords);
+        
+        if (keywords.length === 0) {
+          // 検索クエリが空の場合、すべての投稿を表示
+          const filtered = allPosts.filter(post => {
+            const postDate = new Date(post.timestamp);
+            const isInDateRange = (!startDate || postDate >= startDate) && 
+                                 (!endDate || postDate <= endDate);
+            return isInDateRange;
+          });
+          setFilteredPosts(filtered);
+          return;
+        }
+        
+        console.log('🔍 [検索デバッグ] テキスト検索を開始します');
+        
+        let textFiltered = allPosts.filter((post) => {
+          console.log('🔍 [検索デバッグ] 投稿', post.id + ':');
+          
+          const message = post.message.toLowerCase();
+          const username = (post.username || '').toLowerCase();
+          
+          const status = (post.status || '未確認').toLowerCase();
+          console.log('🔍 [検索デバッグ] ステータス:', post.status);
+          
+          const memoContent = (post as PostWithMemos).memos 
+            ? (post as PostWithMemos).memos!.map(memo => `${memo.content}`).join(' ').toLowerCase()
+            : '';
+          console.log('🔍 [検索デバッグ] メモ内容:', memoContent);
+          
+          const tags = (post.tags || []).join(' ').toLowerCase();
+          console.log('🔍 [検索デバッグ] タグ:', tags);
+          
+          const matchesText = textKeywords.every(
+            (keyword) => 
+              message.includes(keyword) || 
+              username.includes(keyword) ||
+              status.includes(keyword) ||
+              memoContent.includes(keyword) ||
+              tags.includes(keyword)
+          );
+          
+          console.log('🔍 [検索デバッグ] テキストマッチ結果:', matchesText);
+          
+          if (matchesText) {
+            console.log('✅ [検索デバッグ] 投稿', post.id, 'がマッチしました');
+          }
+          
+          return matchesText;
         });
         
-        // ⭐ 日付のみを比較（時刻を無視） ⭐
-        const postDateOnly = new Date(
-          postDate.getFullYear(),
-          postDate.getMonth(),
-          postDate.getDate()
-        );
+        console.log('🔍 [検索デバッグ] テキスト検索後の結果数:', textFiltered.length);
         
-        // 開始日でフィルター
-        if (startDate) {
-          const start = new Date(startDate);
-          const startDateOnly = new Date(
-            start.getFullYear(),
-            start.getMonth(),
-            start.getDate()
-          );
-          
-          console.log('🔍 比較（開始日）:', {
-            投稿日: postDateOnly.toLocaleDateString('ja-JP'),
-            開始日: startDateOnly.toLocaleDateString('ja-JP'),
-            判定: postDateOnly >= startDateOnly ? '✅' : '❌'
+        // 日付フィルター
+        if (startDate || endDate) {
+          console.log('📅 [日付フィルター] 開始:', {
+            startDate,
+            endDate,
+            投稿数: textFiltered.length
           });
           
-          if (postDateOnly < startDateOnly) {
-            console.log('❌ 開始日より前 → 非表示');
-            return false;
-          }
-        }
-        
-        // 終了日でフィルター
-        if (endDate) {
-          const end = new Date(endDate);
-          const endDateOnly = new Date(
-            end.getFullYear(),
-            end.getMonth(),
-            end.getDate()
-          );
-          
-          console.log('🔍 比較（終了日）:', {
-            投稿日: postDateOnly.toLocaleDateString('ja-JP'),
-            終了日: endDateOnly.toLocaleDateString('ja-JP'),
-            判定: postDateOnly <= endDateOnly ? '✅' : '❌'
+          textFiltered = textFiltered.filter(post => {
+            try {
+              if (post.timestamp) {
+                const postDate = new Date(post.timestamp);
+                
+                const postDateOnly = new Date(
+                  postDate.getFullYear(),
+                  postDate.getMonth(),
+                  postDate.getDate()
+                );
+                
+                if (startDate) {
+                  const start = new Date(startDate);
+                  const startDateOnly = new Date(
+                    start.getFullYear(),
+                    start.getMonth(),
+                    start.getDate()
+                  );
+                  
+                  if (postDateOnly < startDateOnly) {
+                    return false;
+                  }
+                }
+                
+                if (endDate) {
+                  const end = new Date(endDate);
+                  const endDateOnly = new Date(
+                    end.getFullYear(),
+                    end.getMonth(),
+                    end.getDate()
+                  );
+                  
+                  if (postDateOnly > endDateOnly) {
+                    return false;
+                  }
+                }
+                
+                return true;
+              }
+              
+              if (post.createdAt) {
+                let postDate: Date;
+                
+                if (typeof post.createdAt === 'number') {
+                  postDate = new Date(post.createdAt);
+                } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
+                  postDate = (post.createdAt as any).toDate();
+                } else {
+                  postDate = new Date();
+                }
+                
+                const postDateOnly = new Date(
+                  postDate.getFullYear(),
+                  postDate.getMonth(),
+                  postDate.getDate()
+                );
+                
+                if (startDate) {
+                  const start = new Date(startDate);
+                  const startDateOnly = new Date(
+                    start.getFullYear(),
+                    start.getMonth(),
+                    start.getDate()
+                  );
+                  if (postDateOnly < startDateOnly) return false;
+                }
+                
+                if (endDate) {
+                  const end = new Date(endDate);
+                  const endDateOnly = new Date(
+                    end.getFullYear(),
+                    end.getMonth(),
+                    end.getDate()
+                  );
+                  if (postDateOnly > endDateOnly) return false;
+                }
+                
+                return true;
+              }
+              
+              return true;
+              
+            } catch (error) {
+              console.error('❌ 日付フィルターエラー:', error);
+              return true;
+            }
           });
           
-          if (postDateOnly > endDateOnly) {
-            console.log('❌ 終了日より後 → 非表示');
-            return false;
-          }
+          console.log('✅ [日付フィルター] 完了:', { 残り投稿数: textFiltered.length });
         }
         
-        console.log('✅ 範囲内 → 表示');
-        return true;
-      }
-      
-      // timestampがない場合はcreatedAtを使用
-      if (post.createdAt) {
-        let postDate: Date;
-        
-        if (typeof post.createdAt === 'number') {
-          postDate = new Date(post.createdAt);
-        } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
-          postDate = (post.createdAt as any).toDate();
-        } else {
-          postDate = new Date();
-        }
-        
-        // 日付のみを比較
-        const postDateOnly = new Date(
-          postDate.getFullYear(),
-          postDate.getMonth(),
-          postDate.getDate()
-        );
-        
-        if (startDate) {
-          const start = new Date(startDate);
-          const startDateOnly = new Date(
-            start.getFullYear(),
-            start.getMonth(),
-            start.getDate()
-          );
-          if (postDateOnly < startDateOnly) return false;
-        }
-        
-        if (endDate) {
-          const end = new Date(endDate);
-          const endDateOnly = new Date(
-            end.getFullYear(),
-            end.getMonth(),
-            end.getDate()
-          );
-          if (postDateOnly > endDateOnly) return false;
-        }
-        
-        return true;
-      }
-      
-      // どちらもない場合は表示（安全策）
-      console.warn('⚠️ timestampとcreatedAtがありません:', post.id);
-      return true;
-      
-    } catch (error) {
-      console.error('❌ 日付フィルターエラー:', error);
-      return true;
-    }
-  });
-  
-  console.log('✅ [日付フィルター] 完了:', { 残り投稿数: combinedFiltered.length });  // HomePage: filtered.length
-}
+        setFilteredPosts(textFiltered);
 
-setFilteredPosts(combinedFiltered);  // HomePage: setFilteredItems(filtered);
+        // 🆕 検索結果のカウント更新（クライアント検索の結果を使用）
+        setSearchResultCount(textFiltered.length);
+        setIsCountingResults(false);
+        console.log('📊 [検索結果] 総件数:', textFiltered.length);
+        
+      } catch (error) {
+        console.error('❌ [検索] 全件取得失敗:', error);
+        setIsCountingResults(false);
+      }
+    })();
+  } else {
+    setSearchResultCount(null);
+    setIsSearchActive(false);
+    
+    // 🆕 検索クリア時は初期表示（10件）に戻す
+    (async () => {
+      try {
+        setLoading(true);  // ← 修正
+        const userId = localStorage.getItem('daily-report-user-id') || '';
+        console.log('🔄 [検索クリア] 初期表示（10件）に戻します');
+        
+        const result = await UnifiedCoreSystem.getGroupPostsPaginated(groupId || '', userId, 10);
+        setPosts(result.posts);
+        setFilteredPosts(result.posts);
+        setLoading(false);  // ← 修正
+        
+        console.log('✅ [検索クリア] 初期表示に戻りました:', result.posts.length, '件');
+      } catch (error) {
+        console.error('❌ [検索クリア] 初期表示の取得失敗:', error);
+        setLoading(false);  // ← 修正
+      }
+    })();
+  }
+  
 
 // ⭐ Phase A3: 検索・フィルター実行時は表示件数をリセット
-setDisplayedPostsCount(5);
-}, [searchQuery, posts, startDate, endDate, selectAll]);
+// 検索時は全件表示、通常時は10件表示
+if (searchQuery || startDate || endDate) {
+  // 検索時は大きな数値で全件表示
+  setDisplayedPostsCount(999);
+} else {
+  setDisplayedPostsCount(10);
+}
+}, [searchQuery, startDate, endDate]);
     
 
   const groupedPosts = React.useMemo(() => {
@@ -2217,10 +2329,18 @@ setDisplayedPostsCount(5);
   }, [filteredPosts, displayedPostsCount]);
 
   const clearSearch = () => {
-    setSearchQuery('');
-    setStartDate(null);
-    setEndDate(null);
-  };
+  console.log('🧹 [clearSearch] クリア開始');
+  console.log('🧹 [clearSearch] クリア前 searchInput:', searchInput);
+  console.log('🧹 [clearSearch] クリア前 searchQuery:', searchQuery);
+  
+  setSearchQuery('');
+  setSearchInput('');  // 👈 追加1：入力中の文字もクリア
+  setStartDate(null);
+  setEndDate(null);
+  setIsSearchActive(false);  // 👈 追加2：検索モード終了
+  
+  console.log('🧹 [clearSearch] setSearchInput(\'\') 実行完了');
+};
 
   
   const handleDelete = async (postId: string) => {
@@ -2318,7 +2438,10 @@ const backgroundRefresh = async () => {
     
     // ローディング表示なしでデータ更新
     setPosts(freshPosts);
-    setFilteredPosts(freshPosts);
+// 検索中の場合は filteredPosts を更新しない
+if (!searchQuery && !startDate && !endDate) {
+  setFilteredPosts(freshPosts);
+}
     
     // 最新タイムスタンプ更新
     if (freshPosts.length > 0) {
@@ -3719,27 +3842,38 @@ setGalleryOpen(true);
                       <line x1="21" y1="21" x2="16.65" y2="16.65" />
                     </svg>
                   </div>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="キーワード・#タグで検索"
-                    className="search-input"
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      backgroundColor: '#ffffff12',
-                      padding: '0.7rem',
-                      paddingLeft: '2rem',
-                      color: '#fff',
-                      fontSize: '0.95rem',
-                      borderRadius: '40px',
-                      outline: 'none',
-                    }}
-                  />
+               <input
+  type="text"
+  value={searchInput}  // ← searchQueryではなくsearchInput
+  onChange={(e) => {
+    setSearchInput(e.target.value);  // 入力中の値を更新
+  }}
+  onKeyDown={(e) => {
+    if (e.key === 'Enter') {
+      setSearchQuery(searchInput);  // Enterキーで検索実行
+      setIsSearchActive(true);
+    }
+  }}
+  placeholder="キーワード・#タグで検索"
+  className="search-input"
+  style={{
+    flex: 1,
+    border: 'none',
+    backgroundColor: '#ffffff12',
+    padding: '0.7rem',
+    paddingLeft: '2rem',
+    color: '#fff',
+    fontSize: '0.95rem',
+    borderRadius: '40px',
+    outline: 'none',
+  }}
+/>
                   {searchQuery && (
                     <button
-                      onClick={() => setSearchQuery('')}
+                      onClick={() => {
+  setSearchQuery('');
+  setSearchInput('');
+}}
                       style={{
                         position: 'absolute',
                         right: '10px',
@@ -3812,6 +3946,7 @@ setGalleryOpen(true);
                           color: '#fff',
                           fontSize: '0.9rem',
                           boxSizing: 'border-box',
+                          colorScheme: 'dark',
                         }}
                       />
                     </div>
@@ -3847,6 +3982,7 @@ setGalleryOpen(true);
                           color: '#fff',
                           fontSize: '0.9rem',
                           boxSizing: 'border-box',
+                          colorScheme: 'dark',
                         }}
                       />
                     </div>
@@ -3900,7 +4036,10 @@ setGalleryOpen(true);
                     {/* 検索条件クリアボタン */}
                     {(startDate || endDate || searchQuery) && (
                       <button
-                        onClick={clearSearch}
+                        onClick={() => {
+  setSearchQuery('');
+  setSearchInput('');
+}}
                         style={{
                           padding: '0.5rem 1rem',
                           backgroundColor: '#ffffff12',
@@ -4138,16 +4277,34 @@ if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'objec
         }}
       >
         <h3 style={{ 
-          color: '#97c9c2', 
-          fontSize: '1.5rem',
-          letterSpacing: 'normal',
-          margin: 0
-        }}>
-          フィルター適用中
-          <span style={{ fontSize: '0.9rem', color: '#97c9c2', marginLeft: '0.5rem' }}>
-            ({filteredPosts.length}件)
-          </span>
-        </h3>
+            color: '#97c9c2', 
+            fontSize: '1.5rem',
+            letterSpacing: 'normal',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            フィルター適用中
+            {isCountingResults ? (
+              <div style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid rgba(151, 201, 194, 0.3)',
+                borderTop: '2px solid #97c9c2',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+            ) : searchResultCount !== null ? (
+              <span style={{ fontSize: '0.9rem', color: '#F0DB4F', fontWeight: 'bold' }}>
+                (全{searchResultCount}件)
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.9rem', color: '#97c9c2' }}>
+                ({filteredPosts.length}件)
+              </span>
+            )}
+          </h3>
       </div>
     )}
 
