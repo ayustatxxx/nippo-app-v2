@@ -382,7 +382,7 @@ useEffect(() => {
             ? (
               <div>
                 {`${post.message.substring(0, 120)}...`}
-                {post.isEdited && !(
+                {post.isManuallyEdited && !(
   post.tags?.includes('#出退勤時間') && 
   post.tags?.includes('#チェックイン') && 
   post.tags?.includes('#チェックアウト')
@@ -420,7 +420,7 @@ useEffect(() => {
             : (
               <div>
                 {post.message}
-               {post.isEdited && !(
+               {post.isManuallyEdited && !(
   post.tags?.includes('#出退勤時間') && 
   post.tags?.includes('#チェックイン') && 
   post.tags?.includes('#チェックアウト')
@@ -440,7 +440,7 @@ useEffect(() => {
       )}
 
       {/* メッセージがない場合の編集済み表示 */}
-      {(!post.message || post.message.length === 0) && post.isEdited && !(
+      {(!post.message || post.message.length === 0) && post.isManuallyEdited && !(
   post.tags?.includes('#出退勤時間') && 
   post.tags?.includes('#チェックイン') && 
   post.tags?.includes('#チェックアウト')
@@ -1393,7 +1393,7 @@ const PostDetailModal: React.FC<{
         {cleanMessage && (
           <div style={{ marginTop: '0.8rem' }}>
             {cleanMessage}
-            {displayPost.isEdited && !(
+            {displayPost.isManuallyEdited && !(
               displayPost.tags?.includes('#出退勤時間') && 
               displayPost.tags?.includes('#チェックイン') && 
               displayPost.tags?.includes('#チェックアウト')
@@ -1414,7 +1414,7 @@ const PostDetailModal: React.FC<{
 ) : (
   <div>
     {displayPost.message}
-    {displayPost.isEdited && !(
+    {displayPost.isManuallyEdited && !(
       displayPost.tags?.includes('#出退勤時間') && 
       displayPost.tags?.includes('#チェックイン') && 
       displayPost.tags?.includes('#チェックアウト')
@@ -2188,75 +2188,10 @@ console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
           if (displayName && displayName !== 'ユーザー') {
             username = displayName;
           }
-        }
-        
+        }  
        
-// 写真URLを確保（複数の可能性のあるフィールド名に対応）
-// ⭐ 修正: thumbnailsから高画質画像URLを取得
-// 🔍 デバッグ: 投稿データの中身を確認
-if ((post as any).id) {
-  console.log('🔍 [画像取得デバッグ] 投稿ID:', (post as any).id?.substring(0, 8), {
-    hasPhotoUrls: !!post.photoUrls,
-    photoUrlsLength: post.photoUrls?.length,
-    photoUrlsFirstSize: post.photoUrls?.[0]?.length,
-    hasImages: !!post.images,
-    imagesLength: post.images?.length,
-    hasDocumentImages: !!(post as any).documentImages,
-    documentImagesLength: (post as any).documentImages?.length,
-    documentImagesFirstSize: (post as any).documentImages?.[0]?.length,
-    hasPhotoImages: !!(post as any).photoImages,
-    photoImagesLength: (post as any).photoImages?.length,
-    hasThumbnails: !!(post as any).thumbnails,
-    thumbnailsDocLength: (post as any).thumbnails?.documents?.length,
-    thumbnailsPhotoLength: (post as any).thumbnails?.photos?.length,
-    thumbnailsDocFirstSize: (post as any).thumbnails?.documents?.[0]?.length
-  });
-}
-
-const photos = (() => {
-  // 1. photoUrls（documentImages + photoImages の結合）
-  if (post.photoUrls?.length > 0) return post.photoUrls;
-  
-  // 2. images フィールド
-  if (post.images?.length > 0) return post.images;
-  
-  // 3. documentImages と photoImages を結合（元画像）
-  const postAny = post as any;
-  const documentImages = postAny.documentImages || [];
-  const photoImages = postAny.photoImages || [];
-  if (documentImages.length > 0 || photoImages.length > 0) {
-    return [...documentImages, ...photoImages];
-  }
-  
-  // 4. 最後の手段としてサムネイル（150px）
-  const thumbnails = postAny.thumbnails;
-  if (thumbnails) {
-    if (thumbnails.documents?.length > 0) {
-      return thumbnails.documents;
-    }
-    if (thumbnails.photos?.length > 0) {
-      return thumbnails.photos;
-    }
-  }
-  
-  return [];
-})();
-
-// console.log('🖼️ [Home] 画像URL取得結果:', {
-//   postId: post.id,
-//   photosCount: photos.length,
-//   photos: photos
-// });
-
-// デバッグ: 最終的な投稿データ
-if (post.id === postsWithGroupNames[0]?.id) {
-  console.log('🔍 [Home] 最終的な投稿データ:', {
-    postId: post.id,
-    username,
-    photoUrls: photos,
-    photosLength: photos?.length
-  });
-}
+// ✅ シンプルな画像取得（Archiveと同じ）
+        const photos = post.photoUrls || [];
 
 return {
           ...post,
@@ -2434,8 +2369,8 @@ console.log(`✅ [Home] リフレッシュ完了: ${allPosts.length}件の投稿
   window.addEventListener('postsUpdated', handlePostsUpdate);
   window.addEventListener('refreshPosts', handlePostsUpdate);
   
-  // ポーリング開始（1秒間隔）
-  const pollingInterval = setInterval(checkForUpdates, 1000);
+ // ポーリング開始（5秒間隔）
+  const pollingInterval = setInterval(checkForUpdates, 5000);
   
   // クリーンアップ
   return () => {
@@ -2570,7 +2505,7 @@ const getContainerStatusStyle = (status: string) => {
 
 // ArchivePageのステータス更新処理修正版
 // ステータス更新処理の修正版（デバッグログ強化）
-const handleStatusUpdate = async (postId: string, newStatus: string) => {
+ const handleStatusUpdate = async (postId: string, newStatus: string) => {
   try {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "";
     
@@ -2600,6 +2535,12 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
       });
       
       console.log('✅ [HomePage] Firestore更新完了:', postId, newStatus);
+
+      // ✅ キャッシュクリア
+postsCache = null;
+postsCacheTime = 0;
+console.log('🔄 [HomePage] ステータス更新 - キャッシュクリア');
+
       
     } catch (firestoreError) {
       console.error('❌ [HomePage] Firestore更新失敗:', firestoreError);
@@ -3403,28 +3344,55 @@ const resetFilters = () => {
           
           console.log('📤 [HomePage] Firestoreに保存するメモ:', newMemo);
           
-          // ★ 変更点1: ローカルで即座にメモを追加（超高速！）
+          // ✅ 1. posts ステートを更新
+          setPosts(prevPosts => prevPosts.map(p => 
+            p.id === selectedPostForMemo.id ? { ...p, memos: [...(p.memos || []), newMemo] } : p
+          ));
+          
+          // ✅ 2. timelineItems ステートを更新
+          setTimelineItems(prevItems => prevItems.map(item => 
+            'id' in item && item.id === selectedPostForMemo.id 
+              ? { ...item, memos: [...((item as any).memos || []), newMemo] } 
+              : item
+          ));
+          
+          // ✅ 3. filteredItems ステートを更新
+          setFilteredItems(prevItems => prevItems.map(item => 
+            'id' in item && item.id === selectedPostForMemo.id 
+              ? { ...item, memos: [...((item as any).memos || []), newMemo] } 
+              : item
+          ));
+          
+          // ✅ 4. 詳細モーダルを更新（既存のコード）
           const currentPost = selectedPostForDetail;
           if (currentPost) {
             const updatedPost = {
               ...currentPost,
               memos: [...(currentPost.memos || []), newMemo]
             };
-            
-            // 即座に画面更新
             setSelectedPostForDetail(updatedPost);
             console.log('⚡ [HomePage] 画面を即座に更新（超高速）');
           }
           
-          // ★ 変更点2: メモモーダルを即座に閉じる
+          // ✅ 5. メモモーダルを即座に閉じる（既存のコード）
           setMemoModalOpen(false);
           setSelectedPostForMemo(null);
           
           console.log('🎉 [HomePage] 画面更新完了（待ち時間なし）');
           
-          // ★ 変更点3: Firestore保存はバックグラウンドで実行
+          // ✅ 6. Firestore保存はバックグラウンドで実行 + 他ページへの通知
           MemoService.saveMemo(newMemo).then(() => {
             console.log('✅ [HomePage] Firestore保存完了（バックグラウンド）');
+            
+            // ⭐ 他のページへの通知（ArchivePageなど）
+            const updateFlag = `memo_saved_${Date.now()}`;
+            localStorage.setItem('daily-report-posts-updated', updateFlag);
+            localStorage.setItem('posts-need-refresh', updateFlag);
+            
+            // HomePageに通知
+            window.dispatchEvent(new CustomEvent('refreshPosts'));
+            
+            console.log('📢 [HomePage] ArchivePageにメモ保存通知を送信');
           }).catch(error => {
             console.error('❌ [HomePage] Firestore保存エラー:', error);
             // エラーが起きても画面は既に更新されている

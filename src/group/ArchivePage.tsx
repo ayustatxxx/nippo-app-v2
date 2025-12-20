@@ -1881,8 +1881,8 @@ const checkForUpdates = () => {
   window.addEventListener('postsUpdated', handlePostsUpdate);
   window.addEventListener('refreshPosts', handlePostsUpdate);
   
-  // ポーリング開始（1秒間隔）
-  const pollingInterval = setInterval(checkForUpdates, 1000);
+  // ポーリング開始（5秒間隔）
+  const pollingInterval = setInterval(checkForUpdates, 5000);
 
   // 詳細モーダルからの削除イベントを監視
 const handleArchiveDelete = (event: CustomEvent) => {
