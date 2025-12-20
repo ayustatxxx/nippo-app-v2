@@ -2079,16 +2079,62 @@ const countSearchResults = async (
         console.log('🔍 [検索デバッグ] タグキーワード:', tagKeywords);
         
         if (keywords.length === 0) {
-          // 検索クエリが空の場合、すべての投稿を表示
-          const filtered = allPosts.filter(post => {
-            const postDate = new Date(post.timestamp);
-            const isInDateRange = (!startDate || postDate >= startDate) && 
-                                 (!endDate || postDate <= endDate);
-            return isInDateRange;
-          });
-          setFilteredPosts(filtered);
-          return;
+  // 検索クエリが空の場合、すべての投稿を表示
+  const filtered = allPosts.filter(post => {
+    try {
+      let postDate: Date | null = null;
+      
+      // ⭐ timestampまたはcreatedAtから日付を取得
+      if (post.timestamp) {
+        postDate = new Date(post.timestamp);
+      } else if (post.createdAt) {
+        if (typeof post.createdAt === 'number') {
+          postDate = new Date(post.createdAt);
+        } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
+          postDate = (post.createdAt as any).toDate();
         }
+      }
+      
+      if (!postDate || isNaN(postDate.getTime())) {
+        return true; // 日付が取得できない場合は表示する
+      }
+      
+      // ⭐ 日付のみで比較（時刻を除外）
+      const postDateOnly = new Date(
+        postDate.getFullYear(),
+        postDate.getMonth(),
+        postDate.getDate()
+      );
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        const startDateOnly = new Date(
+          start.getFullYear(),
+          start.getMonth(),
+          start.getDate()
+        );
+        if (postDateOnly < startDateOnly) return false;
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate);
+        const endDateOnly = new Date(
+          end.getFullYear(),
+          end.getMonth(),
+          end.getDate()
+        );
+        if (postDateOnly > endDateOnly) return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('❌ 日付フィルターエラー:', error);
+      return true;
+    }
+  });
+  setFilteredPosts(filtered);
+  return;
+}
         
         console.log('🔍 [検索デバッグ] テキスト検索を開始します');
         
@@ -2137,95 +2183,73 @@ const countSearchResults = async (
             投稿数: textFiltered.length
           });
           
-          textFiltered = textFiltered.filter(post => {
-            try {
-              if (post.timestamp) {
-                const postDate = new Date(post.timestamp);
-                
-                const postDateOnly = new Date(
-                  postDate.getFullYear(),
-                  postDate.getMonth(),
-                  postDate.getDate()
-                );
-                
-                if (startDate) {
-                  const start = new Date(startDate);
-                  const startDateOnly = new Date(
-                    start.getFullYear(),
-                    start.getMonth(),
-                    start.getDate()
-                  );
-                  
-                  if (postDateOnly < startDateOnly) {
-                    return false;
-                  }
-                }
-                
-                if (endDate) {
-                  const end = new Date(endDate);
-                  const endDateOnly = new Date(
-                    end.getFullYear(),
-                    end.getMonth(),
-                    end.getDate()
-                  );
-                  
-                  if (postDateOnly > endDateOnly) {
-                    return false;
-                  }
-                }
-                
-                return true;
-              }
-              
-              if (post.createdAt) {
-                let postDate: Date;
-                
-                if (typeof post.createdAt === 'number') {
-                  postDate = new Date(post.createdAt);
-                } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
-                  postDate = (post.createdAt as any).toDate();
-                } else {
-                  postDate = new Date();
-                }
-                
-                const postDateOnly = new Date(
-                  postDate.getFullYear(),
-                  postDate.getMonth(),
-                  postDate.getDate()
-                );
-                
-                if (startDate) {
-                  const start = new Date(startDate);
-                  const startDateOnly = new Date(
-                    start.getFullYear(),
-                    start.getMonth(),
-                    start.getDate()
-                  );
-                  if (postDateOnly < startDateOnly) return false;
-                }
-                
-                if (endDate) {
-                  const end = new Date(endDate);
-                  const endDateOnly = new Date(
-                    end.getFullYear(),
-                    end.getMonth(),
-                    end.getDate()
-                  );
-                  if (postDateOnly > endDateOnly) return false;
-                }
-                
-                return true;
-              }
-              
-              return true;
-              
-            } catch (error) {
-              console.error('❌ 日付フィルターエラー:', error);
-              return true;
-            }
-          });
-          
-          console.log('✅ [日付フィルター] 完了:', { 残り投稿数: textFiltered.length });
+  textFiltered = textFiltered.filter(post => {
+  try {
+    let postDate: Date | null = null;
+    
+    // timestampまたはcreatedAtから日付を取得
+    if (post.timestamp) {
+      if (typeof post.timestamp === 'number') {
+        postDate = new Date(post.timestamp);
+      } else if (post.timestamp && typeof (post.timestamp as any).toDate === 'function') {
+        postDate = (post.timestamp as any).toDate();
+      } else {
+        postDate = new Date(post.timestamp);
+      }
+    } else if (post.createdAt) {
+      if (typeof post.createdAt === 'number') {
+        postDate = new Date(post.createdAt);
+      } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
+        postDate = (post.createdAt as any).toDate();
+      } else {
+        postDate = new Date();
+      }
+    }
+    
+    // 日付取得失敗時はフィルターをスキップ
+    if (!postDate || isNaN(postDate.getTime())) {
+      return true;
+    }
+    
+    // 日付のみで比較（時刻除外）
+    const postDateOnly = new Date(
+      postDate.getFullYear(),
+      postDate.getMonth(),
+      postDate.getDate()
+    );
+    
+    // 開始日チェック
+    if (startDate) {
+      const startDateOnly = new Date(
+        new Date(startDate).getFullYear(),
+        new Date(startDate).getMonth(),
+        new Date(startDate).getDate()
+      );
+      if (postDateOnly < startDateOnly) {
+        return false;
+      }
+    }
+    
+    // 終了日チェック
+    if (endDate) {
+      const endDateOnly = new Date(
+        new Date(endDate).getFullYear(),
+        new Date(endDate).getMonth(),
+        new Date(endDate).getDate()
+      );
+      if (postDateOnly > endDateOnly) {
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('❌ 日付フィルターエラー:', error);
+    return true;
+  }
+});
+
+console.log('✅ [日付フィルター] 完了:', { 残り投稿数: textFiltered.length });
         }
         
         setFilteredPosts(textFiltered);
@@ -3870,9 +3894,11 @@ setGalleryOpen(true);
 />
                   {searchQuery && (
                     <button
-                      onClick={() => {
+                  onClick={() => {
   setSearchQuery('');
   setSearchInput('');
+  setStartDate(null);  // ← 追加
+  setEndDate(null);    // ← 追加
 }}
                       style={{
                         position: 'absolute',
@@ -4036,9 +4062,11 @@ setGalleryOpen(true);
                     {/* 検索条件クリアボタン */}
                     {(startDate || endDate || searchQuery) && (
                       <button
-                        onClick={() => {
+                    onClick={() => {
   setSearchQuery('');
   setSearchInput('');
+  setStartDate(null);  // ← 追加
+  setEndDate(null);    // ← 追加
 }}
                         style={{
                           padding: '0.5rem 1rem',
