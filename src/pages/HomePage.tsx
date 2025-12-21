@@ -15,6 +15,41 @@ import MemoModal from '../components/MemoModal';
 import { MemoService } from '../utils/memoService'; 
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 
+// 🔸 新着バナー用：「最後に見た時刻」を保存・読み込みするためのキー
+const LAST_VIEWED_KEY_PREFIX = 'homepage-last-viewed-';
+
+const getLastViewedKey = (userId: string) =>
+  `${LAST_VIEWED_KEY_PREFIX}${userId}`;
+
+// 「最後に見た時刻」を保存
+const saveLastViewedTimestamp = (userId: string, latestMs: number) => {
+  if (!Number.isFinite(latestMs) || latestMs <= 0) return;
+
+  const key = getLastViewedKey(userId);
+  localStorage.setItem(key, String(latestMs));
+  console.log('[新着保存] lastViewedTimestamp を保存しました', {
+    key,
+    value: latestMs,
+  });
+};
+
+// 「最後に見た時刻」を読み込み
+const loadLastViewedTimestamp = (userId: string): number | null => {
+  const key = getLastViewedKey(userId);
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+
+  const ms = Number(raw);
+  if (!Number.isFinite(ms) || ms <= 0) {
+    console.warn('[新着チェック] Invalid な lastViewed を検出したのでリセットします', {
+      key,
+      raw,
+    });
+    localStorage.removeItem(key);
+    return null;
+  }
+  return ms;
+};
 
 // 🆕 作業時間を計算する関数
   const calculateWorkDuration = (message: string): string | null => {
@@ -1168,6 +1203,11 @@ const [isLoadingMore, setIsLoadingMore] = useState(false);  // 追加読み込�
 const [currentPage, setCurrentPage] = useState(1);         // 現在のページ番号  
 const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);  // ⭐ 栞を保存
 
+// ⭐ 新着チェック用のState ⭐
+const [hasNewPosts, setHasNewPosts] = useState(false);
+const [justDeleted, setJustDeleted] = useState(false);
+const [latestPostTime, setLatestPostTime] = useState<number>(0);
+
 // PostDetailModal コンポーネント
 const PostDetailModal: React.FC<{
   post: Post;
@@ -2038,14 +2078,18 @@ else if (lastUpdate) {
 if (postsCache && postsCache.length > 0 && Date.now() - postsCacheTime < CACHE_DURATION) {
   console.log('💾 [HomePage] キャッシュデータを使用:', postsCache.length, '件');
   console.log(`⏰ [キャッシュ有効期限] あと${Math.round((CACHE_DURATION - (Date.now() - postsCacheTime)) / 1000)}秒`);
-  
+
   if (isMounted) {
-    setPosts(postsCache);
-    setTimelineItems(postsCache);
-// setFilteredItems(postsCache); // ← コメントアウト
-    setLoading(false);
-    setIsAuthenticated(true);
-  }
+  setPosts(postsCache);
+  setTimelineItems(postsCache);
+  
+  // ✅ キャッシュデータでフィルター適用
+  applyFilters(postsCache);
+  
+  setLoading(false);
+  setIsAuthenticated(true);
+}
+
   
   console.log('✅ キャッシュから高速ロード完了');
   const endTime = performance.now();
@@ -2221,20 +2265,39 @@ images: (post.photoUrls?.length > 0) ? post.photoUrls :
   
   console.log('✅ [Home] ユーザー名・写真マージ完了:', enrichedPosts.length, '件');
 
-
-
-
-
-
-setPosts(enrichedPosts);
   
   setPosts(enrichedPosts);
+
+   // ⭐ 新着チェック用：最新投稿時刻を記録 ⭐
+  if (enrichedPosts.length > 0) {
+    const post = enrichedPosts[0];
+    let latestTime = 0;
+    
+    if (post.timestamp) {
+      latestTime = post.timestamp;
+    } else if (post.createdAt) {
+      if (typeof post.createdAt === 'number') {
+        latestTime = post.createdAt;
+      } else if (typeof post.createdAt === 'object' && post.createdAt !== null && 'toMillis' in post.createdAt) {
+        latestTime = (post.createdAt as any).toMillis();
+      }
+    }
+    
+    if (latestTime > 0) {
+      setLatestPostTime(latestTime);
+      console.log('📊 [HomePage] 最新投稿時刻を記録:', new Date(latestTime).toLocaleString('ja-JP'));
+    }
+  }
+
+
   setGroups(allGroups);
   setTimelineItems(enrichedPosts);
-// setFilteredItems(enrichedPosts); // ← この行を削除またはコメントアウト
+  
+  // ✅ 取得したデータでフィルター適用
+  applyFilters(enrichedPosts);
+  
   initializationRef.current = true;
 }
-
 const endTime = performance.now();
 console.log(`✅ 高速データロード完了: ${Math.round(endTime - startTime)}ms`);
 
@@ -2328,13 +2391,18 @@ console.log(`✅ [Home] リフレッシュ完了: ${allPosts.length}件の投稿
           return { ...(post as any), groupName };
         }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         
-        setPosts(processedPosts);
-        setTimelineItems(processedPosts);
-// setFilteredItems(processedPosts); // ← コメントアウト
-        
-        console.log('✅ [HomePage] データリフレッシュ完了:', processedPosts.length, '件');
+       setPosts(processedPosts);
+setTimelineItems(processedPosts);
+
+// ✅ 新しいデータでフィルター適用
+applyFilters(processedPosts);
+
+console.log('✅ [HomePage] データリフレッシュ完了:', processedPosts.length, '件');
       } catch (error) {
         console.error('❌ [HomePage] データリフレッシュエラー:', error);
+      } finally {
+        // ✅ ローディング終了
+        setLoading(false);
       }
     };
     
@@ -2385,6 +2453,83 @@ console.log(`✅ [Home] リフレッシュ完了: ${allPosts.length}件の投稿
     }
   };
 }, []); // 空の依存配列で1回のみ実行
+
+// ⭐ 新着チェックタイマー（60秒ごと）⭐
+useEffect(() => {
+  console.log('⏰ [HomePage] 新着チェックタイマー開始');
+  
+  // 新着チェック関数
+  const checkForNewPosts = async () => {
+    if (justDeleted) {
+      console.log('⏭️ [新着チェック] 削除直後のためスキップ');
+      return;
+    }
+    
+    try {
+      console.log('🔍 [HomePage] 新着チェック開始');
+      console.log('📊 [HomePage] 現在の最新投稿時刻:', latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : '未設定');
+      
+      const userId = localStorage.getItem('daily-report-user-id');
+      if (!userId) return;
+      
+      // Firestoreから最新の投稿1件を取得（全グループ対象）
+      const { collection, query, orderBy, limit, getDocs } = await import('firebase/firestore');
+      const { getFirestore } = await import('firebase/firestore');
+      const db = getFirestore();
+      
+      const postsRef = collection(db, 'posts');
+      const q = query(
+        postsRef,
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      );
+      
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        const latestPost = snapshot.docs[0].data();
+        const latestTime = latestPost.createdAt?.toMillis 
+          ? latestPost.createdAt.toMillis() 
+          : (typeof latestPost.createdAt === 'number' ? latestPost.createdAt : 0);
+        
+        console.log('🔍 [新着チェック] 最新投稿時刻:', {
+          latest: latestTime > 0 ? new Date(latestTime).toLocaleString('ja-JP') : 'Invalid',
+          current: latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : 'Invalid',
+          差分: latestTime - latestPostTime,
+          新着あり: latestTime > latestPostTime
+        });
+        
+        // 新着投稿があるかチェック
+        if (latestTime > 0 && latestPostTime > 0 && latestTime > latestPostTime) {
+          const latestPostAuthorId = latestPost.authorId || latestPost.userId || latestPost.createdBy;
+          
+          // 自分の投稿は除外
+          if (latestPostAuthorId === userId) {
+            console.log('⏭️ [HomePage] 自分の投稿のため新着バナー非表示');
+          } else {
+            console.log('🆕 [HomePage] メンバーの新着投稿を検知！バナー表示ON');
+            setHasNewPosts(true);
+            
+            // 最新投稿時刻を更新
+            setLatestPostTime(latestTime);
+          }
+        } else {
+          console.log('ℹ️ [HomePage] 新着投稿なし');
+        }
+      }
+    } catch (error) {
+      console.error('❌ [HomePage] 新着チェック失敗:', error);
+    }
+  };
+  
+  // 60秒ごとに新着チェックを実行
+  const newPostCheckInterval = setInterval(checkForNewPosts, 60000);
+  
+  return () => {
+    console.log('🛑 [HomePage] 新着チェックタイマー停止');
+    clearInterval(newPostCheckInterval);
+  };
+}, [justDeleted, latestPostTime]);
 
 
 useEffect(() => {
@@ -2466,6 +2611,8 @@ useEffect(() => {
     postsCache = posts;
     postsCacheTime = Date.now();
     console.log('💾 投稿キャッシュを更新:', posts.length, '件');
+    console.log('💾 投稿キャッシュを更新:', posts.length, '件');
+console.log('🔍 [デバッグ] この時点のfilteredItems.length:', filteredItems.length);
   }
 }, [posts, loading]);
 
@@ -2565,7 +2712,7 @@ console.log('🔄 [HomePage] ステータス更新 - キャッシュクリア');
     setTimelineItems(updatedPosts);
     
     // ⭐ filteredItemsも同じパターンで更新（ArchivePageのsetFilteredPostsと同じ）
-    setFilteredItems(filteredItems.map(item => {
+    setFilteredItems(prevItems => prevItems.map(item => {
       // アラートの場合はそのまま返す
       if ('type' in item && item.type === 'alert') {
         return item;
@@ -2602,12 +2749,16 @@ const filterByGroup = (groupId: string | null) => {
   setSelectedGroup(groupId);
 };
 
-const applyFilters = useCallback(() => {
+const applyFilters = useCallback((items?: TimelineItem[]) => {
   const executionId = Date.now();
   console.log('🚀 [applyFilters] 実行開始 - ID:', executionId);
-  // ⭐ timelineItemsが空の場合はスキップ
-  if (timelineItems.length === 0) {
-    console.log('⚠️ [applyFilters] timelineItemsが空なのでスキップ');
+  
+  // itemsが渡されない場合は現在のtimelineItemsを使用
+  const targetItems = items || timelineItems;
+  
+  // ⭐ targetItemsが空の場合はスキップ
+  if (targetItems.length === 0) {
+    console.log('⚠️ [applyFilters] targetItemsが空なのでスキップ');
     return;
   }
   console.log('🚀 [applyFilters] 実行理由:', {
@@ -2617,13 +2768,14 @@ const applyFilters = useCallback(() => {
     selectedDate,
     selectedGroup
   });
-  console.log('📊 [applyFilters] timelineItems:', timelineItems.length, '件');
-  console.log('📊 [applyFilters] 最初の3件:', timelineItems.slice(0, 3).map(item => ({
+  console.log('📊 [applyFilters] targetItems:', targetItems.length, '件');
+  console.log('📊 [applyFilters] 最初の3件:', targetItems.slice(0, 3).map(item => ({
     id: 'id' in item ? (item as Post).id : 'alert',
     type: 'type' in item ? item.type : 'post'
   })));
   
-  let filtered = [...timelineItems];
+  let filtered = [...targetItems];
+
   console.log('📊 [applyFilters] filtered初期化:', filtered.length, '件');
 
   // 検索クエリでフィルター
@@ -2831,12 +2983,8 @@ console.log('✅ [applyFilters] 設定した件数:', filtered.length);
 setTimeout(() => {
   console.log('⏰ [applyFilters] 1秒後の確認 - filteredItems.length:', filteredItems.length);
 }, 1000);
-}, [timelineItems, searchQuery, startDate, endDate, selectedDate, selectedGroup]);
+}, [searchQuery, startDate, endDate, selectedDate, selectedGroup]);
 
-// applyFiltersを自動実行
-useEffect(() => {
-  applyFilters();
-}, [applyFilters]);
 
 const resetFilters = () => {
   setSearchQuery('');
@@ -2870,6 +3018,45 @@ const resetFilters = () => {
         onSearchClick={toggleFilter} 
         isSearchActive={showFilter}
       />
+
+      {/* ⭐ 新着通知バナー（画面上部固定表示） ⭐ */}
+      {hasNewPosts && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '100px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            backgroundColor: '#8B1C1C', 
+            color: '#FFFFFF',
+            padding: '15px 25px',  
+            borderRadius: '10px',
+            
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'row', 
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '0.9rem',
+            fontWeight: '500',
+            maxWidth: 'calc(100% - 32px)',
+          }}
+          onClick={async () => {
+            console.log('🔄 [HomePage] 新着バナーをクリック - 再取得開始');
+            setHasNewPosts(false);
+            setLoading(true);
+            
+            // データ再取得
+            if (window.refreshHomePage) {
+              window.refreshHomePage();
+            }
+          }}
+        >
+          <span>新しい投稿があります。</span>
+          <span>更新</span>
+        </div>
+      )}
         
       <style>
         {`
