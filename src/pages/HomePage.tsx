@@ -12,6 +12,7 @@ import { UnifiedDataManager } from '../utils/unifiedDataManager';
 import { getDisplayNameSafe } from '../core/SafeUnifiedDataManager';
 import { getUser, getPostImages } from '../firebase/firestore';
 import MemoModal from '../components/MemoModal';
+import ReadByModal from '../components/ReadByModal';
 import { MemoService } from '../utils/memoService'; 
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 
@@ -664,7 +665,11 @@ onImageClick(url, imageArray, index);
   }
       // 投稿者の場合：既読カウント表示（インスタグラム風）
       return (
-        <div style={{
+        <div 
+          onClick={() => {
+          window.dispatchEvent(new CustomEvent('openReadByModal', { detail: post }));
+          }}
+          style={{
           display: 'flex',
           alignItems: 'center',
           gap: '0.4rem',
@@ -673,9 +678,11 @@ onImageClick(url, imageArray, index);
           borderRadius: '20px',
           fontSize: '0.75rem',
           color: '#055A68',
-          fontWeight: '500'
+          fontWeight: '500',
+          cursor: 'pointer'
         }}>
-          <div style={{
+          <div
+          style={{
             width: '16px',
             height: '16px',
             borderRadius: '50%',
@@ -1180,6 +1187,8 @@ const HomePage: React.FC = () => {
   // メモ機能用の状態を追加
 const [memoModalOpen, setMemoModalOpen] = useState(false);
 const [selectedPostForMemo, setSelectedPostForMemo] = useState<Post | null>(null);
+const [readByModalOpen, setReadByModalOpen] = useState(false);
+const [selectedPostForReadBy, setSelectedPostForReadBy] = useState<Post | null>(null);
   
   // 画像モーダル用の状態を追加
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -1902,19 +1911,24 @@ setPosts(prevPosts => {
   
   // 新しい投稿のみをフィルター
   const newPosts = result.posts.filter(post => !existingIds.has(post.id));
-  
   console.log(`🔍 [重複チェック] 既存: ${prevPosts.length}件, 新規: ${newPosts.length}件, 重複除外: ${result.posts.length - newPosts.length}件`);
-  
   return [...prevPosts, ...newPosts];
 });
+// ⭐ 新しい配列を先に計算 ⭐
+
 
 setTimelineItems(prevItems => {
   const existingIds = new Set(prevItems.map(item => 'id' in item ? item.id : ''));
   const newItems = result.posts.filter(post => !existingIds.has(post.id));
-  return [...prevItems, ...newItems];
+  const updated = [...prevItems, ...newItems];
+  
+  setTimeout(() => {
+    applyFilters(updated);
+  }, 0);
+  return updated;
 });
 
-console.log('📥 [無限スクロール] timelineItems更新完了');
+
 console.log('📥 現在のフィルター条件:', { startDate, endDate, searchQuery });
 
       
@@ -1929,6 +1943,10 @@ console.log('📥 現在のフィルター条件:', { startDate, endDate, search
       
       // displayLimitも増やす
       setDisplayLimit(prev => prev + result.posts.length);
+      
+     
+  
+  
       
       console.log(`📊 [無限スクロール] 合計 ${posts.length + result.posts.length} 件表示中`);
       console.log(`📊 [表示制限] displayLimitを更新しました`);
@@ -2450,9 +2468,25 @@ console.log('✅ [HomePage] データリフレッシュ完了:', processedPosts.
     // グローバル関数のクリーンアップ
     if (window.refreshHomePage) {
       delete window.refreshHomePage;
+
     }
   };
 }, []); // 空の依存配列で1回のみ実行
+
+// 🔵 既読ユーザー表示モーダルのイベントリスナー
+useEffect(() => {
+  const handleOpenReadByModal = (event: CustomEvent) => {
+    const post = event.detail;
+    setSelectedPostForReadBy(post);
+    setReadByModalOpen(true);
+  };
+
+  window.addEventListener('openReadByModal', handleOpenReadByModal as EventListener);
+
+  return () => {
+    window.removeEventListener('openReadByModal', handleOpenReadByModal as EventListener);
+  };
+}, []);
 
 // ⭐ 新着チェックタイマー（60秒ごと）⭐
 useEffect(() => {
@@ -3594,6 +3628,18 @@ const resetFilters = () => {
           setSelectedPostForMemo(null);
         }
       }}
+    />
+  )}
+
+   {/* 既読ユーザー表示モーダル */}
+  {readByModalOpen && selectedPostForReadBy && (
+    <ReadByModal
+      isOpen={readByModalOpen}
+      onClose={() => {
+        setReadByModalOpen(false);
+        setSelectedPostForReadBy(null);
+      }}
+      readBy={selectedPostForReadBy.readBy || {}}
     />
   )}
 
