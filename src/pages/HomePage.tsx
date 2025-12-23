@@ -704,6 +704,14 @@ onImageClick(url, imageArray, index);
   if (post.tags?.includes('#出退勤時間')) {
     return null;
   }
+  
+  // 🔍 ステータスのデバッグ
+console.log('🔍 [Status Debug] 投稿ID:', post.id);
+console.log('🔍 [Status Debug] post.status の値:', post.status);
+console.log('🔍 [Status Debug] post.status === undefined?:', post.status === undefined);
+console.log('🔍 [Status Debug] 投稿者:', post.userName);
+console.log('🔍 [Status Debug] 投稿日時:', new Date(post.timestamp).toLocaleString());
+
       return (
         <span 
           style={{
@@ -2477,6 +2485,12 @@ console.log('✅ [HomePage] データリフレッシュ完了:', processedPosts.
 useEffect(() => {
   const handleOpenReadByModal = (event: CustomEvent) => {
     const post = event.detail;
+    
+    // 🔍 デバッグ: readBy の実際の型と値を確認
+    console.log('🔍 [HomePage] post.readBy の型:', typeof post.readBy);
+    console.log('🔍 [HomePage] post.readBy の値:', post.readBy);
+    console.log('🔍 [HomePage] Array.isArray?:', Array.isArray(post.readBy));
+    
     setSelectedPostForReadBy(post);
     setReadByModalOpen(true);
   };
