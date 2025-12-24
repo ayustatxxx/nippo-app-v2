@@ -2335,7 +2335,6 @@ console.log(`✅ 高速データロード完了: ${Math.round(endTime - startTim
   };
   
   loadDataFast();
-
   
   return () => {
     isMounted = false;
