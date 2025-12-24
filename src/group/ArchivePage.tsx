@@ -2644,10 +2644,10 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
       
       const postRef = doc(db, 'posts', postId);
       await updateDoc(postRef, {
-        status: newStatus,
-        statusUpdatedAt: Date.now(),
-        statusUpdatedBy: currentUserId
-      });
+  [`statusByUser.${currentUserId}`]: newStatus,  
+  statusUpdatedAt: Date.now(),
+  statusUpdatedBy: currentUserId
+});
       
       console.log('✅ [ArchivePage] Firestore更新完了:', postId, newStatus);
 
@@ -2683,11 +2683,14 @@ console.log('🔄 [ArchivePage] ステータス更新 - メモリキャッシュ
   
   // ステータス更新と既読情報の同期
   const updatedPost = {
-    ...post,
-    status: newStatus as '未確認' | '確認済み',
-    statusUpdatedAt: Date.now(),
-    statusUpdatedBy: currentUserId
-  };
+  ...post,
+  statusByUser: {
+    ...post.statusByUser,
+    [currentUserId]: newStatus
+  },
+  statusUpdatedAt: Date.now(),
+  statusUpdatedBy: currentUserId
+};
   
   // 既読情報も更新
   if (newStatus === '確認済み') {
@@ -2703,26 +2706,12 @@ console.log('🔄 [ArchivePage] ステータス更新 - メモリキャッシュ
 });
     
     setPosts(updatedPosts);
-   setFilteredPosts(filteredPosts.map(post => {
+   setFilteredPosts(prevFiltered => prevFiltered.map(post => {
   if (post.id !== postId) return post;
   
-  // updatedPostsと同じロジックで更新
-  const updatedPost = {
-    ...post,
-    status: newStatus as '未確認' | '確認済み',
-    statusUpdatedAt: Date.now(),
-    statusUpdatedBy: currentUserId
-  };
-  
-  // 既読情報も更新
-  if (newStatus === '確認済み') {
-    updatedPost.readBy = { ...(post.readBy || {}), [currentUserId]: Date.now() };
-  } else if (newStatus === '未確認' && post.readBy?.[currentUserId]) {
-    const { [currentUserId]: removed, ...remainingReadBy } = post.readBy;
-    updatedPost.readBy = remainingReadBy;
-  }
-  
-  return updatedPost;
+  // updatedPostsから更新済みのpostを取得
+  const updated = updatedPosts.find(p => p.id === postId);
+  return updated || post;
 }));
   
     
