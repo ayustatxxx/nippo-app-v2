@@ -215,7 +215,8 @@ export interface Post {
   editedAt?: number;
   
   // ステータス管理
-  status: PostStatus;
+  status?: PostStatus;  // 🔄 後方互換性のため残す（オプショナルに変更）
+  statusByUser?: { [userId: string]: string };  // 🆕 ユーザーごとのステータス
   statusUpdatedAt?: number;
   statusUpdatedBy?: string;
   statusUpdatedByName?: string;

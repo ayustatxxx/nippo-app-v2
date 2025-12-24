@@ -274,7 +274,8 @@ console.log('  - images枚数:', data.images?.length || 0);
         username: displayName,
         groupId: data.groupId || groupId,
         status: data.status || '未確認',
-        isWorkTimePost: data.tags?.includes('#出退勤時間') &&
+statusByUser: data.statusByUser || {},  // 🆕 ユーザーごとのステータス
+isWorkTimePost: data.tags?.includes('#出退勤時間') &&
                 data.tags?.includes('#チェックイン') &&
                 data.tags?.includes('#チェックアウト'),
         isEdited: data.isEdited === true,
@@ -516,7 +517,7 @@ export const updatePostStatus = async (groupId: string, postId: string, status: 
         const docSnap = await getDoc(postRef);
         if (docSnap.exists()) {
           await updateDoc(postRef, {
-            status: status,
+            [`statusByUser.${userId}`]: status,  // 🔄 ユーザーごとに保存
             statusUpdatedAt: Date.now(),
             statusUpdatedBy: userId,
             statusUpdatedByName: userName

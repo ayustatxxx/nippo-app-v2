@@ -5,6 +5,7 @@ import * as html2pdflib from 'html2pdf.js';
 import { Post, Memo } from '../types';
 import MemoModal, { MemoDisplay } from '../components/MemoModal';
 import ImageGalleryModal from '../components/ImageGalleryModal';
+import ReadByModal from '../components/ReadByModal'; 
 import { getGroupPosts, markPostAsRead, removePostAsRead, getPostReadStatus } from "../utils/firestoreService";
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 import { DisplayNameResolver } from '../utils/displayNameResolver';  
@@ -480,7 +481,8 @@ if (post.tags?.includes('#出退勤時間')) {
 if (readStatus.isAuthor) {
       // 投稿者の場合：背景に適応した既読カウント表示
       return (
-        <div style={{
+        <div 
+          style={{
           display: 'flex',
           alignItems: 'center',
           gap: '0.4rem',
@@ -490,7 +492,8 @@ if (readStatus.isAuthor) {
           fontSize: '0.75rem',
           color: '#ffffff', // 白文字でコントラスト確保
           fontWeight: '500',
-          backdropFilter: 'blur(4px)' // 背景ぼかしで可読性向上
+          backdropFilter: 'blur(4px)', // 背景ぼかしで可読性向上
+cursor: 'pointer'  // 🆕 クリック可能を示すカーソル
         }}>
           <div style={{
             width: '16px',
@@ -635,14 +638,15 @@ const useClickOutside = (
 // 検索スコア計算関数（優先度付き検索）
 // 検索スコア計算関数（AND検索対応版）
 const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
   let totalScore = 0;
-  let matchedKeywords = 0; // ★ 追加：マッチしたキーワード数をカウント
+  let matchedKeywords = 0;
   
   keywords.forEach(keyword => {
     let score = 0;
     const message = post.message.toLowerCase();
     const username = (post.username || '').toLowerCase();
-    const status = (post.status || '未確認').toLowerCase();
+    const status = (post.statusByUser?.[currentUserId] || '未確認').toLowerCase();
     
     // メモの処理
     const memoTexts: string[] = [];
@@ -831,6 +835,8 @@ const fetchedUser = await getUser(userId);
 // ⭐ 新着チェック用のState ⭐
 const [hasNewPosts, setHasNewPosts] = useState(false);
 const [justDeleted, setJustDeleted] = useState(false); // ← 追加
+const [readByModalOpen, setReadByModalOpen] = useState(false);
+const [selectedPostReadBy, setSelectedPostReadBy] = useState<{ [userId: string]: number }>({});
 const [latestPostTime, setLatestPostTime] = useState<number>(() => {
   const saved = localStorage.getItem(`latestPostTime_${groupId}`);
   console.log('🔄 [ArchivePage] latestPostTime初期化:', {
@@ -1987,6 +1993,7 @@ const countSearchResults = async (
     const tagKeywords = keywords.filter(k => k.startsWith('#')).map(k => k.substring(1));
     
     const matchedPosts = allPosts.filter(post => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
       // タグ検索
       if (tagKeywords.length > 0) {
         const hasAllTags = tagKeywords.every(keyword =>
@@ -1999,7 +2006,7 @@ const countSearchResults = async (
       if (textKeywords.length > 0) {
         const message = (post.message || '').toLowerCase();
         const username = (post.username || '').toLowerCase();
-        const status = (post.status || '未確認').toLowerCase();
+        const status = (post.statusByUser?.[currentUserId] || '未確認').toLowerCase();
         const memoContent = (post as any).memos 
           ? (post as any).memos.map((memo: any) => memo.content).join(' ').toLowerCase()
           : '';
@@ -2138,14 +2145,15 @@ const countSearchResults = async (
         
         console.log('🔍 [検索デバッグ] テキスト検索を開始します');
         
-        let textFiltered = allPosts.filter((post) => {
-          console.log('🔍 [検索デバッグ] 投稿', post.id + ':');
+       let textFiltered = allPosts.filter((post) => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
+  console.log('🔍 [検索デバッグ] 投稿', post.id + ':');
           
           const message = post.message.toLowerCase();
           const username = (post.username || '').toLowerCase();
           
-          const status = (post.status || '未確認').toLowerCase();
-          console.log('🔍 [検索デバッグ] ステータス:', post.status);
+          const status = (post.statusByUser?.[currentUserId] || '未確認').toLowerCase();
+          console.log('🔍 [検索デバッグ] ステータス:', post.statusByUser?.[currentUserId]);
           
           const memoContent = (post as PostWithMemos).memos 
             ? (post as PostWithMemos).memos!.map(memo => `${memo.content}`).join(' ').toLowerCase()
@@ -4362,6 +4370,7 @@ if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'objec
         </h3>
 
         {postsForDate.map((post) => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
   // デバッグ: isWorkTimePostの値を確認
   if (post.tags?.includes('#出退勤時間')) {
     console.log('🔍 [ArchivePage レンダリング判定]', {
@@ -4753,7 +4762,12 @@ if (post.tags?.includes('#出退勤時間')) {
 if (readStatus.isAuthor) {
       // 投稿者の場合：既読カウント表示
       return (
-        <div style={{
+        <div 
+          onClick={() => {
+            setSelectedPostReadBy(post.readBy || {});
+            setReadByModalOpen(true);
+          }}
+          style={{
           display: 'flex',
           alignItems: 'center',
           gap: '0.4rem',
@@ -4762,7 +4776,8 @@ if (readStatus.isAuthor) {
           borderRadius: '20px',
           fontSize: '0.75rem',
           color: 'white',
-          fontWeight: '500'
+          fontWeight: '500',
+          cursor: 'pointer'  // 🆕 クリック可能を示すカーソル
         }}>
           <div style={{
   width: '16px',
@@ -4778,11 +4793,6 @@ if (readStatus.isAuthor) {
 }}>
   {(() => {
     const readCount = Object.keys(post.readBy || {}).length;
-    console.log('📊 [既読数デバッグ] 投稿ID:', post.id);
-console.log('📊 [既読数デバッグ] readBy:', post.readBy);
-console.log('📊 [既読数デバッグ] readCount:', readCount);
-console.log('📊 [既読数デバッグ] 現在のユーザー:', currentUserId);
-console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
     return readCount;
   })()}
 </div>
@@ -4793,7 +4803,7 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
       // 投稿者以外の場合：従来のステータスポップアップを復活
       return (
         <span 
-          style={getContainerStatusStyle(post.status || '未確認')} onClick={async (e) => {
+          style={getContainerStatusStyle(post.statusByUser?.[currentUserId] || '未確認')} onClick={async (e) => {
             e.preventDefault();
             e.stopPropagation();
             
@@ -4817,7 +4827,7 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
           onMouseEnter={(e) => e.currentTarget.style.opacity = '0.6'}
           onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
         >
-          {post.status || '未確認'}
+         {post.statusByUser?.[currentUserId] || '未確認'}
         </span>
       );
     }
@@ -5452,7 +5462,11 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
   onSave={handleSaveMemo}
 />
 
-
+<ReadByModal
+  isOpen={readByModalOpen}
+  onClose={() => setReadByModalOpen(false)}
+  readBy={selectedPostReadBy}
+/>
 
 
 {/* 投稿詳細モーダル */}

@@ -705,12 +705,6 @@ onImageClick(url, imageArray, index);
     return null;
   }
   
-  // 🔍 ステータスのデバッグ
-console.log('🔍 [Status Debug] 投稿ID:', post.id);
-console.log('🔍 [Status Debug] post.status の値:', post.status);
-console.log('🔍 [Status Debug] post.status === undefined?:', post.status === undefined);
-console.log('🔍 [Status Debug] 投稿者:', post.userName);
-console.log('🔍 [Status Debug] 投稿日時:', new Date(post.timestamp).toLocaleString());
 
       return (
         <span 
@@ -723,7 +717,7 @@ console.log('🔍 [Status Debug] 投稿日時:', new Date(post.timestamp).toLoca
             transition: 'opacity 0.2s',
             border: 'none',
             outline: 'none',
-            backgroundColor: (post.status || '未確認') === '確認済み' ? '#1f5b91' : '#ff6b6b',  // ← ここを条件分岐に変更
+            backgroundColor: (post.statusByUser?.[currentUserId] || '未確認') === '確認済み' ? '#1f5b91' : '#ff6b6b',
             color: 'white'
           }}
           onClick={async (e) => {
@@ -760,7 +754,7 @@ console.log('🔍 [Status Debug] 投稿日時:', new Date(post.timestamp).toLoca
           onMouseEnter={(e) => e.currentTarget.style.opacity = '0.6'}
           onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
         >
-          {post.status || '未確認'}
+        {post.statusByUser?.[currentUserId] || '未確認'}
         </span>
       );
     }
@@ -796,7 +790,9 @@ console.log('🔍 [Status Debug] 投稿日時:', new Date(post.timestamp).toLoca
 </div>
 
       {/* ★ ステータス選択モーダル ★ */}
-      {selectedPostForStatus === post.id && (
+      {selectedPostForStatus === post.id && (() => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";
+  return (
         <div
           style={{
             position: 'fixed',
@@ -855,12 +851,12 @@ console.log('🔍 [Status Debug] 投稿日時:', new Date(post.timestamp).toLoca
                     color: 'white',
                     textAlign: 'center',
                     width: '100%',
-                    opacity: (post.status || '未確認') === status ? 0.5 : 1
+                    opacity: (post.statusByUser?.[currentUserId] || '未確認') === status ? 0.5 : 1
                   }}
                   onMouseEnter={(e) => e.currentTarget.style.opacity = '0.6'}
                   onMouseLeave={(e) => {
-                    const currentStatus = post.status || '未確認';
-                    e.currentTarget.style.opacity = currentStatus === status ? '0.5' : '1';
+                    const currentStatus = post.statusByUser?.[currentUserId] || '未確認';
+                    opacity: (post.statusByUser?.[currentUserId] || '未確認') === status ? 0.5 : 1
                   }}
                 >
                   {status}
@@ -886,7 +882,7 @@ console.log('🔍 [Status Debug] 投稿日時:', new Date(post.timestamp).toLoca
             </button>
           </div>
         </div>
-      )}
+      )})()}
     </div>
   );
 };
@@ -1083,6 +1079,7 @@ const getMissingPostAlerts = async (groups: Group[]): Promise<AlertInfo[]> => {
 const calculateSearchScoreForHome = (item: TimelineItem, keywords: string[]): number => {
   let totalScore = 0;
   let matchedKeywords = 0;
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 この行を追加
   
   keywords.forEach(keyword => {
     let score = 0;
@@ -1105,7 +1102,7 @@ const calculateSearchScoreForHome = (item: TimelineItem, keywords: string[]): nu
     const post = item as Post;
     const message = post.message.toLowerCase();
     const username = (post.username || '').toLowerCase();
-    const status = (post.status || '未確認').toLowerCase();
+    const status = (post.statusByUser?.[currentUserId] || '未確認').toLowerCase();
     const groupName = (post.groupName || '').toLowerCase();
     
     // 1. タグ完全一致（5点）
@@ -2486,10 +2483,6 @@ useEffect(() => {
   const handleOpenReadByModal = (event: CustomEvent) => {
     const post = event.detail;
     
-    // 🔍 デバッグ: readBy の実際の型と値を確認
-    console.log('🔍 [HomePage] post.readBy の型:', typeof post.readBy);
-    console.log('🔍 [HomePage] post.readBy の値:', post.readBy);
-    console.log('🔍 [HomePage] Array.isArray?:', Array.isArray(post.readBy));
     
     setSelectedPostForReadBy(post);
     setReadByModalOpen(true);
@@ -2724,7 +2717,7 @@ const getContainerStatusStyle = (status: string) => {
       
       const postRef = doc(db, 'posts', postId);
       await updateDoc(postRef, {
-        status: newStatus,
+        [`statusByUser.${currentUserId}`]: newStatus,  // 🔄 ユーザーごとに保存
         statusUpdatedAt: Date.now(),
         statusUpdatedBy: currentUserId
       });
@@ -2746,10 +2739,13 @@ console.log('🔄 [HomePage] ステータス更新 - キャッシュクリア');
     // 2. ローカル状態を更新
     console.log('🔄 [HomePage] ローカル状態更新開始');
     
-    const updatedPosts = posts.map(post => 
+   const updatedPosts = posts.map(post => 
       post.id === postId ? { 
         ...post, 
-        status: newStatus as '未確認' | '確認済み',
+        statusByUser: {
+          ...post.statusByUser,
+          [currentUserId]: newStatus
+        },
         statusUpdatedAt: Date.now(),
         statusUpdatedBy: currentUserId
       } : post
@@ -2771,7 +2767,10 @@ console.log('🔄 [HomePage] ステータス更新 - キャッシュクリア');
       if (post.id === postId) {
         return {
           ...post,
-          status: newStatus as '未確認' | '確認済み',
+          statusByUser: {
+            ...post.statusByUser,
+            [currentUserId]: newStatus
+          },
           statusUpdatedAt: Date.now(),
           statusUpdatedBy: currentUserId
         };
