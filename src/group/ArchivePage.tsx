@@ -1984,9 +1984,9 @@ const countSearchResults = async (
     console.log('📊 [検索カウント] Firestoreから取得:', allPosts.length, '件');
     
     // キーワード検索を適用
-    if (!searchQuery) {
-      return allPosts.length;
-    }
+   if (!searchQuery && !startDate && !endDate) {
+  return allPosts.length;
+}
     
     const keywords = searchQuery.toLowerCase().split(/[\s,]+/).filter(Boolean);
     const textKeywords = keywords.filter(k => !k.startsWith('#'));
@@ -2084,8 +2084,14 @@ const countSearchResults = async (
         
         console.log('🔍 [検索デバッグ] テキストキーワード:', textKeywords);
         console.log('🔍 [検索デバッグ] タグキーワード:', tagKeywords);
-        
-        if (keywords.length === 0) {
+       console.log('🔍🔍🔍 [重要] searchQuery:', JSON.stringify(searchQuery), 'keywords.length:', keywords.length, 'keywords:', keywords);
+       console.log('🔍🔍🔍 [条件判定] keywords.length:', keywords.length, '型:', typeof keywords.length, '比較結果:', keywords.length === 0);
+
+if (keywords.length === 0) {
+          console.log('🎯🎯🎯 [デバッグ] キーワードなしブロックに入りました！');
+          console.log('🎯🎯🎯 [日付フィルター] startDate:', startDate, 'endDate:', endDate);
+          console.log('🎯🎯🎯 [日付フィルター] 全投稿数:', allPosts.length);
+
   // 検索クエリが空の場合、すべての投稿を表示
   const filtered = allPosts.filter(post => {
     try {
@@ -2093,15 +2099,26 @@ const countSearchResults = async (
       
       // ⭐ timestampまたはcreatedAtから日付を取得
       if (post.timestamp) {
-        postDate = new Date(post.timestamp);
-      } else if (post.createdAt) {
-        if (typeof post.createdAt === 'number') {
-          postDate = new Date(post.createdAt);
-        } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
-          postDate = (post.createdAt as any).toDate();
-        }
+  if (typeof post.timestamp === 'number') {
+    postDate = new Date(post.timestamp);
+  } else if (typeof (post.timestamp as any).toDate === 'function') {
+    postDate = (post.timestamp as any).toDate();
+  } else if ((post.timestamp as any).seconds) {
+    postDate = new Date((post.timestamp as any).seconds * 1000);
+  }
+} else if (post.createdAt) {
+  if (typeof post.createdAt === 'number') {
+    postDate = new Date(post.createdAt);
+  } else if (typeof (post.createdAt as any).toDate === 'function') {
+    postDate = (post.createdAt as any).toDate();
+  } else if ((post.createdAt as any).seconds) {
+    postDate = new Date((post.createdAt as any).seconds * 1000);
+  }
+
       }
       
+      console.log('📅 [デバッグ] postDate:', postDate, 'timestamp:', post.timestamp, 'createdAt:', post.createdAt);
+
       if (!postDate || isNaN(postDate.getTime())) {
         return true; // 日付が取得できない場合は表示する
       }
@@ -2113,6 +2130,8 @@ const countSearchResults = async (
         postDate.getDate()
       );
       
+      console.log('📅 [デバッグ] 日付比較:', { postDateOnly, startDateOnly: startDate ? new Date(startDate) : null, endDateOnly: endDate ? new Date(endDate) : null });
+
       if (startDate) {
         const start = new Date(startDate);
         const startDateOnly = new Date(
@@ -2128,7 +2147,8 @@ const countSearchResults = async (
         const endDateOnly = new Date(
           end.getFullYear(),
           end.getMonth(),
-          end.getDate()
+          end.getDate(),
+          23, 59, 59, 999
         );
         if (postDateOnly > endDateOnly) return false;
       }
@@ -2139,8 +2159,11 @@ const countSearchResults = async (
       return true;
     }
   });
+  console.log('🎯🎯🎯 [フィルター結果] filtered.length:', filtered.length);
   setFilteredPosts(filtered);
-  return;
+setSearchResultCount(filtered.length);  // ← 追加
+setIsCountingResults(false);            // ← 追加
+return;
 }
         
         console.log('🔍 [検索デバッグ] テキスト検索を開始します');
