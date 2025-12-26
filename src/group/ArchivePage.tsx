@@ -2085,12 +2085,9 @@ const countSearchResults = async (
         console.log('🔍 [検索デバッグ] テキストキーワード:', textKeywords);
         console.log('🔍 [検索デバッグ] タグキーワード:', tagKeywords);
        console.log('🔍🔍🔍 [重要] searchQuery:', JSON.stringify(searchQuery), 'keywords.length:', keywords.length, 'keywords:', keywords);
-       console.log('🔍🔍🔍 [条件判定] keywords.length:', keywords.length, '型:', typeof keywords.length, '比較結果:', keywords.length === 0);
+      
 
 if (keywords.length === 0) {
-          console.log('🎯🎯🎯 [デバッグ] キーワードなしブロックに入りました！');
-          console.log('🎯🎯🎯 [日付フィルター] startDate:', startDate, 'endDate:', endDate);
-          console.log('🎯🎯🎯 [日付フィルター] 全投稿数:', allPosts.length);
 
   // 検索クエリが空の場合、すべての投稿を表示
   const filtered = allPosts.filter(post => {
@@ -2117,7 +2114,6 @@ if (keywords.length === 0) {
 
       }
       
-      console.log('📅 [デバッグ] postDate:', postDate, 'timestamp:', post.timestamp, 'createdAt:', post.createdAt);
 
       if (!postDate || isNaN(postDate.getTime())) {
         return true; // 日付が取得できない場合は表示する
@@ -2130,7 +2126,6 @@ if (keywords.length === 0) {
         postDate.getDate()
       );
       
-      console.log('📅 [デバッグ] 日付比較:', { postDateOnly, startDateOnly: startDate ? new Date(startDate) : null, endDateOnly: endDate ? new Date(endDate) : null });
 
       if (startDate) {
         const start = new Date(startDate);
@@ -2159,7 +2154,6 @@ if (keywords.length === 0) {
       return true;
     }
   });
-  console.log('🎯🎯🎯 [フィルター結果] filtered.length:', filtered.length);
   setFilteredPosts(filtered);
 setSearchResultCount(filtered.length);  // ← 追加
 setIsCountingResults(false);            // ← 追加
