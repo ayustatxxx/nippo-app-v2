@@ -250,9 +250,9 @@ const ImageGalleryModal: React.FC<ImageGalleryModalProps> = ({
     onClick={handlePrevious}
     style={{
       position: 'absolute',
-      left: '60px',
-      top: '0.1rem',
-      transform: 'none',
+      left: 'calc(50% - 60px)',
+top: 'calc(0.7rem - 7px)',
+transform: 'translateX(-100%)',
       background: 'rgba(0, 0, 0, 0.5)',
       border: 'none',
       color: 'white',
@@ -331,9 +331,9 @@ const ImageGalleryModal: React.FC<ImageGalleryModalProps> = ({
     onClick={handleNext}
     style={{
       position: 'absolute',
-      right: '60px',
-      top: '0.1rem',
-      transform: 'none',
+      left: 'calc(50% + 60px)',
+top: 'calc(0.7rem - 7px)',
+transform: 'none',
       background: 'rgba(0, 0, 0, 0.5)',
       border: 'none',
       color: 'white',
