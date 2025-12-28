@@ -1205,6 +1205,10 @@ const [selectedPostForReadBy, setSelectedPostForReadBy] = useState<Post | null>(
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');  
+  const [isSearchActive, setIsSearchActive] = useState(false);
+const [searchResultCount, setSearchResultCount] = useState<number | null>(null);  // ← 追加
+const [isCountingResults, setIsCountingResults] = useState(false);  // ← 追加
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   
@@ -2407,19 +2411,62 @@ console.log(`✅ [Home] リフレッシュ完了: ${allPosts.length}件の投稿
       console.error('❌ [Home] 投稿取得エラー:', error);
       allPosts = [];
     }
-        
-        const processedPosts = allPosts.map(post => {
-          const groupName = allGroups.find(g => g.id === (post as any).groupId)?.name || 'グループ名なし';
-          return { ...(post as any), groupName };
-        }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        
-       setPosts(processedPosts);
-setTimelineItems(processedPosts);
 
-// ✅ 新しいデータでフィルター適用
-applyFilters(processedPosts);
+    
+        
+       // ⭐ ここが新規追加部分：ユーザー名と写真を補完する処理 ⭐
+const enrichedPosts = await Promise.all(
+  allPosts.map(async (post) => {
+    try {
+      // ユーザー名を取得
+      let username = post.username || 'ユーザー';
+      if (post.authorId || post.userId || post.userID) {
+        const userId = post.authorId || post.userId || post.userID;
+        const displayName = await getDisplayNameSafe(userId);
+        if (displayName && displayName !== 'ユーザー') {
+          username = displayName;
+        }
+      }
+      
+      // 画像取得
+      const photos = post.photoUrls || [];
 
-console.log('✅ [HomePage] データリフレッシュ完了:', processedPosts.length, '件');
+      return {
+        ...post,
+        username,
+        photoUrls: photos,
+        images: photos
+      };
+    } catch (error) {
+      console.error('投稿データ補完エラー:', error);
+      return {
+        ...post,
+        username: post.username || 'ユーザー',
+        photoUrls: (post.photoUrls?.length > 0) ? post.photoUrls :
+               (post.images?.length > 0) ? post.images :
+               ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
+               ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
+               [],
+        images: (post.photoUrls?.length > 0) ? post.photoUrls :
+                (post.images?.length > 0) ? post.images :
+                ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
+                ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
+                []
+      };
+    }
+  })
+);
+
+console.log('✅ [Home] ユーザー名・写真マージ完了（リフレッシュ）:', enrichedPosts.length, '件');
+
+setPosts(enrichedPosts);
+setTimelineItems(enrichedPosts);
+
+// 新しいデータでフィルター適用
+applyFilters(enrichedPosts);
+
+console.log('✅ [HomePage] データリフレッシュ完了:', enrichedPosts.length, '件');
+
       } catch (error) {
         console.error('❌ [HomePage] データリフレッシュエラー:', error);
       } finally {
@@ -2581,7 +2628,10 @@ useEffect(() => {
     console.log('📏 スクロール位置:', scrollPosition, 'しきい値:', bottomThreshold);
     
     if (scrollPosition >= bottomThreshold) {
-      if (!isLoadingMore && hasMore && !loading) {
+      // 検索中かどうかをチェック
+      const isSearching = searchQuery.trim() !== '' || startDate !== '' || endDate !== '';
+      
+      if (!isLoadingMore && hasMore && !loading && !isSearching) {
         console.log('🔄 スクロール検知: 次のデータを自動読み込み');
         loadMorePosts();
       } else {
@@ -2592,7 +2642,7 @@ useEffect(() => {
   
   window.addEventListener('scroll', handleScroll);
   return () => window.removeEventListener('scroll', handleScroll);
-}, [isLoadingMore, hasMore, loading, loadMorePosts, posts]);  // ← 依存配列に追加
+}, [isLoadingMore, hasMore, loading, loadMorePosts, posts, searchQuery, startDate, endDate]);
 
 
   // ★ 認証されていない場合のリダイレクト（別のuseEffect） ★
@@ -2792,6 +2842,7 @@ const filterByDate = (date: string | null) => {
 };
 
 const filterByGroup = (groupId: string | null) => {
+  console.log('🔍 [HomePage] グループ選択:', groupId);
   setSelectedGroup(groupId);
 };
 
@@ -3031,13 +3082,389 @@ setTimeout(() => {
 }, 1000);
 }, [searchQuery, startDate, endDate, selectedDate, selectedGroup]);
 
+// 🔍 検索・フィルタリング処理
+  useEffect(() => {
+    console.log('🔥 [HomePage検索useEffect] 実行 - 条件:', {
+      searchQuery,
+      startDate,
+      endDate,
+      selectedGroup,
+      postsLength: posts.length
+    });
+    (async () => {
+      // ⭐ 初期化時（全て空 & posts未ロード）はスキップ
+      if (!searchQuery && !startDate && !endDate && !selectedGroup && posts.length === 0) {
+        console.log('⏭️ [HomePage検索] 初期化時のためスキップ');
+        return;
+      }
+      
+      console.log('🔍 [HomePage検索デバッグ] 検索開始:', searchQuery);
+ 
+  
+  // 🆕 検索条件がある場合、Firestoreから全件取得して検索
+  if (searchQuery || startDate || endDate || selectedGroup) {
+    setIsCountingResults(true);
+    setIsSearchActive(true);
+    
+    // 非同期処理で全件取得
+    (async () => {
+      try {
+        // 1. Firestoreから全投稿を取得
+        const userId = localStorage.getItem('daily-report-user-id') || '';
+        console.log('📥 [HomePage検索] Firestoreから全件取得開始...');
+        
+        const allGroups = await UnifiedCoreSystem.getUserGroups(userId).catch(() => []);
+        const userGroups = allGroups.filter(group => {
+          const isCreator = group.createdBy === userId || group.adminId === userId;
+          const isMember = group.members?.some(member => {
+            const memberId = typeof member === 'string' ? member : member.id;
+            return memberId === userId;
+          });
+          return isCreator || isMember;
+        });
+        
+        const groupIds = userGroups.map(g => g.id);
+        
+        const result = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
+          groupIds,
+          999  // 大きな数値で全件取得
+        );
+        
+        const allPosts = result;
+        console.log('📥 [HomePage検索] Firestoreから全件取得完了:', allPosts.length, '件');
+        
+        // ⭐ キーワード分割（ArchivePageと同じ）
+        const keywords = searchQuery
+          .toLowerCase()
+          .split(/[\s,]+/)
+          .filter(Boolean);
+        
+        const textKeywords = keywords.filter(k => !k.startsWith('#'));
+        const tagKeywords = keywords.filter(k => k.startsWith('#')).map(k => k.substring(1));
+        
+        console.log('🔍 [HomePage検索デバッグ] テキストキーワード:', textKeywords);
+        console.log('🔍 [HomePage検索デバッグ] タグキーワード:', tagKeywords);
+        
+        // ⭐ キーワード検索なしの場合（日付のみ）
+        if (keywords.length === 0) {
+          const filtered = allPosts.filter(post => {
+            try {
+              let postDate: Date | null = null;
+              
+              if (post.timestamp) {
+                if (typeof post.timestamp === 'number') {
+                  postDate = new Date(post.timestamp);
+                } else if (typeof (post.timestamp as any).toDate === 'function') {
+                  postDate = (post.timestamp as any).toDate();
+                } else if ((post.timestamp as any).seconds) {
+                  postDate = new Date((post.timestamp as any).seconds * 1000);
+                }
+              } else if (post.createdAt) {
+                if (typeof post.createdAt === 'number') {
+                  postDate = new Date(post.createdAt);
+                } else if (typeof (post.createdAt as any).toDate === 'function') {
+                  postDate = (post.createdAt as any).toDate();
+                } else if ((post.createdAt as any).seconds) {
+                  postDate = new Date((post.createdAt as any).seconds * 1000);
+                }
+              }
+              
+              if (!postDate || isNaN(postDate.getTime())) {
+                return true;
+              }
+              
+              const postDateOnly = new Date(
+                postDate.getFullYear(),
+                postDate.getMonth(),
+                postDate.getDate()
+              );
+              
+              if (startDate) {
+                const start = new Date(startDate);
+                const startDateOnly = new Date(
+                  start.getFullYear(),
+                  start.getMonth(),
+                  start.getDate()
+                );
+                if (postDateOnly < startDateOnly) return false;
+              }
+              
+              if (endDate) {
+                const end = new Date(endDate);
+                const endDateOnly = new Date(
+                  end.getFullYear(),
+                  end.getMonth(),
+                  end.getDate(),
+                  23, 59, 59, 999
+                );
+                if (postDateOnly > endDateOnly) return false;
+              }
+              
+              return true;
+            } catch (error) {
+              console.error('❌ 日付フィルターエラー:', error);
+              return true;
+            }
+          });
+          
+          // ⭐ ユーザー名・グループ名を追加（enrichment）
+          const enrichedFiltered = await Promise.all(
+            filtered.map(async (post) => {
+              try {
+                // ユーザー名を取得
+                let username = post.username || 'ユーザー';
+                if (post.authorId || post.userId || post.userID) {
+                  const userId = post.authorId || post.userId || post.userID;
+                  const displayName = await getDisplayNameSafe(userId);
+                  if (displayName && displayName !== 'ユーザー') {
+                    username = displayName;
+                  }
+                }
+                
+                // グループ名を取得
+                let groupName = post.groupName || '';
+                if (post.groupId && !groupName) {
+                  try {
+                    const { doc, getDoc, getFirestore } = await import('firebase/firestore');
+                    const db = getFirestore();
+                    const groupDoc = await getDoc(doc(db, 'groups', post.groupId));
+                    if (groupDoc.exists()) {
+                      groupName = groupDoc.data()?.name || '';
+                    }
+                  } catch (error) {
+                    console.error('グループ名取得エラー:', error);
+                  }
+                }
+                
+                return {
+                  ...post,
+                  username,
+                  groupName
+                };
+              } catch (error) {
+                console.error('ユーザー名取得エラー:', error);
+                return post;
+              }
+            })
+          );
+          
+          // ⭐ グループフィルターを適用
+          let finalFiltered = enrichedFiltered;
+          if (selectedGroup) {
+            finalFiltered = enrichedFiltered.filter(post => post.groupId === selectedGroup);
+            console.log('🔍 [HomePage検索] グループフィルター適用:', {
+              元の件数: enrichedFiltered.length,
+              絞り込み後: finalFiltered.length,
+              グループID: selectedGroup
+            });
+          }
+          
+          setFilteredItems(finalFiltered);
+          setSearchResultCount(finalFiltered.length);
+          setIsCountingResults(false);
+          console.log('📊 [HomePage検索結果・日付のみ] 総件数:', finalFiltered.length);
+          return;
+        }
+        
+        // ⭐ テキスト検索を開始（ArchivePageと同じ）
+        console.log('🔍 [HomePage検索デバッグ] テキスト検索を開始します');
+        
+        // ⭐ Promise.allを使って非同期処理を実行
+const resultsWithNames = await Promise.all(
+  allPosts.map(async (post) => {
+    const displayName = await getDisplayNameSafe(post.userId);
+    return { post, displayName };
+  })
+);
+
+let results = resultsWithNames.filter(({ post, displayName }) => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";
+  
+  // ⭐ 検索対象テキストにユーザー名を含める（ArchivePageと同じ）
+  const searchableText = `
+    ${post.message || ''} 
+    ${displayName}
+    ${post.groupName || ''}
+  `.toLowerCase().trim();
+  
+  const tags = (post.tags || []).join(' ').toLowerCase();
+  
+  const matchesText = textKeywords.every(
+    (keyword) => searchableText.includes(keyword) || tags.includes(keyword)
+  );
+  
+  const matchesTags = tagKeywords.every(
+    (keyword) => tags.includes(keyword)
+  );
+          
+         return matchesText && (tagKeywords.length === 0 || matchesTags);
+}).map(({ post }) => post);  // ⭐ postだけを取り出す
+        
+        console.log('🔍 [HomePage検索デバッグ] テキスト検索後の結果数:', results.length);
+        
+        // ⭐ 日付フィルター（ArchivePageと同じ）
+        if (startDate || endDate) {
+          console.log('📅 [HomePage日付フィルター] 開始:', {
+            startDate,
+            endDate,
+            投稿数: results.length
+          });
+          
+          results = results.filter(post => {
+            try {
+              let postDate: Date | null = null;
+              
+              if (post.timestamp) {
+                if (typeof post.timestamp === 'number') {
+                  postDate = new Date(post.timestamp);
+                } else if (post.timestamp && typeof (post.timestamp as any).toDate === 'function') {
+                  postDate = (post.timestamp as any).toDate();
+                } else {
+                  postDate = new Date(post.timestamp);
+                }
+              } else if (post.createdAt) {
+                if (typeof post.createdAt === 'number') {
+                  postDate = new Date(post.createdAt);
+                } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
+                  postDate = (post.createdAt as any).toDate();
+                } else {
+                  postDate = new Date();
+                }
+              }
+              
+              if (!postDate || isNaN(postDate.getTime())) {
+                return true;
+              }
+              
+              const postDateOnly = new Date(
+                postDate.getFullYear(),
+                postDate.getMonth(),
+                postDate.getDate()
+              );
+              
+              if (startDate) {
+                const startDateOnly = new Date(
+                  new Date(startDate).getFullYear(),
+                  new Date(startDate).getMonth(),
+                  new Date(startDate).getDate()
+                );
+                if (postDateOnly < startDateOnly) {
+                  return false;
+                }
+              }
+              
+              if (endDate) {
+                const endDateOnly = new Date(
+                  new Date(endDate).getFullYear(),
+                  new Date(endDate).getMonth(),
+                  new Date(endDate).getDate()
+                );
+                if (postDateOnly > endDateOnly) {
+                  return false;
+                }
+              }
+              
+              return true;
+            } catch (error) {
+              console.error('❌ 日付フィルターエラー:', error);
+              return true;
+            }
+          });
+          
+          console.log('✅ [HomePage日付フィルター] 完了:', { 残り投稿数: results.length });
+        }
+        console.log('🚀 [HomePage検索] enrichment処理開始 - 対象投稿数:', results.length);
+
+const enrichedTextResults = await Promise.all(
+  results.map(async (post) => {
+    try {
+      // ユーザー名を取得
+      let username = post.username || 'ユーザー';
+      if (post.authorId || post.userId || post.userID) {
+        const userId = post.authorId || post.userId || post.userID;
+        const displayName = await getDisplayNameSafe(userId);
+        if (displayName && displayName !== 'ユーザー') {
+          username = displayName;
+        }
+      }
+      
+      // グループ名を取得
+      let groupName = post.groupName || '';
+      if (post.groupId && !groupName) {
+  try {
+    const { doc, getDoc, getFirestore } = await import('firebase/firestore');
+    const db = getFirestore();
+    const groupDoc = await getDoc(doc(db, 'groups', post.groupId));
+    if (groupDoc.exists()) {
+      groupName = groupDoc.data()?.name || '';
+    }
+  } catch (error) {
+    console.error('グループ名取得エラー:', error);
+  }
+}
+      
+      return {
+        ...post,
+        username,
+        groupName
+      };
+            } catch (error) {
+              console.error('ユーザー名取得エラー:', error);
+              return post;
+            }
+          })
+        );
+
+        // ⭐ グループフィルターを適用
+        let finalResults = enrichedTextResults;
+        if (selectedGroup) {
+          finalResults = enrichedTextResults.filter(post => post.groupId === selectedGroup);
+          console.log('🔍 [HomePage検索] グループフィルター適用:', {
+            元の件数: enrichedTextResults.length,
+            絞り込み後: finalResults.length,
+            グループID: selectedGroup
+          });
+        }
+        
+        // ⭐ 検索結果を設定
+        setFilteredItems(finalResults);
+        setSearchResultCount(finalResults.length);
+        setIsCountingResults(false);
+        console.log('📊 [HomePage検索結果] 総件数:', finalResults.length);
+        
+      } catch (error) {
+        console.error('❌ [HomePage検索] 全件取得失敗:', error);
+        setIsCountingResults(false);
+      }
+    })();
+  } 
+  
+  // ⭐ 検索・フィルター実行時は表示件数をリセット
+  if (searchQuery || startDate || endDate || selectedGroup) {
+    setDisplayLimit(999);
+  } else {
+    setDisplayLimit(10);
+  }
+})();  // ← 追加: async即時実行関数の終了
+  }, [searchQuery, startDate, endDate, selectedGroup]);
 
 const resetFilters = () => {
   setSearchQuery('');
+  setSearchInput('');  // ⭐ 追加：input要素の値もクリア
   setStartDate('');
   setEndDate('');
   setSelectedDate(null);
   setSelectedGroup(null);
+  
+  // ⭐ 検索結果をクリアして元のデータに戻す
+  setFilteredItems(posts);
+  setSearchResultCount(null);
+  setIsSearchActive(false);
+  
+  // ⭐ 表示件数を初期値に戻す
+  setDisplayLimit(10);
+  
+  console.log('🔄 [HomePage] フィルターをクリア - 全投稿を表示:', posts.length);
 };
 
   const hasFilterConditions = selectedDate || selectedGroup || searchQuery || startDate || endDate;
@@ -3089,15 +3516,21 @@ const resetFilters = () => {
             maxWidth: 'calc(100% - 32px)',
           }}
           onClick={async () => {
-            console.log('🔄 [HomePage] 新着バナーをクリック - 再取得開始');
-            setHasNewPosts(false);
-            setLoading(true);
-            
-            // データ再取得
-            if (window.refreshHomePage) {
-              window.refreshHomePage();
-            }
-          }}
+  console.log('🔄 [HomePage] 新着バナーをクリック - 再取得開始');
+  setHasNewPosts(false);
+  
+  // ⭐ 最新投稿時刻を現在時刻に更新して、同じ投稿で再度バナーが表示されないようにする
+  const now = Date.now();
+  setLatestPostTime(now);
+  console.log('📝 [HomePage] 最新投稿時刻を更新:', new Date(now).toLocaleString('ja-JP'));
+  
+  setLoading(true);
+  
+  // データ再取得
+  if (window.refreshHomePage) {
+    window.refreshHomePage();
+  }
+}}
         >
           <span>新しい投稿があります。</span>
           <span>更新</span>
@@ -3207,27 +3640,40 @@ const resetFilters = () => {
                       </svg>
                     </div>
                     <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="キーワード・#タグで検索"
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        paddingLeft: '2.5rem',
-                        paddingRight: searchQuery ? '2.5rem' : '0.75rem',
-                        backgroundColor: 'rgba(0, 102, 114, 0.05)',
-                        color: 'rgb(0, 102, 114)',
-                        border: '1px solid rgba(0, 102, 114, 0.2)',
-                        borderRadius: '25px',
-                        fontSize: '1rem',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
-                    />
+  type="text"
+  value={searchInput}
+  onChange={(e) => {
+    setSearchInput(e.target.value);
+  }}
+  onKeyDown={(e) => {
+    if (e.key === 'Enter') {
+      setSearchQuery(searchInput);
+      setIsSearchActive(true);
+    }
+  }}
+  placeholder="キーワード・#タグで検索"
+  style={{
+    width: '100%',
+    padding: '0.75rem',
+    paddingLeft: '2.5rem',
+    paddingRight: searchQuery ? '2.5rem' : '0.75rem',
+    backgroundColor: 'rgba(0, 102, 114, 0.05)',
+    color: 'rgb(0, 102, 114)',
+    border: '1px solid rgba(0, 102, 114, 0.2)',
+    borderRadius: '25px',
+    fontSize: '1rem',
+    outline: 'none',
+    boxSizing: 'border-box',
+  }}
+/>
                     {searchQuery && (
-                      <button
-                        onClick={() => setSearchQuery('')}
+  <button
+    onClick={() => {
+      setSearchQuery('');
+      setSearchInput('');
+      setStartDate(null);
+      setEndDate(null);
+    }}
                         style={{
                           position: 'absolute',
                           right: '10px',
