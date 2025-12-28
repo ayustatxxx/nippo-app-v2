@@ -3513,7 +3513,8 @@ const resetFilters = () => {
             gap: '8px',
             fontSize: '0.9rem',
             fontWeight: '500',
-            maxWidth: 'calc(100% - 32px)',
+            maxWidth: '90%',
+            whiteSpace: 'nowrap',
           }}
           onClick={async () => {
   console.log('🔄 [HomePage] 新着バナーをクリック - 再取得開始');
