@@ -448,16 +448,16 @@ const getJapaneseErrorMessage = (error: string) => {
   src="/myquest-logo.png"
   alt="MYQUEST"
   style={{
-    width: "250px",
+    width: "240px",
     height: "auto",
-    margin: "25px 0 0 0",  // 上 右 下 左 の順
+    margin: "20px 0 0 0",  // 上 右 下 左 の順
   }}
 />
           <p
             style={{
               color: "#ffffff99",
               marginTop: "1.5rem",
-              marginBottom: "-1.5rem",
+              marginBottom: "-2.0rem",
             }}
           >
             {isLogin
