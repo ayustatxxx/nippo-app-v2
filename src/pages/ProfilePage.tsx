@@ -440,9 +440,9 @@ const handleLogout = () => {
         `}
       </style>
       <Header 
-        title="NIPPO" 
-        showBackButton={false}
-      />
+  title="MYQUEST"  // ← NIPPOをMYQUESTに変更
+  showBackButton={false}
+/>
       <div style={{ 
         maxWidth: '480px', 
         margin: '0 auto',

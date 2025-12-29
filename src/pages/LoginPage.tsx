@@ -444,21 +444,21 @@ const getJapaneseErrorMessage = (error: string) => {
             borderBottom: "1px solid #2a2a3d",
           }}
         >
-          <h1
-            style={{
-              fontSize: "2rem",
-              color: "#F0DB4F",
-              margin: 0,
-              fontWeight: "bold",
-            }}
-          >
-            NIPPO
-          </h1>
+         <img
+  src="/myquest-logo.png"
+  alt="MYQUEST"
+  style={{
+    width: "250px",
+    height: "auto",
+    marginTop: "30px",  
+    margin: 0,
+  }}
+/>
           <p
             style={{
               color: "#ffffff99",
-              marginTop: "2.5rem",
-              marginBottom: "-0.5rem",
+              marginTop: "1.5rem",
+              marginBottom: "-1.0rem",
             }}
           >
             {isLogin
