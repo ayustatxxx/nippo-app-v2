@@ -444,14 +444,13 @@ const getJapaneseErrorMessage = (error: string) => {
             borderBottom: "1px solid #2a2a3d",
           }}
         >
-         <img
+        <img
   src="/myquest-logo.png"
   alt="MYQUEST"
   style={{
     width: "250px",
     height: "auto",
-    marginTop: "30px",  
-    margin: 0,
+    margin: "30px 0 0 0",  // 上 右 下 左 の順
   }}
 />
           <p
