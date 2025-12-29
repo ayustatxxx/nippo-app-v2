@@ -450,18 +450,18 @@ const getJapaneseErrorMessage = (error: string) => {
   style={{
     width: "250px",
     height: "auto",
-    margin: "30px 0 0 0",  // 上 右 下 左 の順
+    margin: "25px 0 0 0",  // 上 右 下 左 の順
   }}
 />
           <p
             style={{
               color: "#ffffff99",
               marginTop: "1.5rem",
-              marginBottom: "-1.0rem",
+              marginBottom: "-1.5rem",
             }}
           >
             {isLogin
-              ? "アカウントにログインして始めましょう"
+              ? "ログインして始めましょう！"
               : "新しいアカウントを作成しましょう"}
           </p>
         </div>
@@ -581,14 +581,14 @@ const getJapaneseErrorMessage = (error: string) => {
           </div>
 
           {/* Password field */}
-          <div style={{ marginBottom: "1.5rem" }}>
+          <div style={{ marginBottom: "1rem" }}>
             <label
               htmlFor="password"
               style={{
                 display: "block",
                 marginBottom: "0.5rem",
                 color: "#fff",
-                fontSize: "0.9rem",
+                fontSize: "1rem",
                 fontWeight: "500",
               }}
             >
@@ -618,7 +618,7 @@ const getJapaneseErrorMessage = (error: string) => {
             style={{
               display: "flex",
               alignItems: "center",
-              marginBottom: "2rem",
+              marginBottom: "1.8rem",
             }}
           >
             <input
@@ -718,7 +718,7 @@ const getJapaneseErrorMessage = (error: string) => {
             style={{
               display: "flex",
               alignItems: "center",
-              marginBottom: "1.5rem",
+              marginBottom: "1rem",
             }}
           >
             <div
