@@ -3887,12 +3887,19 @@ setGalleryOpen(true);
     setSearchInput(e.target.value);  // 入力中の値を更新
   }}
   onKeyDown={(e) => {
-    if (e.key === 'Enter') {
-      setSearchQuery(searchInput);  // Enterキーで検索実行
-      setIsSearchActive(true);
-    }
-  }}
-  placeholder="キーワード・#タグで検索"
+  if (e.key === 'Enter') {
+    setSearchQuery(searchInput);
+    setIsSearchActive(true);
+  }
+}}
+onBlur={() => {
+  // スマホの「完了」ボタン対応：フォーカスが外れたときに検索実行
+  if (searchInput !== searchQuery) {
+    setSearchQuery(searchInput);
+    setIsSearchActive(true);
+  }
+}}
+placeholder="キーワード・#タグで検索"
   className="search-input"
   style={{
     flex: 1,

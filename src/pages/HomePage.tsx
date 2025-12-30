@@ -3647,12 +3647,19 @@ const resetFilters = () => {
     setSearchInput(e.target.value);
   }}
   onKeyDown={(e) => {
-    if (e.key === 'Enter') {
-      setSearchQuery(searchInput);
-      setIsSearchActive(true);
-    }
-  }}
-  placeholder="キーワード・#タグで検索"
+  if (e.key === 'Enter') {
+    setSearchQuery(searchInput);
+    setIsSearchActive(true);
+  }
+}}
+onBlur={() => {
+  // スマホの「完了」ボタン対応：フォーカスが外れたときに検索実行
+  if (searchInput !== searchQuery) {
+    setSearchQuery(searchInput);
+    setIsSearchActive(true);
+  }
+}}
+placeholder="キーワード・#タグで検索"
   style={{
     width: '100%',
     padding: '0.75rem',
