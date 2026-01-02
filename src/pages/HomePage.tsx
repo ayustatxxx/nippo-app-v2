@@ -1796,11 +1796,24 @@ if (memos.length === 0) {
 const handleViewPostDetails = async (postId: string, groupId: string) => {
   console.log('🔍 [HomePage] 投稿詳細を開く:', postId);
   
-  const targetPost = posts.find(post => post.id === postId);
-  if (!targetPost) {
-    console.error('❌ [HomePage] 投稿が見つかりません:', postId);
+  let targetPost = posts.find(post => post.id === postId);
+
+// 🌟 postsになければFirestoreから直接取得
+if (!targetPost) {
+  console.log('📥 [HomePage] postsにないため、Firestoreから取得します:', postId);
+  try {
+    const userId = localStorage.getItem('daily-report-user-id') || '';
+      targetPost = await UnifiedCoreSystem.getPost(postId, userId);
+    if (!targetPost) {
+      console.error('❌ [HomePage] Firestoreにも投稿が見つかりません:', postId);
+      return;
+    }
+    console.log('✅ [HomePage] Firestoreから投稿を取得しました:', targetPost.id);
+  } catch (error) {
+    console.error('❌ [HomePage] Firestore取得エラー:', error);
     return;
   }
+}
   
   // 🌟 メモをまだ取得していない、または空の場合のみ取得
   const needsFetchMemos = !targetPost.memos || targetPost.memos.length === 0;
