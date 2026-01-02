@@ -1159,6 +1159,29 @@ const calculateSearchScoreForHome = (item: TimelineItem, keywords: string[]): nu
     if (status.includes(keyword)) {
       score += 1;
     }
+
+    // 11. メモ内容一致（2点） ← ここから追加
+    if (post.memos && post.memos.length > 0) {
+     const memoTexts = post.memos
+  .map(memo => {
+    const content = memo.content.toLowerCase();
+    const tags = (memo.tags || []).join(' ').toLowerCase();
+    return `${content} ${tags}`;
+  })
+  .join(' ');
+      
+      console.log('🔍 [検索デバッグ] メモ検索:', {
+        postId: post.id,
+        keyword: keyword,
+        memosCount: post.memos.length,
+        memoTexts: memoTexts,
+        includes: memoTexts.includes(keyword)
+      });
+      
+      if (memoTexts.includes(keyword)) {
+        score += 2;
+      }
+    }
     
     if (score > 0) {
       matchedKeywords++;
@@ -3146,6 +3169,25 @@ setTimeout(() => {
         const allPosts = result;
         console.log('📥 [HomePage検索] Firestoreから全件取得完了:', allPosts.length, '件');
         
+        // 🌟 全投稿のメモを取得
+        console.log('📝 [HomePage検索] メモを取得中...');
+        const postsWithMemos = await Promise.all(
+          allPosts.map(async (post) => {
+            try {
+              const memos = await MemoService.getPostMemosForUser(post.id, userId);
+              return {
+                ...post,
+                memos: memos
+              };
+            } catch (error) {
+              console.error('メモ取得エラー:', post.id, error);
+              return post;
+            }
+          })
+        );
+        console.log('✅ [HomePage検索] メモ取得完了');
+        
+        
         // ⭐ キーワード分割（ArchivePageと同じ）
         const keywords = searchQuery
           .toLowerCase()
@@ -3160,7 +3202,7 @@ setTimeout(() => {
         
         // ⭐ キーワード検索なしの場合（日付のみ）
         if (keywords.length === 0) {
-          const filtered = allPosts.filter(post => {
+          const filtered = postsWithMemos.filter(post => {
             try {
               let postDate: Date | null = null;
               
@@ -3284,34 +3326,28 @@ setTimeout(() => {
         
         // ⭐ Promise.allを使って非同期処理を実行
 const resultsWithNames = await Promise.all(
-  allPosts.map(async (post) => {
+  postsWithMemos.map(async (post) => {
     const displayName = await getDisplayNameSafe(post.userId);
     return { post, displayName };
   })
 );
 
-let results = resultsWithNames.filter(({ post, displayName }) => {
-  const currentUserId = localStorage.getItem("daily-report-user-id") || "";
-  
-  // ⭐ 検索対象テキストにユーザー名を含める（ArchivePageと同じ）
-  const searchableText = `
-    ${post.message || ''} 
-    ${displayName}
-    ${post.groupName || ''}
-  `.toLowerCase().trim();
-  
-  const tags = (post.tags || []).join(' ').toLowerCase();
-  
-  const matchesText = textKeywords.every(
-    (keyword) => searchableText.includes(keyword) || tags.includes(keyword)
-  );
-  
-  const matchesTags = tagKeywords.every(
-    (keyword) => tags.includes(keyword)
-  );
-          
-         return matchesText && (tagKeywords.length === 0 || matchesTags);
-}).map(({ post }) => post);  // ⭐ postだけを取り出す
+let results = resultsWithNames
+  .map(({ post, displayName }) => {
+    // ユーザー名を投稿に追加
+    const postWithUsername = {
+      ...post,
+      username: displayName
+    };
+    
+    // スコアを計算（メモ検索も含む）
+    const score = calculateSearchScoreForHome(postWithUsername, keywords);
+    
+    return { post: postWithUsername, score };
+  })
+  .filter(({ score }) => score > 0)  // スコアが0より大きいものだけ
+  .sort((a, b) => b.score - a.score)  // スコア順にソート
+  .map(({ post }) => post);  // postだけを取り出す
         
         console.log('🔍 [HomePage検索デバッグ] テキスト検索後の結果数:', results.length);
         
