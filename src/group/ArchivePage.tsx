@@ -635,7 +635,6 @@ const useClickOutside = (
 };
 
 
-// 検索スコア計算関数（優先度付き検索）
 // 検索スコア計算関数（AND検索対応版）
 const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number => {
   const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
@@ -649,20 +648,18 @@ const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number =
     const status = (post.statusByUser?.[currentUserId] || '未確認').toLowerCase();
     
     // メモの処理
-    const memoTexts: string[] = [];
-    const memoTags: string[] = [];
-    
-    if (post.memos) {
-      post.memos.forEach(memo => {
-        const memoContent = memo.content || '';
-        const hashTags = memoContent.match(/#[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+/g) || [];
-        memoTags.push(...hashTags);
-        const textWithoutTags = memoContent.replace(/#[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+/g, '').trim();
-        if (textWithoutTags) {
-          memoTexts.push(textWithoutTags);
-        }
-      });
-    }
+const memoTexts: string[] = [];
+
+
+if (post.memos) {
+  post.memos.forEach(memo => {
+    const content = memo.content.toLowerCase();
+    const tags = ((memo as any).tags || []).join(' ').toLowerCase();
+    const combined = `${content} ${tags}`;
+    console.log('🔍 [メモ統合]:', { content, tags, combined });
+    memoTexts.push(combined);
+  });
+}
     
     const memoTextContent = memoTexts.join(' ').toLowerCase();
     
@@ -673,12 +670,12 @@ const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number =
       score += 5;
     }
     
-    // 2. メモタグ完全一致（5点）
-    if (memoTags.some(tag => 
-      tag.replace(/^#/, '').toLowerCase() === keyword
-    )) {
-      score += 5;
-    }
+    // 2. メモタグ完全一致（5点）← 削除（メモのテキストとタグを統合したため）
+    // if (memoTags.some(tag => 
+    //   tag.replace(/^#/, '').toLowerCase() === keyword
+    // )) {
+    //   score += 5;
+    // }
     
     // 3. 投稿タグ部分一致（3点）
     if (post.tags?.some(tag => 
@@ -688,13 +685,14 @@ const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number =
       score += 3;
     }
     
-    // 4. メモタグ部分一致（3点）
-    if (memoTags.some(tag => 
-      tag.replace(/^#/, '').toLowerCase().includes(keyword) &&
-      tag.replace(/^#/, '').toLowerCase() !== keyword
-    )) {
-      score += 3;
-    }
+    // 4. メモタグ部分一致（3点）← 削除（メモのテキストとタグを統合したため）
+    // if (memoTags.some(tag => 
+    //   tag.replace(/^#/, '').toLowerCase().includes(keyword) &&
+    //   tag.replace(/^#/, '').toLowerCase() !== keyword
+    // )) {
+    //   score += 3;
+    // }
+   
     
     // 5. ユーザー名完全一致（4点）
     if (username === keyword) {
@@ -2073,8 +2071,26 @@ const countSearchResults = async (
         const allPosts = result.posts;
         console.log('📥 [検索] Firestoreから全件取得完了:', allPosts.length, '件');
         
+        // 🌟 全投稿のメモを取得
+        console.log('📝 [ArchivePage検索] メモを取得中...');
+        const postsWithMemos = await Promise.all(
+          allPosts.map(async (post) => {
+            try {
+              const memos = await MemoService.getPostMemosForUser(post.id, userId);
+              return {
+                ...post,
+                memos: memos
+              };
+            } catch (error) {
+              console.error('メモ取得エラー:', post.id, error);
+              return post;
+            }
+          })
+        );
+        console.log('✅ [ArchivePage検索] メモ取得完了');
+        
         // 2. postsを更新（これでクライアント検索が全件を対象にできる）
-        setPosts(allPosts);
+        setPosts(postsWithMemos);
         
          // 3. カウント取得（クライアント検索の結果を使用）
         // countSearchResults は username を持っていないため使用しない
@@ -2102,7 +2118,7 @@ const countSearchResults = async (
 if (keywords.length === 0) {
 
   // 検索クエリが空の場合、すべての投稿を表示
-  const filtered = allPosts.filter(post => {
+  const filtered = postsWithMemos.filter(post => {
     try {
       let postDate: Date | null = null;
       
@@ -2174,7 +2190,7 @@ return;
         
         console.log('🔍 [検索デバッグ] テキスト検索を開始します');
         
-       let textFiltered = allPosts.filter((post) => {
+       let textFiltered = postsWithMemos.filter((post) => {
   const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
   console.log('🔍 [検索デバッグ] 投稿', post.id + ':');
           
@@ -2185,8 +2201,12 @@ return;
           console.log('🔍 [検索デバッグ] ステータス:', post.statusByUser?.[currentUserId]);
           
           const memoContent = (post as PostWithMemos).memos 
-            ? (post as PostWithMemos).memos!.map(memo => `${memo.content}`).join(' ').toLowerCase()
-            : '';
+  ? (post as PostWithMemos).memos!.map(memo => {
+      const content = memo.content.toLowerCase();
+      const tags = ((memo as any).tags || []).join(' ').toLowerCase();
+      return `${content} ${tags}`;
+    }).join(' ')
+  : '';
           console.log('🔍 [検索デバッグ] メモ内容:', memoContent);
           
           const tags = (post.tags || []).join(' ').toLowerCase();
