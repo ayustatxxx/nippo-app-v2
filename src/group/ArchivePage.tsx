@@ -303,12 +303,39 @@ post.tags?.includes('#チェックイン') ? (() => {
         </>
       )}
       
-     {/* 日付 */}
-{timeInfo.date && (
-  <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
-    日付: {timeInfo.date}
-  </div>
-)}
+{/* 最終更新日時 */}
+{post.isManuallyEdited && post.updatedAt ? (() => {
+  console.log('🔍 [WorkTimePostCard] post.isManuallyEdited:', post.isManuallyEdited, 'post.updatedAt:', post.updatedAt);
+  let timestamp = post.updatedAt;
+  let date;
+  if (typeof timestamp === 'number') {
+    date = new Date(timestamp);
+  } else if (timestamp && typeof timestamp === 'object' && 'toDate' in timestamp) {
+    date = (timestamp as any).toDate();
+  } else if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+    date = new Date((timestamp as any).seconds * 1000);
+  } else {
+    return null;
+  }
+  
+  const dateString = date.toLocaleString('ja-JP', { 
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: 'numeric', 
+    day: 'numeric',
+    weekday: 'short',
+    hour: '2-digit', 
+    minute: '2-digit' 
+  }).replace(/\//g, ' / ');
+  
+  return (
+    <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+      <span style={{ fontSize: '0.9rem' }}>最終更新:</span>
+      {' '}
+      {dateString}
+    </div>
+  );
+})() : null}
 
 {/* クリーンなメッセージ + 編集済み */}
 {cleanMessage && (
@@ -343,7 +370,8 @@ post.tags?.includes('#チェックイン') ? (() => {
 })() : (
   // 通常投稿の場合はそのまま表示
   <div>
-    {post.message}
+    {console.log('🔍 [post.message] post.id:', post.id, 'message:', post.message, 'isManuallyEdited:', post.isManuallyEdited)}
+    {post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
     {(() => {
       const shouldHideEdited = post.tags?.includes('#出退勤時間') && 
                               post.tags?.includes('#チェックイン') && 
@@ -358,22 +386,53 @@ post.tags?.includes('#チェックイン') ? (() => {
       });
       
       return null;
+    })()} 
+
+{/* 🔍 デバッグ: 条件確認 */}
+{(() => {
+  console.log('🔍 [条件確認] post.id:', post.id, 'isManuallyEdited:', post.isManuallyEdited, 'tags:', post.tags);
+  return null;
+})()}
+
+{post.isManuallyEdited && !(
+  post.tags?.includes('#出退勤時間') &&
+  post.tags?.includes('#チェックイン') &&
+  post.tags?.includes('#チェックアウト')
+) && (
+  <>
+    {/* 最終更新日時 */}
+{(() => {
+  console.log('🔍 [通常カード-最終更新] post.id:', post.id, 'updatedAt:', post.updatedAt, 'editedAt:', post.editedAt, 'isManuallyEdited:', post.isManuallyEdited);
+  
+  if (!post.updatedAt) return null;
+  const timestamp = post.updatedAt;
+      const date = new Date(timestamp);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+      const weekday = weekdays[date.getDay()];
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      
+      return (
+        <div style={{ fontSize: '0.85rem', color: '#ddd', marginTop: '0.3rem' }}>
+          最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
+        </div>
+      );
     })()}
-   {post.isManuallyEdited && !(
-      post.tags?.includes('#出退勤時間') && 
-      post.tags?.includes('#チェックイン') && 
-      post.tags?.includes('#チェックアウト')
-    ) && (
-      <span
-        style={{
-          color: '#F0DB4F',
-          fontSize: '0.8rem',
-          marginLeft: '0.5rem',
-        }}
-      >
-        （編集済み）
-      </span>
-    )}
+    
+    <span
+      style={{
+        color: '■#F0DB4F',
+        fontSize: '0.8rem',
+        marginLeft: '0.5rem',
+      }}
+    >
+      （編集済み）
+    </span>
+  </>
+)}
   </div>
 )
           )}
@@ -3142,19 +3201,20 @@ useEffect(() => {
         });
         
         setDisplayPost(prevPost => {
-          console.log('🔍 [PostDetailModal-useEffect] prevPost:', {
-            id: prevPost.id,
-            isEdited: prevPost.isEdited,
-            isManuallyEdited: prevPost.isManuallyEdited
-          });
-          
-          return {
-            ...prevPost,
-            username: userInfo.displayName || userInfo.username || prevPost.username,
-            company: userInfo.company || '会社名なし',
-            position: userInfo.position || '役職なし'
-          };
-        });
+  console.log('🔍 [PostDetailModal-useEffect] prevPost:', {
+    id: prevPost.id,
+    isEdited: prevPost.isEdited,
+    isManuallyEdited: prevPost.isManuallyEdited
+  });
+  
+  return {
+    ...prevPost,
+    ...post,  // ← これを追加！post props の全データを含める
+    username: userInfo.displayName || userInfo.username || prevPost.username,
+    company: userInfo.company || '会社名なし',
+    position: userInfo.position || '役職なし'
+  };
+});
       }
     } catch (error) {
       console.error('ユーザー情報取得エラー:', error);
@@ -3263,39 +3323,6 @@ useEffect(() => {
                     {displayPost.position || '役職なし'} • {displayPost.company || '会社名なし'}
                   </div>
                 </div>
-                
-                {/* 日時表示 */}
-<div style={{
-  padding: '0.4rem 0.8rem',
-  borderRadius: '8px',
-  color: '■#055A68',
-  fontSize: '0.85rem',
-  fontWeight: '500',
-  display: 'flex',
-  flexDirection: 'row',
-  alignItems: 'flex-end',
-  gap: '0.0rem'
-}}>
-  <div>{extractTime(displayPost.time)}</div>
-  {/* 🌟 修正済みバッジを追加 */}
-{(() => {
-  console.log('🔍 [バッジ判定] isEdited:', displayPost.isEdited);
-console.log('🔍 [バッジ判定] isManuallyEdited:', displayPost.isManuallyEdited);
-console.log('🔍 [バッジ判定] 両方true:', displayPost.isEdited && displayPost.isManuallyEdited);
-console.log('🔍 [バッジ判定] tags:', displayPost.tags);
-  return null;
-})()}
-{displayPost.isEdited && displayPost.isManuallyEdited && (
-    <span style={{
-      marginLeft: '0.5rem',
-      fontSize: '0.75rem',
-      color: '■#d97706',
-      fontWeight: '500'
-    }}>
-      (修正済み)
-    </span>
-  )}
-</div>
               </div>
               
               
@@ -3303,8 +3330,10 @@ console.log('🔍 [バッジ判定] tags:', displayPost.tags);
               {/* 投稿内容 */}
               <div style={{ padding: '1.2rem' }}>
                 
+               
+                
                 {/* メッセージ */}
-                {displayPost.message && (
+                {displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '') && (
                   <div style={{
                     whiteSpace: 'pre-wrap',
                     lineHeight: '1.6',
@@ -3349,11 +3378,6 @@ console.log('🔍 [バッジ判定] tags:', displayPost.tags);
           </>
         )}
 
-        {timeInfo.date && (
-          <div style={{ marginBottom: '0.5rem', color: '#333' }}>
-            日付: {timeInfo.date}
-          </div>
-        )}
         
         {cleanMessage && (
           <div style={{ marginTop: '0.8rem' }}>
@@ -3365,7 +3389,7 @@ console.log('🔍 [バッジ判定] tags:', displayPost.tags);
   })()
 ) : (
   <div>
-    {displayPost.message}
+    {displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
   </div>
 )}
 {displayPost.isManuallyEdited && (
@@ -3378,6 +3402,24 @@ console.log('🔍 [バッジ判定] tags:', displayPost.tags);
     （修正済み）
   </span>
 )}
+ {/* 最終更新日時 */}
+  {displayPost.isManuallyEdited && displayPost.updatedAt && (() => {
+    const timestamp = displayPost.updatedAt;
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+    const weekday = weekdays[date.getDay()];
+    
+    return (
+      <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '12px' }}>
+        最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
+      </div>
+    );
+  })()}
                   </div>
                 )}
 
@@ -4589,12 +4631,48 @@ post.tags?.includes('#チェックイン') ? (() => {
         </>
       )}
       
-      {/* 日付 */}
-      {timeInfo.date && (
-        <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
-          日付: {timeInfo.date}
-        </div>
-      )}
+      {/* 最終更新日時の表示 */}
+{(() => {
+  console.log('🔍 [最終更新表示] post.id:', post.id, 'isManuallyEdited:', post.isManuallyEdited, 'updatedAt:', post.updatedAt, 'editedAt:', post.editedAt, 'createdAt:', post.createdAt);
+  let timestamp = post.updatedAt || post.editedAt || post.createdAt;
+  
+  // updatedAt がない場合は表示しない
+  if (!timestamp) {
+    return null;
+  }
+  
+  // Firestore Timestamp を Date に変換
+  let date;
+  if (typeof timestamp === 'number') {
+    date = new Date(timestamp);
+  } else if (timestamp && typeof timestamp === 'object' && 'toDate' in timestamp) {
+    date = (timestamp as any).toDate();
+  } else if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+    date = new Date((timestamp as any).seconds * 1000);
+  } else {
+    return null;
+  }
+  
+  const dateString = date.toLocaleString('ja-JP', { 
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: 'numeric', 
+    day: 'numeric',
+    weekday: 'short',
+    hour: '2-digit', 
+    minute: '2-digit' 
+  }).replace(/\//g, ' / ');
+  
+  return (
+    <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+      <span style={{ color: '#666', fontSize: '0.9rem' }}>
+        最終更新:
+      </span>
+      {' '}
+      {dateString}
+    </div>
+  );
+})()}
       
       {/* クリーンなメッセージ */}
       {cleanMessage && (
@@ -4616,17 +4694,39 @@ post.tags?.includes('#チェックイン') ? (() => {
   );
 })() : (
   // 通常投稿の場合はそのまま表示
-  <div>
-    {post.message}
-    {post.isManuallyEdited && (
-  <span style={{
-    color: '#F0DB4F',
-    fontSize: '0.8rem',
-  }}>
-    （編集済み）
-      </span>
-    )}
-  </div>
+<div>
+  {post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+  
+  {post.isManuallyEdited && (
+    <span style={{
+      color: '#F0DB4F',
+      fontSize: '0.8rem',
+      display: 'block',
+      marginTop: '0.3rem'
+    }}>
+      （編集済み）
+    </span>
+  )}
+  
+  {/* 最終更新日時の表示 */}
+  {post.isManuallyEdited && post.updatedAt && (() => {
+    const timestamp = post.updatedAt;
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+    const weekday = weekdays[date.getDay()];
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    
+    return (
+      <div style={{ fontSize: '0.85rem', color: '#ddd', marginTop: '0.3rem' }}>
+        最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
+      </div>
+    );
+  })()}
+</div>
 )
 )}
                 </div>

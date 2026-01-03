@@ -506,7 +506,8 @@ try {
   message: sanitizedMessage,
   tags: validTags,
   photoUrls: [...remainingPhotos, ...additionalPhotoUrls],  
-  isManuallyEdited: true
+  isManuallyEdited: true,
+  updatedAt: Date.now()  // ← この行を追加
 };
 
   console.log('🔍 [EditPage] updateData作成完了:');

@@ -357,14 +357,16 @@ if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0
     
     // timeフィールドを生成（存在しない場合）
     let timeString = data.time;
-    if (!timeString && data.createdAt) {
-      try {
-        const date = data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
-        const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-        const weekday = weekdays[date.getDay()];
-        const dateStr = `${date.getFullYear()} / ${date.getMonth() + 1} / ${date.getDate()}（${weekday}）`;
-        const timeStr = date.toLocaleTimeString('ja-JP', { hour: "2-digit", minute: "2-digit" });
-        timeString = `${dateStr}　${timeStr}`;
+if (!timeString && (data.updatedAt || data.createdAt)) {
+  try {
+    // ✅ updatedAtを優先的に使用
+    const timestamp = data.createdAt || data.updatedAt;
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    const weekday = weekdays[date.getDay()];
+    const dateStr = `${date.getFullYear()} / ${date.getMonth() + 1} / ${date.getDate()}（${weekday}）`;
+    const timeStr = date.toLocaleTimeString('ja-JP', { hour: "2-digit", minute: "2-digit" });
+    timeString = `${dateStr}　${timeStr}`;
       } catch (error) {
         console.error('❌ [UnifiedCore] time生成エラー:', error);
         timeString = '日付不明　00:00';
@@ -528,6 +530,7 @@ if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0
   tags?: string[];
   photoUrls?: string[];
   isManuallyEdited?: boolean;  // ← 新規追加
+  updatedAt?: number;
 }
 ): Promise<void> {
   try {
@@ -541,7 +544,7 @@ if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0
 
  // Step 2: 更新データ準備
 const updateData: any = {
-  updatedAt: Date.now(),
+  updatedAt: updates.updatedAt || Date.now(),
   isEdited: true
 };
 
