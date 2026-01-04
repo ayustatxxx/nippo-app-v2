@@ -358,11 +358,6 @@ useEffect(() => {
   </>
 )}
 
-{timeInfo.date && (
-  <div style={{ marginBottom: '0.5rem', color: '#055A68' }}>
-    日付: {timeInfo.date}
-  </div>
-)}
         
         {cleanMessage && cleanMessage.length > 120 ? (
           <>
@@ -417,20 +412,42 @@ useEffect(() => {
 ) : post.message.length > 120
             ? (
               <div>
-                {`${post.message.substring(0, 120)}...`}
+              {`${post.message.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '').substring(0, 120)}...`}
                 {post.isManuallyEdited && !(
   post.tags?.includes('#出退勤時間') && 
   post.tags?.includes('#チェックイン') && 
   post.tags?.includes('#チェックアウト')
 ) && (
-  <span style={{
-                    color: 'rgba(5, 90, 104, 0.8)',
-                    fontSize: '0.8rem',
-                    marginLeft: '0.5rem'
-                  }}>
-                    （編集済み）
-                  </span>
-                )}
+  <>
+    <span style={{
+  color: '#e74c3c',
+  fontSize: '0.9rem',
+  display: 'block',
+  marginTop: '0.3rem'
+}}>
+      （編集済み）
+    </span>
+    
+    {post.updatedAt && (() => {
+      const timestamp = post.updatedAt;
+      const date = new Date(timestamp);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+      const weekday = weekdays[date.getDay()];
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      
+      return (
+        <div style={{ fontSize: '0.9rem', color: '#055A68', marginTop: '0.2rem' }}>
+          最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
+        </div>
+      );
+    })()}
+  </>
+)}
+               
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -455,20 +472,41 @@ useEffect(() => {
             ) 
             : (
               <div>
-                {post.message}
+              {post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
                {post.isManuallyEdited && !(
   post.tags?.includes('#出退勤時間') && 
   post.tags?.includes('#チェックイン') && 
   post.tags?.includes('#チェックアウト')
 ) && (
-  <span style={{
-                    color: 'rgba(5, 90, 104, 0.8)',
-                    fontSize: '0.8rem',
-                    marginLeft: '0.5rem'
-                  }}>
-                    （編集済み）
-                  </span>
-                )}
+  <>
+    <span style={{
+  color: '#e74c3c',
+  fontSize: '0.9rem',
+  display: 'block',
+  marginTop: '0.3rem'
+}}>
+      （編集済み）
+    </span>
+    
+    {post.updatedAt && (() => {
+      const timestamp = post.updatedAt;
+      const date = new Date(timestamp);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+      const weekday = weekdays[date.getDay()];
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      
+      return (
+        <div style={{ fontSize: '0.9rem', color: '#055A68', marginTop: '0.2rem' }}>
+          最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
+        </div>
+      );
+    })()}
+  </>
+)}
               </div>
             )
           }
@@ -1493,22 +1531,43 @@ const PostDetailModal: React.FC<{
     );
   })()
 ) : (
-  <div>
-    {displayPost.message}
-    {displayPost.isManuallyEdited && !(
-      displayPost.tags?.includes('#出退勤時間') && 
-      displayPost.tags?.includes('#チェックイン') && 
-      displayPost.tags?.includes('#チェックアウト')
-    ) && (
+ <div>
+  {displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+  {displayPost.isManuallyEdited && !(
+    displayPost.tags?.includes('#出退勤時間') && 
+    displayPost.tags?.includes('#チェックイン') && 
+    displayPost.tags?.includes('#チェックアウト')
+  ) && (
+    <>
       <span style={{
-        color: 'rgba(5, 90, 104, 0.7)',
-        fontSize: '0.85rem',
-        marginLeft: '0.5rem'
+        color: '#e74c3c',
+        fontSize: '0.9rem',
+        display: 'block',
+        marginTop: '0.5rem'
       }}>
         （編集済み）
       </span>
-    )}
-  </div>
+      
+      {displayPost.updatedAt && (() => {
+        const timestamp = displayPost.updatedAt;
+        const date = new Date(timestamp);
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const day = date.getDate();
+        const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+        const weekday = weekdays[date.getDay()];
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        
+        return (
+          <div style={{ fontSize: '0.85rem', color: '#055A68', marginTop: '0.3rem' }}>
+            最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
+          </div>
+        );
+      })()}
+    </>
+  )}
+</div>
 )}
                 
               </div>
