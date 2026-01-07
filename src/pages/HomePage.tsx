@@ -2688,6 +2688,8 @@ useEffect(() => {
           // 自分の投稿は除外
           if (latestPostAuthorId === userId) {
             console.log('⏭️ [HomePage] 自分の投稿のため新着バナー非表示');
+            setLatestPostTime(latestTime);
+            console.log('✅ [HomePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
           } else {
             console.log('🆕 [HomePage] メンバーの新着投稿を検知！バナー表示ON');
             setHasNewPosts(true);
