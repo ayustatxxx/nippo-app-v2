@@ -629,10 +629,7 @@ setTimeout(() => {
   });
   window.dispatchEvent(postNavigateEvent);
   
-  // 直接リフレッシュも試行
-  if (window.refreshArchivePage) {
-    window.refreshArchivePage();
-  }
+  
 }, 100);
       }, 300);
     }, 500);
