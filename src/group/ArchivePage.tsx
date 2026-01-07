@@ -1655,20 +1655,36 @@ useEffect(() => {
   }, [latestPostTime, isSearchActive]);  // isSearchActiveを追加
 
 
-// ★ Phase A3 + A4: スクロール検知（2段階読み込み）
-  useEffect(() => {
-    const handleScroll = async () => {
-       // 検索中はスクロール追加読み込みをスキップ
+
+ // ★ Phase A3 + A4: スクロール検知（2段階読み込み）
+useEffect(() => {
+  let scrollTimeout: NodeJS.Timeout | null = null;
+  
+  const handleScroll = () => {
+    // 検索中はスクロール追加読み込みをスキップ
     if (isSearchActive) {
       console.log('🔍 検索中のためスクロール追加読み込みをスキップ');
       return;
     }
-      const scrollPosition = window.innerHeight + window.scrollY;
-      const pageHeight = document.documentElement.scrollHeight;
+    
+    // ローディング中はスキップ
+    if (isLoadingMore) {
+      console.log('⏳ [ArchivePage] ローディング中のためスキップ');
+      return;
+    }
+    
+    const scrollPosition = window.innerHeight + window.scrollY;
+    const pageHeight = document.documentElement.scrollHeight;
+    
+    // 下から300px以内に到達したら追加読み込み
+    if (pageHeight - scrollPosition < 300) {
       
-      // 下から300px以内に到達したら追加読み込み
-      if (pageHeight - scrollPosition < 300) {
-        
+      // デバウンス処理: 200ms待ってから実行
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+      }
+      
+      scrollTimeout = setTimeout(async () => {
         // Phase A3: まずメモリ内のデータを表示
         if (displayedPostsCount < filteredPosts.length) {
           setDisplayedPostsCount(prev => {
@@ -1683,58 +1699,50 @@ useEffect(() => {
           
           try {
             console.log('📦 [ArchivePage-A4] Firestore追加取得開始...');
+            console.log('🔍 [ArchivePage-A4] 現在の状態:', {
+              lastVisibleDocId: lastVisibleDoc?.id || 'なし',
+              isLoadingMore,
+              hasMorePosts,
+              displayedPostsCount,
+              filteredPostsLength: filteredPosts.length
+            }); 
 
-           // ← ここに以下を追加
-console.log('🔍 [ArchivePage-A4] 現在の状態:', {
-  lastVisibleDocId: lastVisibleDoc?.id || 'なし',
-  isLoadingMore,
-  hasMorePosts,
-  displayedPostsCount,
-  filteredPostsLength: filteredPosts.length
-}); 
+            const scrollStartTime = performance.now();
+            const result = await UnifiedCoreSystem.getGroupPostsPaginated(
+              groupId,
+              user.uid,
+              10,
+              lastVisibleDoc
+            );
 
-// ⏱️ パフォーマンス計測開始
-const scrollStartTime = performance.now();
-const result = await UnifiedCoreSystem.getGroupPostsPaginated(
-  groupId,
-  user.uid,
-  10,
-  lastVisibleDoc
-);
+            const scrollEndTime = performance.now();
+            const scrollDuration = scrollEndTime - scrollStartTime;
 
-// ⏱️ パフォーマンス計測終了
-const scrollEndTime = performance.now();
-const scrollDuration = scrollEndTime - scrollStartTime;
-
-console.log('✅ [ArchivePage-A4] 追加取得完了:', result.posts.length, '件');
-console.log('📊 [ArchivePage-A4] 続きあり:', result.hasMore);
-console.log('⏱️ [性能計測] スクロール追加読み込み:', {
-  合計時間: `${scrollDuration.toFixed(0)}ms`,
-  投稿数: result.posts.length,
-  平均_1件: `${(scrollDuration / result.posts.length).toFixed(0)}ms`
-});
-            
             console.log('✅ [ArchivePage-A4] 追加取得完了:', result.posts.length, '件');
             console.log('📊 [ArchivePage-A4] 続きあり:', result.hasMore);
+            console.log('⏱️ [性能計測] スクロール追加読み込み:', {
+              合計時間: `${scrollDuration.toFixed(0)}ms`,
+              投稿数: result.posts.length,
+              平均_1件: `${(scrollDuration / result.posts.length).toFixed(0)}ms`
+            });
             
             // 既存の投稿に追加
-setPosts(prev => {
-  const existingIds = new Set(prev.map(p => p.id));
-  const newPosts = result.posts.filter(p => !existingIds.has(p.id));
-  return [...prev, ...newPosts];
-});
-setFilteredPosts(prev => {
-  const existingIds = new Set(prev.map(p => p.id));
-  const newPosts = result.posts.filter(p => !existingIds.has(p.id));
-  return [...prev, ...newPosts];
-});
+            setPosts(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newPosts = result.posts.filter(p => !existingIds.has(p.id));
+              return [...prev, ...newPosts];
+            });
+            setFilteredPosts(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newPosts = result.posts.filter(p => !existingIds.has(p.id));
+              return [...prev, ...newPosts];
+            });
             setLastVisibleDoc(result.lastDoc);
 
-            // Phase A4: lastVisibleDocId を localStorage に保存
-if (result.lastDoc?.id) {
-  localStorage.setItem(`lastVisibleDocId_${groupId}`, result.lastDoc.id);
-  console.log('💾 [Phase A4] スクロール追加後 lastVisibleDocId保存:', result.lastDoc.id);
-}
+            if (result.lastDoc?.id) {
+              localStorage.setItem(`lastVisibleDocId_${groupId}`, result.lastDoc.id);
+              console.log('💾 [Phase A4] スクロール追加後 lastVisibleDocId保存:', result.lastDoc.id);
+            }
 
             setHasMorePosts(result.hasMore);
             
@@ -1747,13 +1755,18 @@ if (result.lastDoc?.id) {
             setIsLoadingMore(false);
           }
         }
-      }
-    };
+      }, 200); // 200ms待つ
+    }
+  };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [displayedPostsCount, filteredPosts.length, isLoadingMore, hasMorePosts, lastVisibleDoc, groupId, user?.uid, POSTS_PER_LOAD]);
-
+  window.addEventListener('scroll', handleScroll);
+  return () => {
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+    window.removeEventListener('scroll', handleScroll);
+  };
+}, [displayedPostsCount, filteredPosts.length, isLoadingMore, hasMorePosts, lastVisibleDoc, groupId, user?.uid, POSTS_PER_LOAD, isSearchActive]);
 
     // 📦 Phase A4: lastVisibleDocIdからDocumentSnapshotを復元
   const restoreLastVisibleDoc = async (docId: string): Promise<any> => {
