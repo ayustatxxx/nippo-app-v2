@@ -2788,11 +2788,6 @@ if (newStatus === '確認済み') {
 }
 
 
-      // キャッシュをクリア
-delete archivePostsCache[groupId];
-delete archivePostsCacheTime[groupId];
-console.log('🔄 [ArchivePage] ステータス更新 - メモリキャッシュクリア');
-
       
     } catch (firestoreError) {
       console.error('❌ [ArchivePage] Firestore更新失敗:', firestoreError);
