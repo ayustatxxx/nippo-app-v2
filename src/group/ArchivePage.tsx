@@ -1449,15 +1449,25 @@ if (cacheData && cacheData.length > 0 && Date.now() - cacheTime < CACHE_DURATION
   setFilteredPosts(cacheData);
   setLoading(false);
 
-  // Phase A4: lastVisibleDocを復元
+// ⭐ 修正: lastVisibleDocの復元を先に完了させる
       const savedDocId = localStorage.getItem(`lastVisibleDocId_${groupId}`);
       if (savedDocId) {
         console.log('🔄 [Phase A4] キャッシュ復元時にlastVisibleDoc復元開始:', savedDocId);
-        const restoredDoc = await restoreLastVisibleDoc(savedDocId);
-        if (restoredDoc) {
-          setLastVisibleDoc(restoredDoc);
-          console.log('✅ [Phase A4] キャッシュ復元時にlastVisibleDoc復元完了');
+        try {
+          const restoredDoc = await restoreLastVisibleDoc(savedDocId);
+          if (restoredDoc) {
+            setLastVisibleDoc(restoredDoc);
+            console.log('✅ [Phase A4] lastVisibleDoc復元完了');
+          } else {
+            console.warn('⚠️ [Phase A4] lastVisibleDoc復元失敗 - スクロール追加取得は最初からになります');
+            setHasMorePosts(true);
+          }
+        } catch (error) {
+          console.error('❌ [Phase A4] lastVisibleDoc復元エラー:', error);
+          setHasMorePosts(true);
         }
+      } else {
+        console.log('ℹ️ [Phase A4] lastVisibleDocIdが保存されていません（初回取得）');
       }
 
   
