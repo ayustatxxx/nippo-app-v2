@@ -1890,10 +1890,17 @@ if (!lastUpdate.startsWith('memo_saved_') || timeDiff >= 70000) {
   console.log('📝 [ArchivePage] メモ保存イベントのため新着バナー非表示');
 }
     
-    // データ再取得
-    if (window.refreshArchivePage) {
+    // データ再取得 (自分の投稿以外)
+    const postAuthorId = event.detail.newPost.authorId || event.detail.newPost.userId || event.detail.newPost.createdBy;
+    const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+    
+    if (postAuthorId !== currentUserId && window.refreshArchivePage) {
+      console.log('🔄 [ArchivePage] 他人の投稿のためデータ再取得');
       window.refreshArchivePage();
+    } else if (postAuthorId === currentUserId) {
+      console.log('⏭️ [ArchivePage] 自分の投稿のためリフレッシュスキップ');
     }
+    
  } else if (!event.detail) {
   // 詳細情報がない場合は安全のため更新
   console.log('⚠️ [ArchivePage] 詳細不明のため安全のため更新');
