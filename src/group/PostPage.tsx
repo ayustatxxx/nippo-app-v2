@@ -569,13 +569,9 @@ const [uploadStatus, setUploadStatus] = useState('');
           } 
         }));
         
-        // 手動でArchivePageとHomePageのリフレッシュを試行
-        if (window.refreshArchivePage) {
-          window.refreshArchivePage();
-        }
-        if (window.refreshHomePage) {
-          window.refreshHomePage();
-        }
+        // リフレッシュは投稿イベント監視に任せる (重複防止)
+        // 投稿イベントは ArchivePage と HomePage の監視システムが自動処理
+        console.log('📢 投稿イベントは監視システムが処理します');
         
       }, delay);
     });
