@@ -1876,8 +1876,16 @@ const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
 const timeDiff = Date.now() - parseInt(lastUpdate.replace('memo_saved_', ''));
 
 if (!lastUpdate.startsWith('memo_saved_') || timeDiff >= 70000) {
-  setHasNewPosts(true);
-  console.log('🆕 [ArchivePage] 投稿イベント受信 → 新着バナー表示ON');
+  // 自分の投稿かチェック
+  const postAuthorId = event.detail.newPost.authorId || event.detail.newPost.userId || event.detail.newPost.createdBy;
+  const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+  
+  if (postAuthorId === currentUserId) {
+    console.log('⏭️ [ArchivePage] 自分の投稿のため新着バナー非表示');
+  } else {
+    setHasNewPosts(true);
+    console.log('🆕 [ArchivePage] 投稿イベント受信 → 新着バナー表示ON');
+  }
 } else {
   console.log('📝 [ArchivePage] メモ保存イベントのため新着バナー非表示');
 }
@@ -1900,8 +1908,8 @@ if (isJustDeleted) {
 } else if (lastUpdate.startsWith('memo_saved_') && timeDiff < 70000) {
   console.log('📝 [ArchivePage] メモ保存後70秒以内のため新着バナー表示をスキップ');
 } else {
-  setHasNewPosts(true);
-  console.log('📩 [ArchivePage] 詳細不明イベント → 新着バナー表示ON');
+  // 詳細不明の場合は、念のため新着バナーは表示しない（安全側）
+  console.log('📩 [ArchivePage] 詳細不明イベント → 新着バナー非表示（安全側）');
 }
   
   // ★ localStorageをチェックしてメモ保存かどうか確認 ★
