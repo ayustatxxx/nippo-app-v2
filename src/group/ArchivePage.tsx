@@ -232,7 +232,7 @@ const WorkTimePostCard: React.FC<{
     <span
       style={{
         color: '#F0DB4F',
-        fontSize: '0.8rem',
+        fontSize: '0.9rem',
       }}
     >
       (編集済み)
@@ -345,7 +345,7 @@ post.tags?.includes('#チェックイン') ? (() => {
   <div style={{ marginTop: '0.5rem' }}>
     <span style={{
       color: '#F0DB4F',
-      fontSize: '0.8rem',
+      fontSize: '0.9rem',
     }}>
       （編集済み）
     </span>
@@ -359,7 +359,7 @@ post.tags?.includes('#チェックイン') ? (() => {
   <div style={{ marginTop: '0.5rem' }}>
     <span style={{
       color: '#F0DB4F',
-      fontSize: '0.8rem',
+      fontSize: '0.9rem',
     }}>
       （編集済み）
     </span>
@@ -416,7 +416,7 @@ post.tags?.includes('#チェックイン') ? (() => {
       const minutes = String(date.getMinutes()).padStart(2, '0');
       
       return (
-        <div style={{ fontSize: '0.85rem', color: '#ddd', marginTop: '0.3rem' }}>
+        <div style={{ fontSize: '0.9rem', color: '#ddd', marginTop: '0.3rem' }}>
           最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
         </div>
       );
@@ -4700,7 +4700,7 @@ post.tags?.includes('#チェックイン') ? (() => {
   {post.isManuallyEdited && (
     <span style={{
       color: '#F0DB4F',
-      fontSize: '0.8rem',
+      fontSize: '0.9rem',
       display: 'block',
       marginTop: '0.3rem'
     }}>
@@ -4721,7 +4721,7 @@ post.tags?.includes('#チェックイン') ? (() => {
     const minutes = String(date.getMinutes()).padStart(2, '0');
     
     return (
-      <div style={{ fontSize: '0.85rem', color: '#ddd', marginTop: '0.3rem' }}>
+      <div style={{ fontSize: '0.9rem', color: '#ddd', marginTop: '0.3rem' }}>
         最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
       </div>
     );
