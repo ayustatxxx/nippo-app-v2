@@ -2697,6 +2697,8 @@ console.log('⏱️⏱️⏱️ [timeDiff計算詳細]', {
 } else if (latestPostAuthorId === currentUserId) {
   // ⭐ 自分の投稿の場合は新着バナーを表示しない
   console.log('⏭️ [ArchivePage] 自分の投稿のため新着バナー非表示');
+  setLatestPostTime(latestTime);
+  console.log('✅ [ArchivePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
 } else {
   // ⭐ 他人の投稿の場合のみ新着バナーを表示
 console.log('🆕 [ArchivePage] メンバーの新着投稿を検知！バナー表示ON');
