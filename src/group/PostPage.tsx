@@ -524,7 +524,6 @@ const [uploadStatus, setUploadStatus] = useState('');
     
     // 1. localStorageフラグを複数設定（確実な検知のため）
     const updateFlag = Date.now().toString();
-    localStorage.setItem('daily-report-posts-updated', updateFlag);
     localStorage.setItem('last-updated-group-id', groupId);
     localStorage.setItem('posts-need-refresh', updateFlag);
     localStorage.setItem('archive-posts-updated', updateFlag);
@@ -557,7 +556,6 @@ const [uploadStatus, setUploadStatus] = useState('');
         
         // フラグを更新
         const delayedFlag = (Date.now()).toString();
-        localStorage.setItem('daily-report-posts-updated', delayedFlag);
         
         // イベントを再発火
         window.dispatchEvent(new CustomEvent('postsUpdated', { 
