@@ -1994,8 +1994,7 @@ const checkForUpdates = () => {
   window.addEventListener('postsUpdated', handlePostsUpdate);
   window.addEventListener('refreshPosts', handlePostsUpdate);
   
-  // ポーリング開始（5秒間隔）
-  const pollingInterval = setInterval(checkForUpdates, 5000);
+
 
   // 詳細モーダルからの削除イベントを監視
 const handleArchiveDelete = (event: CustomEvent) => {
@@ -2012,7 +2011,6 @@ window.addEventListener('archiveDelete', handleArchiveDelete as EventListener);
     console.log('🔌 [ArchivePage] 更新イベント監視を終了');
     window.removeEventListener('postsUpdated', handlePostsUpdate);
     window.removeEventListener('refreshPosts', handlePostsUpdate);
-    clearInterval(pollingInterval);
 
     window.removeEventListener('archiveDelete', handleArchiveDelete as EventListener);
     
