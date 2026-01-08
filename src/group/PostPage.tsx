@@ -548,31 +548,6 @@ const [uploadStatus, setUploadStatus] = useState('');
     window.dispatchEvent(new CustomEvent('refreshPosts'));
     console.log('📢 即座更新イベントを発火完了');
 
-    // 3. 段階的な追加通知（確実性を高める）
-    const notificationSchedule = [100, 300, 500, 1000];
-    notificationSchedule.forEach((delay, index) => {
-      setTimeout(() => {
-        console.log(`📢 段階的更新通知 ${index + 1}/${notificationSchedule.length} (${delay}ms後)`);
-        
-        // フラグを更新
-        const delayedFlag = (Date.now()).toString();
-        
-        // イベントを再発火
-        window.dispatchEvent(new CustomEvent('postsUpdated', { 
-          detail: { 
-            newPost: legacyPost,
-            timestamp: Date.now(),
-            source: 'PostPage-delayed',
-            delay: delay
-          } 
-        }));
-        
-        // リフレッシュは投稿イベント監視に任せる (重複防止)
-        // 投稿イベントは ArchivePage と HomePage の監視システムが自動処理
-        console.log('📢 投稿イベントは監視システムが処理します');
-        
-      }, delay);
-    });
 
     // 4. forceRefreshPostsの呼び出し（既存機能との互換性）
     try {
