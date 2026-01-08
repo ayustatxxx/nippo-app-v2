@@ -1942,15 +1942,12 @@ if (isJustDeleted) {
   console.log('📩 [ArchivePage] 詳細不明イベント → 新着バナー非表示（安全側）');
 }
   
-  // ★ localStorageをチェックしてメモ保存かどうか確認 ★
-    if (lastUpdate.startsWith('memo_saved')) {
-      console.log('🔄 [ArchivePage] メモ保存と判定：500ms後にリフレッシュ');
-      setTimeout(() => {
-        if (window.refreshArchivePage) {
-          window.refreshArchivePage();
-        }
-      }, 500);
-    } else {
+if (lastUpdate.startsWith('memo_saved')) {
+  console.log('✅ [ArchivePage] メモ保存検知 - リフレッシュ不要');
+  // メモ保存時は全件取得不要（メモカウントは自動更新される）
+  return;
+} 
+else {
       // メモ以外はすぐにリフレッシュ
       if (window.refreshArchivePage) {
         window.refreshArchivePage();
@@ -1971,15 +1968,12 @@ const checkForUpdates = () => {
     const storedGroupId = localStorage.getItem('last-updated-group-id');
     if (!storedGroupId || storedGroupId === groupId) {
       
-      // ⭐ メモ保存の場合は少し待ってからリフレッシュ ⭐
-      if (currentFlag.startsWith('memo_saved')) {
-        console.log('🔄 [ArchivePage] メモ反映のため500ms後にリフレッシュ');
-        setTimeout(() => {
-          if (window.refreshArchivePage) {
-            window.refreshArchivePage();
-          }
-        }, 500);
-      } else {
+    if (currentFlag.startsWith('memo_saved')) {
+  console.log('✅ [ArchivePage] メモ保存検知 - リフレッシュ不要');
+  // メモ保存時は全件取得不要（メモカウントは自動更新される）
+  return;
+}
+ else {
         // メモ以外はすぐにリフレッシュ
         if (window.refreshArchivePage) {
           window.refreshArchivePage();
