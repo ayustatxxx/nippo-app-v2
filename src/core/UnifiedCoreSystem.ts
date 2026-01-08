@@ -675,18 +675,6 @@ if (existingPost) {
   window.dispatchEvent(updateEvent);
   window.dispatchEvent(new CustomEvent('refreshPosts'));
 
-  // 段階的通知
-  [100, 300, 500, 1000].forEach((delay) => {
-    setTimeout(() => {
-      localStorage.setItem('daily-report-posts-updated', Date.now().toString());
-      window.dispatchEvent(new CustomEvent('postsUpdated', {
-        detail: { updatedPost, timestamp: Date.now(), delay }
-      }));
-
-      if (window.refreshArchivePage) window.refreshArchivePage();
-      if (window.refreshHomePage) window.refreshHomePage();
-    }, delay);
-  });
 
   console.log('✅ 投稿更新通知完了');
 } else {
@@ -779,31 +767,7 @@ if (existingPost) {
         detail: { key: 'daily-report-posts-updated', newValue: updateFlag }
       }));
 
-      // Step 3: 段階的追加通知（PostPageパターン）
-      const notificationSchedule = [100, 300, 500, 1000];
-      notificationSchedule.forEach((delay, index) => {
-        setTimeout(() => {
-          const delayedFlag = Date.now().toString();
-          localStorage.setItem('daily-report-posts-updated', delayedFlag);
-          
-          window.dispatchEvent(new CustomEvent('postsUpdated', {
-            detail: {
-              newPost: postData,
-              timestamp: Date.now(),
-              source: 'UnifiedCoreSystem-delayed',
-              delay: delay
-            }
-          }));
-
-          // グローバル関数呼び出し
-          if (window.refreshArchivePage) {
-            window.refreshArchivePage();
-          }
-          if (window.refreshHomePage) {
-            window.refreshHomePage();
-          }
-        }, delay);
-      });
+      
 
       console.log('✅ 全システム更新通知完了');
 
