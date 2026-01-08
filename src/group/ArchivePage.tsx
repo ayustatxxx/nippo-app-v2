@@ -1942,7 +1942,7 @@ if (isJustDeleted) {
   console.log('📩 [ArchivePage] 詳細不明イベント → 新着バナー非表示（安全側）');
 }
   
-if (lastUpdate.startsWith('memo_saved')) {
+if (lastUpdate.startsWith('memo_saved_')) {
   console.log('✅ [ArchivePage] メモ保存検知 - リフレッシュ不要');
   // メモ保存時は全件取得不要（メモカウントは自動更新される）
   return;
@@ -1968,7 +1968,7 @@ const checkForUpdates = () => {
     const storedGroupId = localStorage.getItem('last-updated-group-id');
     if (!storedGroupId || storedGroupId === groupId) {
       
-    if (currentFlag.startsWith('memo_saved')) {
+   if (currentFlag.startsWith('memo_saved_')) {
   console.log('✅ [ArchivePage] メモ保存検知 - リフレッシュ不要');
   // メモ保存時は全件取得不要（メモカウントは自動更新される）
   return;
