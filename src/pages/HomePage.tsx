@@ -2300,6 +2300,18 @@ allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
   20  // 表示する10件 + 予備10件
 );
 
+// ⭐ デバッグ1: Firestoreから取得した投稿の最初の3件を確認
+console.log('🔍 [DEBUG-loadDataFast] Firestoreから取得した投稿数:', allPosts.length);
+console.log('🔍 [DEBUG-loadDataFast] Firestoreから取得した最初の3件:', 
+  allPosts.slice(0, 3).map(p => ({
+    id: p.id?.substring(0, 8),
+    timestamp: p.timestamp,
+    createdAt: p.createdAt,
+    timestampType: typeof p.timestamp,
+    createdAtType: typeof p.createdAt
+  }))
+);
+
 // グループ名を各投稿に追加
 allPosts = allPosts.map(post => {
   const group = userGroups.find(g => g.id === post.groupId);
@@ -2387,12 +2399,104 @@ images: (post.photoUrls?.length > 0) ? post.photoUrls :
   
   console.log('✅ [Home] ユーザー名・写真マージ完了:', enrichedPosts.length, '件');
 
+// ⭐ timestampが存在しない場合、createdAtから変換
+let postsWithTimestamp = enrichedPosts.map(post => {
+  // timestampが既に存在する場合はそのまま返す
+  if (post.timestamp && typeof post.timestamp === 'number' && post.timestamp > 0) {
+    return post;
+  }
   
-  setPosts(enrichedPosts);
+  // createdAtが存在しない場合もそのまま返す
+  if (!post.createdAt) {
+    console.log('⚠️ [timestamp変換] createdAtなし:', post.id);
+    return post;
+  }
+  
+  const createdAt = post.createdAt;
+  let convertedTimestamp: number | null = null;
+  
+  // createdAtが数値の場合
+  if (typeof createdAt === 'number') {
+    convertedTimestamp = createdAt;
+    console.log('✅ [timestamp変換] 数値から変換:', post.id?.substring(0, 8), convertedTimestamp);
+    return { ...post, timestamp: convertedTimestamp };
+  }
+  
+  // createdAtがFirestore Timestampオブジェクトの場合
+  if (typeof createdAt === 'object' && createdAt !== null) {
+    // toMillisメソッドを試す
+    if ('toMillis' in createdAt) {
+      try {
+        const toMillisFn = (createdAt as any).toMillis;
+        if (typeof toMillisFn === 'function') {
+          convertedTimestamp = toMillisFn();
+          console.log('✅ [timestamp変換] toMillisから変換:', post.id?.substring(0, 8), convertedTimestamp);
+          return { ...post, timestamp: convertedTimestamp };
+        }
+      } catch (error) {
+        console.error('❌ [timestamp変換] toMillis実行エラー:', error);
+      }
+    }
+    
+    // secondsプロパティを試す
+    if ('seconds' in createdAt) {
+      const seconds = (createdAt as any).seconds;
+      if (typeof seconds === 'number') {
+        convertedTimestamp = seconds * 1000;
+        console.log('✅ [timestamp変換] secondsから変換:', post.id?.substring(0, 8), convertedTimestamp);
+        return { ...post, timestamp: convertedTimestamp };
+      }
+    }
+    
+    // _secondsプロパティも試す（念のため）
+    if ('_seconds' in createdAt) {
+      const seconds = (createdAt as any)._seconds;
+      if (typeof seconds === 'number') {
+        convertedTimestamp = seconds * 1000;
+        console.log('✅ [timestamp変換] _secondsから変換:', post.id?.substring(0, 8), convertedTimestamp);
+        return { ...post, timestamp: convertedTimestamp };
+      }
+    }
+  }
+  
+  // どの方法でも変換できなかった場合
+  console.warn('⚠️ [timestamp変換] 変換失敗:', post.id, typeof createdAt, createdAt);
+  return post;
+});
+
+console.log('🔄 [HomePage] timestamp変換完了');
+console.log('🔍 [変換結果サマリー] 変換成功:', postsWithTimestamp.filter(p => p.timestamp).length, '/', postsWithTimestamp.length);
+
+// ⭐ デバッグ3: enrichedPosts（ソート前）の最初の3件
+console.log('🔍 [DEBUG-loadDataFast] enrichedPosts（ソート前）の最初の3件:', 
+  postsWithTimestamp.slice(0, 3).map(p => ({
+    id: p.id?.substring(0, 8),
+    timestamp: p.timestamp,
+    timestampType: typeof p.timestamp,
+    sortKey: p.timestamp || 0
+  }))
+);
+
+// ⭐ enrichedPostsを新しい順にソート
+postsWithTimestamp.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+console.log('🔄 [HomePage-loadDataFast] 投稿を時系列でソート完了');
+
+// ⭐ デバッグ4: ソート後の最初の3件を確認
+console.log('🔍 [DEBUG-loadDataFast] enrichedPosts（ソート後）の最初の3件:', 
+  postsWithTimestamp.slice(0, 3).map(p => ({
+    id: p.id?.substring(0, 8),
+    timestamp: p.timestamp,
+    timestampType: typeof p.timestamp,
+    sortKey: p.timestamp || 0
+  }))
+);
+
+setPosts(postsWithTimestamp);
+
 
    // ⭐ 新着チェック用：最新投稿時刻を記録 ⭐
-  if (enrichedPosts.length > 0) {
-    const post = enrichedPosts[0];
+ if (postsWithTimestamp.length > 0) {
+  const post = postsWithTimestamp[0];
     let latestTime = 0;
     
     if (post.timestamp) {
@@ -2408,7 +2512,13 @@ images: (post.photoUrls?.length > 0) ? post.photoUrls :
     if (latestTime > 0) {
       setLatestPostTime(latestTime);
       console.log('📊 [HomePage] 最新投稿時刻を記録:', new Date(latestTime).toLocaleString('ja-JP'));
-    }
+    // ⭐⭐⭐ ここを追加 ⭐⭐⭐
+        const userId = localStorage.getItem('daily-report-user-id');
+        if (userId) {
+          saveLastViewedTimestamp(userId, latestTime + 100);
+          console.log('💾 [HomePage] 初回読み込み - lastViewed保存:', new Date(latestTime + 100).toLocaleString('ja-JP'));
+        }
+      }
   }
 
 
@@ -2484,6 +2594,18 @@ allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
   20
 );
 
+// ⭐ デバッグ2: refreshHomePage - Firestore取得直後
+console.log('🔍 [DEBUG-refreshHomePage] Firestoreから取得した投稿数:', allPosts.length);
+console.log('🔍 [DEBUG-refreshHomePage] Firestoreから取得した最初の3件:', 
+  allPosts.slice(0, 3).map(p => ({
+    id: p.id?.substring(0, 8),
+    timestamp: p.timestamp,
+    createdAt: p.createdAt,
+    timestampType: typeof p.timestamp,
+    createdAtType: typeof p.createdAt
+  }))
+);
+
 // グループ名を各投稿に追加
 allPosts = allPosts.map(post => {
   const group = userGroups.find(g => g.id === post.groupId);
@@ -2554,6 +2676,31 @@ const enrichedPosts = await Promise.all(
 
 console.log('✅ [Home] ユーザー名・写真マージ完了（リフレッシュ）:', enrichedPosts.length, '件');
 
+// ⭐ デバッグ5: refreshHomePage - enrichedPosts（ソート前）
+console.log('🔍 [DEBUG-refreshHomePage] enrichedPosts（ソート前）の最初の3件:', 
+  enrichedPosts.slice(0, 3).map(p => ({
+    id: p.id?.substring(0, 8),
+    timestamp: p.timestamp,
+    timestampType: typeof p.timestamp,
+    sortKey: p.timestamp || 0
+  }))
+);
+
+
+// ⭐ enrichedPostsを新しい順にソート
+enrichedPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+console.log('🔄 [HomePage] 投稿を時系列でソート完了');
+
+// ⭐ デバッグ6: refreshHomePage - ソート後
+console.log('🔍 [DEBUG-refreshHomePage] enrichedPosts（ソート後）の最初の3件:', 
+  enrichedPosts.slice(0, 3).map(p => ({
+    id: p.id?.substring(0, 8),
+    timestamp: p.timestamp,
+    timestampType: typeof p.timestamp,
+    sortKey: p.timestamp || 0
+  }))
+);
+
 setPosts(enrichedPosts);
 setTimelineItems(enrichedPosts);
 
@@ -2562,8 +2709,25 @@ applyFilters(enrichedPosts);
 
 console.log('✅ [HomePage] データリフレッシュ完了:', enrichedPosts.length, '件');
 
-      } catch (error) {
-        console.error('❌ [HomePage] データリフレッシュエラー:', error);
+// ⭐ 最新投稿時刻を更新（新着チェック用）
+if (enrichedPosts.length > 0) {
+  const latestTime = enrichedPosts[0].timestamp || enrichedPosts[0].createdAt?.toMillis?.() || 0;
+  if (latestTime > 0) {
+    setLatestPostTime(latestTime);
+    console.log('🕐 [HomePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
+    
+      
+      // ⭐ リフレッシュ時も「見た」記録を保存
+      const userId = localStorage.getItem('daily-report-user-id');
+      if (userId) {
+        saveLastViewedTimestamp(userId, latestTime + 100);
+        console.log('💾 [HomePage] リフレッシュ時 - lastViewed保存:', new Date(latestTime + 100).toLocaleString('ja-JP'));
+      }
+  }
+}
+
+} catch (error) {
+  console.error('❌ [HomePage] データリフレッシュエラー:', error);
       } finally {
         // ✅ ローディング終了
         setLoading(false);
@@ -2583,33 +2747,21 @@ console.log('✅ [HomePage] データリフレッシュ完了:', enrichedPosts.l
     }
   };
   
-  // localStorageフラグ監視（ポーリング方式）
-  let lastUpdateFlag = localStorage.getItem('daily-report-posts-updated') || '';
-  const checkForUpdates = () => {
-    const currentFlag = localStorage.getItem('daily-report-posts-updated') || '';
-    if (currentFlag !== lastUpdateFlag && currentFlag !== '') {
-      console.log('📱 [HomePage] localStorageフラグ変更を検知:', currentFlag);
-      lastUpdateFlag = currentFlag;
-      
-      if (window.refreshHomePage) {
-        window.refreshHomePage();
-      }
-    }
-  };
   
   // イベントリスナーの設定
   window.addEventListener('postsUpdated', handlePostsUpdate);
   window.addEventListener('refreshPosts', handlePostsUpdate);
   
- // ポーリング開始（5秒間隔）
-  const pollingInterval = setInterval(checkForUpdates, 5000);
+  // ⭐ 初回データ取得を実行
+  console.log('🚀 [HomePage] 初回データ取得を開始');
+  window.refreshHomePage();
+  
   
   // クリーンアップ
   return () => {
     console.log('🔌 [HomePage] 更新イベント監視を終了');
     window.removeEventListener('postsUpdated', handlePostsUpdate);
     window.removeEventListener('refreshPosts', handlePostsUpdate);
-    clearInterval(pollingInterval);
     
     // グローバル関数のクリーンアップ
     if (window.refreshHomePage) {
@@ -2670,32 +2822,46 @@ useEffect(() => {
       
       if (!snapshot.empty) {
         const latestPost = snapshot.docs[0].data();
-        const latestTime = latestPost.createdAt?.toMillis 
-          ? latestPost.createdAt.toMillis() 
-          : (typeof latestPost.createdAt === 'number' ? latestPost.createdAt : 0);
+        const latestTime = latestPost.createdAt?.toDate 
+  ? latestPost.createdAt.toDate().getTime() 
+  : (typeof latestPost.createdAt === 'number' ? latestPost.createdAt : 0);
+
         
-        console.log('🔍 [新着チェック] 最新投稿時刻:', {
-          latest: latestTime > 0 ? new Date(latestTime).toLocaleString('ja-JP') : 'Invalid',
-          current: latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : 'Invalid',
-          差分: latestTime - latestPostTime,
-          新着あり: latestTime > latestPostTime
-        });
+        // ⭐ lastViewed を取得
+const lastViewed = loadLastViewedTimestamp(userId);
+
+console.log('🔍 [新着チェック] 最新投稿時刻:', {
+  latest: latestTime > 0 ? new Date(latestTime).toLocaleString('ja-JP') : 'Invalid',
+  current: lastViewed > 0 ? new Date(lastViewed).toLocaleString('ja-JP') : 'Invalid',
+  差分: latestTime - (lastViewed || 0),
+  新着あり: latestTime > (lastViewed || 0)
+});
         
         // 新着投稿があるかチェック
-        if (latestTime > 0 && latestPostTime > 0 && latestTime > latestPostTime) {
+        if (latestTime > 0 && lastViewed && latestTime > lastViewed) {
           const latestPostAuthorId = latestPost.authorId || latestPost.userId || latestPost.createdBy;
+
+          // 🔍 デバッグログを追加
+console.log('🔍 [新着チェック] ユーザーID比較:', {
+  latestPostAuthorId,
+  currentUserId: userId,
+  authorIdExists: !!latestPost.authorId,
+  userIdExists: !!latestPost.userId,
+  createdByExists: !!latestPost.createdBy,
+  match: latestPostAuthorId === userId
+});
           
           // 自分の投稿は除外
           if (latestPostAuthorId === userId) {
             console.log('⏭️ [HomePage] 自分の投稿のため新着バナー非表示');
-            setLatestPostTime(latestTime);
+            setLatestPostTime(latestTime + 100);
             console.log('✅ [HomePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
           } else {
             console.log('🆕 [HomePage] メンバーの新着投稿を検知！バナー表示ON');
             setHasNewPosts(true);
             
             // 最新投稿時刻を更新
-            setLatestPostTime(latestTime);
+            setLatestPostTime(latestTime + 100);
           }
         } else {
           console.log('ℹ️ [HomePage] 新着投稿なし');
@@ -3628,12 +3794,21 @@ const resetFilters = () => {
           }}
           onClick={async () => {
   console.log('🔄 [HomePage] 新着バナーをクリック - 再取得開始');
-  setHasNewPosts(false);
   
-  // ⭐ 最新投稿時刻を現在時刻に更新して、同じ投稿で再度バナーが表示されないようにする
-  const now = Date.now();
-  setLatestPostTime(now);
-  console.log('📝 [HomePage] 最新投稿時刻を更新:', new Date(now).toLocaleString('ja-JP'));
+// ⭐ 新着バナーを非表示にして、lastViewedを更新
+setHasNewPosts(false);
+
+// ⭐⭐⭐ ここに追加 ⭐⭐⭐
+const userId = localStorage.getItem('daily-report-user-id');
+if (userId && latestPostTime > 0) {
+  saveLastViewedTimestamp(userId, latestPostTime + 100);
+  console.log('💾 [新着バナークリック] lastViewed更新:', new Date(latestPostTime + 100).toLocaleString('ja-JP'));
+}
+
+// データを再取得して最新投稿時刻を更新
+if (window.refreshHomePage) {
+  window.refreshHomePage();
+}
   
   setLoading(true);
   
