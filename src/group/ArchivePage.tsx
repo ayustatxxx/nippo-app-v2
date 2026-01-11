@@ -2739,6 +2739,12 @@ console.log('✅ [ArchivePage] 最新投稿時刻を更新:', new Date(latestTim
 } else {
   console.log('ℹ️ [ArchivePage] 新着投稿なし');
   
+  // ⭐ 新着バナーを消す（60秒経過したので） ⭐
+  if (hasNewPosts) {
+    console.log('🔄 [ArchivePage] 60秒経過 → 新着バナーを自動で非表示');
+    setHasNewPosts(false);
+  }
+  
   // ⭐ キャッシュ期限切れならバックグラウンド更新（既読反映用） ⭐
   const now = Date.now();
   const lastCacheTime = archivePostsCacheTime[groupId || ''] || 0;
