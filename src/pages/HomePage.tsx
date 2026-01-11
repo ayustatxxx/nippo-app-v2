@@ -1285,7 +1285,15 @@ const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);  // ⭐ 栞を�
 // ⭐ 新着チェック用のState ⭐
 const [hasNewPosts, setHasNewPosts] = useState(false);
 const [justDeleted, setJustDeleted] = useState(false);
-const [latestPostTime, setLatestPostTime] = useState<number>(0);
+const [latestPostTime, setLatestPostTime] = useState<number>(() => {
+  // しおりを読む処理
+  const userId = localStorage.getItem('daily-report-user-id');
+  if (!userId) return 0;
+  
+  const saved = loadLastViewedTimestamp(userId);
+  return saved || 0;
+});
+// ↑ 前回の続きからスタート（しおりを読む）
 
 // PostDetailModal コンポーネント
 const PostDetailModal: React.FC<{
@@ -2794,17 +2802,23 @@ useEffect(() => {
   
   // 新着チェック関数
   const checkForNewPosts = async () => {
-    if (justDeleted) {
-      console.log('⏭️ [新着チェック] 削除直後のためスキップ');
-      return;
-    }
+  if (justDeleted) {
+    console.log('⏭️ [新着チェック] 削除直後のためスキップ');
+    return;
+  }
+  
+  // ⭐ 追加: latestPostTime が未設定の場合はスキップ
+  if (latestPostTime === 0) {
+    console.log('🔍 [HomePage] 初回ロード中（latestPostTime未設定）のため新着チェックをスキップ');
+    return;
+  }
+  
+  try {
+    console.log('🔍 [HomePage] 新着チェック開始');
+    console.log('📊 [HomePage] 現在の最新投稿時刻:', latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : '未設定');
     
-    try {
-      console.log('🔍 [HomePage] 新着チェック開始');
-      console.log('📊 [HomePage] 現在の最新投稿時刻:', latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : '未設定');
-      
-      const userId = localStorage.getItem('daily-report-user-id');
-      if (!userId) return;
+    const userId = localStorage.getItem('daily-report-user-id');
+    if (!userId) return;
       
       // Firestoreから最新の投稿1件を取得（全グループ対象）
       const { collection, query, orderBy, limit, getDocs } = await import('firebase/firestore');
@@ -2827,18 +2841,17 @@ useEffect(() => {
   : (typeof latestPost.createdAt === 'number' ? latestPost.createdAt : 0);
 
         
-        // ⭐ lastViewed を取得
-const lastViewed = loadLastViewedTimestamp(userId);
-
+       // ⭐ ログ出力（デバッグ用）
 console.log('🔍 [新着チェック] 最新投稿時刻:', {
   latest: latestTime > 0 ? new Date(latestTime).toLocaleString('ja-JP') : 'Invalid',
-  current: lastViewed > 0 ? new Date(lastViewed).toLocaleString('ja-JP') : 'Invalid',
-  差分: latestTime - (lastViewed || 0),
-  新着あり: latestTime > (lastViewed || 0)
+  current: latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : '未設定',
+  差分: latestTime - latestPostTime,
+  新着あり: (latestTime - latestPostTime) > 1000
 });
         
         // 新着投稿があるかチェック
-        if (latestTime > 0 && lastViewed && latestTime > lastViewed) {
+        const TOLERANCE_MS = 1000; // 1秒
+if (latestTime > 0 && latestPostTime > 0 && (latestTime - latestPostTime) > TOLERANCE_MS) {
           const latestPostAuthorId = latestPost.authorId || latestPost.userId || latestPost.createdBy;
 
           // 🔍 デバッグログを追加
@@ -4165,12 +4178,14 @@ placeholder="キーワード・#タグで検索"
                 letterSpacing: 'normal',
                 margin: 0
               }}>
-                {selectedDate || selectedGroup || searchQuery || startDate || endDate ? 'フィルター適用中' : 'New Posts'}
-                {(selectedDate || selectedGroup || searchQuery || startDate || endDate) && filteredItems.length > 0 && (
-                  <span style={{ fontSize: '0.9rem', color: '#055A68', marginLeft: '0.5rem' }}>
-                    ({filteredItems.length}件)
-                  </span>
-                )}
+                {selectedDate || selectedGroup || searchQuery || startDate || endDate ? (
+  isCountingResults ? '検索中...' : 'フィルター適用中'
+) : 'New Posts'}
+{(selectedDate || selectedGroup || searchQuery || startDate || endDate) && !isCountingResults && filteredItems.length > 0 && (
+  <span style={{ fontSize: '0.9rem', color: '#055A68', marginLeft: '0.5rem' }}>
+    ({filteredItems.length}件)
+  </span>
+)}
               </h3>
             </div>
                     
