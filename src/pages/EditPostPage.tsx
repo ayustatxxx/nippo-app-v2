@@ -118,9 +118,29 @@ const dateMatch = newDateMatch || oldDateMatch;
 
 if (dateMatch) {
   // "2025 / 11 / 20 (木)" → "2025-11-20" に変換
-  const dateStr = dateMatch[1].replace(/（.+）/, '').trim();
-  const normalizedDate = dateStr.replace(/\s*\/\s*/g, '-');
-  setWorkDate(normalizedDate);
+  const dateStr = dateMatch[1].replace(/ ?\(.+?\)/g, '').replace(/（.+?）/g, '').trim();
+
+  // 🆕 デバッグログを追加
+console.log('🔍🔍🔍 [EditPost-日付抽出]');
+console.log('- dateMatch[1]:', dateMatch[1]);
+console.log('- dateStr:', dateStr);
+console.log('- NaNが含まれているか:', dateStr.includes('NaN'));
+console.log('- undefinedが含まれているか:', dateStr.includes('undefined'));
+  
+  // 🆕 NaN チェックを追加
+  if (dateStr.includes('NaN') || dateStr.includes('undefined')) {
+    // 日付がNaNの場合は今日の日付を設定
+    const today = new Date().toISOString().split('T')[0];
+    setWorkDate(today);
+  } else {
+    const normalizedDate = dateStr.replace(/\s*\/\s*/g, '-');
+    setWorkDate(normalizedDate);
+
+    // 🆕 デバッグログを追加
+console.log('🔍🔍🔍 [EditPost-normalizedDate]');
+console.log('- normalizedDate:', normalizedDate);
+console.log('- workDate state:', workDate);
+  }
 } else {
   // 日付がない場合は今日の日付を設定
   const today = new Date().toISOString().split('T')[0];
@@ -451,7 +471,16 @@ if (hasCheckOut && startTime && endTime) {
 // 🆕 開始日を追加
 if (workDate) {
   const formattedDate = formatDateToJapanese(workDate);
+
+  // 🆕 デバッグログを追加
+console.log('🔍🔍🔍 [EditPost-formatDateToJapanese]');
+console.log('- workDate渡す値:', workDate);
+console.log('- formattedDate結果:', formattedDate);
+
+
   timePrefix += `日付: ${formattedDate}\n`;
+console.log('🔍🔍🔍 [EditPost] timePrefix:', timePrefix);
+console.log('🔍 formattedDate:', formattedDate);
 }
 
 // メッセージから既存の時刻情報を削除
@@ -469,6 +498,9 @@ const cleanMessage = editedMessage
 
 // 時刻 + 作業時間 + 開始日 + メッセージの順で結合
 const reconstructedMessage = timePrefix + (cleanMessage ? `\n${cleanMessage}` : '');
+console.log('🔍🔍🔍 [EditPost] reconstructedMessage:');
+console.log(reconstructedMessage);
+console.log('🔍 日付が含まれているか:', reconstructedMessage.includes('日付:'));
 
 const sanitizedMessage = sanitizeInput(reconstructedMessage).substring(0, 5000);
 const validTags = editedTags.filter(tag => tag.length <= 50);

@@ -846,13 +846,40 @@ const removeTimeInfo = (message: string): string => {
 
 // 🆕 時刻情報を抽出する関数
 const extractTimeInfo = (message: string) => {
-  const startTimeMatch = message.match(/作業開始:\s*(\d{2}:\d{2})/);
-  const endTimeMatch = message.match(/作業終了:\s*(\d{2}:\d{2})/);
-  const dateMatch = message.match(/日付:\s*(.+?)(?:\n|$)/);
+  // 新フォーマット: "開始: 23:31 ー 終了: 23:31"
+  const newFormatMatch = message.match(/開始:\s*(\d{2}:\d{2})\s*ー\s*終了:\s*(\d{2}:\d{2})/);
+  
+  // 旧フォーマット: "作業開始: 23:31" "作業終了: 23:31"
+  const oldStartMatch = message.match(/作業開始:\s*(\d{2}:\d{2})/);
+  const oldEndMatch = message.match(/作業終了:\s*(\d{2}:\d{2})/);
+  
+  // チェックインのみ: "開始: 23:31"
+  const startOnlyMatch = message.match(/^開始:\s*(\d{2}:\d{2})/m);
+  
+  // 日付（新旧フォーマット対応）
+  const newDateMatch = message.match(/開始日:\s*(.+?)(?:\n|$)/);
+  const oldDateMatch = message.match(/日付:\s*(.+?)(?:\n|$)/);
+  const dateMatch = newDateMatch || oldDateMatch;
+  
+  // 新フォーマットを優先、なければ旧フォーマット、それもなければチェックインのみ
+  let startTime = null;
+  let endTime = null;
+  
+  if (newFormatMatch) {
+    startTime = newFormatMatch[1];
+    endTime = newFormatMatch[2];
+  } else if (oldStartMatch) {
+    startTime = oldStartMatch[1];
+    if (oldEndMatch) {
+      endTime = oldEndMatch[1];
+    }
+  } else if (startOnlyMatch) {
+    startTime = startOnlyMatch[1];
+  }
   
   return {
-    startTime: startTimeMatch?.[1] || null,
-    endTime: endTimeMatch?.[1] || null,
+    startTime,
+    endTime,
     date: dateMatch?.[1] || null,
   };
 };

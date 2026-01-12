@@ -511,7 +511,7 @@ const handleCheckInOut = async () => {
     const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     
     const postId = await UnifiedCoreSystem.savePost({
-  message: `作業開始: ${time}\n日付: ${date}`,
+  message: `開始: ${time}\n日付: ${date}`,
   files: [],
   tags: ["#出退勤時間"],
   groupId: groupId,
@@ -659,7 +659,10 @@ if (checkInPost.message) {
     startDateStr = newDateMatch[1];
   } else if (oldDateMatch) {
     startDateStr = oldDateMatch[1];
-  }
+  } else {
+  // 🆕 フォールバック: どちらのフォーマットもない場合は現在の日付を使う
+  startDateStr = date;
+}
       
       // 🔢 時刻を数値に変換
       if (startTimeStr) {
@@ -776,6 +779,13 @@ if (startTimeStr) {
     // メッセージを作成（編集済みの時刻を保持）
     // 🆕 新フォーマットに統一
     const updatedMessage = `開始: ${startTimeStr} ー 終了: ${time}\n─────────────────\n■ 作業時間: ${workTimeStr}\n─────────────────\n日付: ${startDateStr}`;
+
+    // 🆕 デバッグログを追加
+console.log('🔍🔍🔍 [重要] updatedMessage の内容:');
+console.log(updatedMessage);
+console.log('🔍 updatedMessage.length:', updatedMessage.length);
+console.log('🔍 日付が含まれているか:', updatedMessage.includes('日付:'));
+
     console.log('🔍 [チェックアウト] 使用する開始時刻:', startTimeStr);
     console.log('🔍 [チェックアウト] 使用する開始日付:', startDateStr);
     
@@ -787,6 +797,11 @@ if (startTimeStr) {
     console.log('✅ 古いチェックイン投稿を削除完了');
     
     // 2. 新しい統合投稿を作成（最新の時間で）
+    console.log('🔍🔍🔍 [savePost前] 渡す値:');
+    console.log('- message:', updatedMessage);
+    console.log('- message.length:', updatedMessage.length);
+    console.log('- 日付含む:', updatedMessage.includes('日付:'));
+
     console.log('🔍 [チェックアウト] checkInPost.isManuallyEdited:', checkInPost.isManuallyEdited);
     console.log('🔍 [チェックアウト] checkInPost.isEdited:', checkInPost.isEdited);
     
@@ -815,6 +830,7 @@ if (startTimeStr) {
         // 🆕 Firestoreにも保存
         try {
           await UnifiedCoreSystem.updatePost(newPostId, {
+            message: updatedMessage, 
             isManuallyEdited: true
           });
           console.log('✅ Firestoreにも編集済みフラグを保存');
