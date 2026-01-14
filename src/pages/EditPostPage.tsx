@@ -468,20 +468,34 @@ if (hasCheckOut && startTime && endTime) {
   timePrefix += `─────────────────\n■ 作業時間: ${result.duration}\n─────────────────\n`;
 }
 
-// 🆕 開始日を追加
-if (workDate) {
-  const formattedDate = formatDateToJapanese(workDate);
+// 📆 開始日を追加
+// 🔧 FIX: useState は非同期なので、直接計算した値を使う
+let formattedDate: string;
 
+// メッセージから日付を再抽出
+const newDateMatch = editedMessage.match(/開始日:\s*(.+?)(?:\n|$)/);
+const oldDateMatch = editedMessage.match(/日付:\s*(.+?)(?:\n|$)/);
+const currentDateMatch = newDateMatch || oldDateMatch;
+
+if (currentDateMatch) {
+  // 日付文字列から曜日を削除して正規化
+  const dateStrClean = currentDateMatch[1].replace(/ ?\(.+?\)/g, '').replace(/（.+?）/g, '').trim();
+  const finalWorkDate = dateStrClean.replace(/\s*\/\s*/g, '-');
+  formattedDate = formatDateToJapanese(finalWorkDate);
+  
   // 🆕 デバッグログを追加
-console.log('🔍🔍🔍 [EditPost-formatDateToJapanese]');
-console.log('- workDate渡す値:', workDate);
-console.log('- formattedDate結果:', formattedDate);
+  console.log('🔍🔍🔍 [EditPost-formatDateToJapanese]');
+  console.log('- finalWorkDate:', finalWorkDate);
+  console.log('- formattedDate結果:', formattedDate);
+} else {
+  // 日付がない場合は今日の日付を使用
+  const today = new Date().toISOString().split('T')[0];
+  formattedDate = formatDateToJapanese(today);
+}
 
-
-  timePrefix += `日付: ${formattedDate}\n`;
+timePrefix += `日付: ${formattedDate}\n`;
 console.log('🔍🔍🔍 [EditPost] timePrefix:', timePrefix);
 console.log('🔍 formattedDate:', formattedDate);
-}
 
 // メッセージから既存の時刻情報を削除
 const cleanMessage = editedMessage
