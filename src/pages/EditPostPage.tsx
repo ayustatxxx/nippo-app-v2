@@ -119,13 +119,6 @@ const dateMatch = newDateMatch || oldDateMatch;
 if (dateMatch) {
   // "2025 / 11 / 20 (木)" → "2025-11-20" に変換
   const dateStr = dateMatch[1].replace(/ ?\(.+?\)/g, '').replace(/（.+?）/g, '').trim();
-
-  // 🆕 デバッグログを追加
-console.log('🔍🔍🔍 [EditPost-日付抽出]');
-console.log('- dateMatch[1]:', dateMatch[1]);
-console.log('- dateStr:', dateStr);
-console.log('- NaNが含まれているか:', dateStr.includes('NaN'));
-console.log('- undefinedが含まれているか:', dateStr.includes('undefined'));
   
   // 🆕 NaN チェックを追加
   if (dateStr.includes('NaN') || dateStr.includes('undefined')) {
@@ -136,10 +129,6 @@ console.log('- undefinedが含まれているか:', dateStr.includes('undefined'
     const normalizedDate = dateStr.replace(/\s*\/\s*/g, '-');
     setWorkDate(normalizedDate);
 
-    // 🆕 デバッグログを追加
-console.log('🔍🔍🔍 [EditPost-normalizedDate]');
-console.log('- normalizedDate:', normalizedDate);
-console.log('- workDate state:', workDate);
   }
 } else {
   // 日付がない場合は今日の日付を設定
@@ -483,10 +472,6 @@ if (currentDateMatch) {
   const finalWorkDate = dateStrClean.replace(/\s*\/\s*/g, '-');
   formattedDate = formatDateToJapanese(finalWorkDate);
   
-  // 🆕 デバッグログを追加
-  console.log('🔍🔍🔍 [EditPost-formatDateToJapanese]');
-  console.log('- finalWorkDate:', finalWorkDate);
-  console.log('- formattedDate結果:', formattedDate);
 } else {
   // 日付がない場合は今日の日付を使用
   const today = new Date().toISOString().split('T')[0];
@@ -494,8 +479,6 @@ if (currentDateMatch) {
 }
 
 timePrefix += `日付: ${formattedDate}\n`;
-console.log('🔍🔍🔍 [EditPost] timePrefix:', timePrefix);
-console.log('🔍 formattedDate:', formattedDate);
 
 // メッセージから既存の時刻情報を削除
 const cleanMessage = editedMessage
