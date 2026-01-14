@@ -1284,6 +1284,7 @@ const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);  // ⭐ 栞を�
 
 // ⭐ 新着チェック用のState ⭐
 const [hasNewPosts, setHasNewPosts] = useState(false);
+const [bannerType, setBannerType] = useState<'reload' | 'newPost'>('reload'); 
 const [justDeleted, setJustDeleted] = useState(false);
 const [latestPostTime, setLatestPostTime] = useState<number>(() => {
   // しおりを読む処理
@@ -1293,7 +1294,19 @@ const [latestPostTime, setLatestPostTime] = useState<number>(() => {
   const saved = loadLastViewedTimestamp(userId);
   return saved || 0;
 });
-// ↑ 前回の続きからスタート（しおりを読む）
+
+const latestPostTimeRef = useRef(latestPostTime);
+
+// latestPostTime が更新されたら ref も同期
+useEffect(() => {
+  console.log('🔄 [HomePage] latestPostTimeRef 更新:', {
+    更新前: latestPostTimeRef.current,
+    更新後: latestPostTime,
+    差分ms: latestPostTime - latestPostTimeRef.current
+  });
+  latestPostTimeRef.current = latestPostTime;
+}, [latestPostTime]);
+
 
 // PostDetailModal コンポーネント
 const PostDetailModal: React.FC<{
@@ -2717,22 +2730,26 @@ applyFilters(enrichedPosts);
 
 console.log('✅ [HomePage] データリフレッシュ完了:', enrichedPosts.length, '件');
 
-// ⭐ 最新投稿時刻を更新（新着チェック用）
+// ★ 最新投稿時刻を更新（新着チェック用）
+// ⚠️ この処理は削除（バナークリック時の設定を上書きしてしまうため）
+// enrichedPostsはフィルター済みデータなので、真の最新投稿ではない可能性がある
+// 最新投稿時刻の更新は、バナークリック時のFirestore直接取得のみで行う
+/*
 if (enrichedPosts.length > 0) {
   const latestTime = enrichedPosts[0].timestamp || enrichedPosts[0].createdAt?.toMillis?.() || 0;
   if (latestTime > 0) {
     setLatestPostTime(latestTime);
     console.log('🕐 [HomePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
     
-      
-      // ⭐ リフレッシュ時も「見た」記録を保存
-      const userId = localStorage.getItem('daily-report-user-id');
-      if (userId) {
-        saveLastViewedTimestamp(userId, latestTime + 100);
-        console.log('💾 [HomePage] リフレッシュ時 - lastViewed保存:', new Date(latestTime + 100).toLocaleString('ja-JP'));
-      }
+    // ★ リフレッシュ時も「見た」記録を保存
+    const userId = localStorage.getItem('daily-report-user-id');
+    if (userId) {
+      saveLastViewedTimestamp(userId, latestTime + 100);
+      console.log('💾 [HomePage] リフレッシュ時 - lastViewed保存:', new Date(latestTime + 100).toLocaleString('ja-JP'));
+    }
   }
 }
+*/
 
 } catch (error) {
   console.error('❌ [HomePage] データリフレッシュエラー:', error);
@@ -2815,7 +2832,12 @@ useEffect(() => {
   
   try {
     console.log('🔍 [HomePage] 新着チェック開始');
-    console.log('📊 [HomePage] 現在の最新投稿時刻:', latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : '未設定');
+    const currentTime = latestPostTimeRef.current;
+    console.log('📊 [HomePage] 現在の最新投稿時刻:', {
+  'state値': latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : '未設定',
+  'ref値': currentTime > 0 ? new Date(currentTime).toLocaleString('ja-JP') : '未設定',
+  '一致': latestPostTime === currentTime
+});
     
     const userId = localStorage.getItem('daily-report-user-id');
     if (!userId) return;
@@ -2844,14 +2866,14 @@ useEffect(() => {
        // ⭐ ログ出力（デバッグ用）
 console.log('🔍 [新着チェック] 最新投稿時刻:', {
   latest: latestTime > 0 ? new Date(latestTime).toLocaleString('ja-JP') : 'Invalid',
-  current: latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : '未設定',
-  差分: latestTime - latestPostTime,
-  新着あり: (latestTime - latestPostTime) > 1000
+  current: currentTime > 0 ? new Date(currentTime).toLocaleString('ja-JP') : '未設定',
+  差分: latestTime - currentTime,
+  新着あり: (latestTime - currentTime) > 1000
 });
         
         // 新着投稿があるかチェック
         const TOLERANCE_MS = 1000; // 1秒
-if (latestTime > 0 && latestPostTime > 0 && (latestTime - latestPostTime) > TOLERANCE_MS) {
+if (latestTime > 0 && currentTime > 0 && (latestTime - currentTime) > TOLERANCE_MS) {
           const latestPostAuthorId = latestPost.authorId || latestPost.userId || latestPost.createdBy;
 
           // 🔍 デバッグログを追加
@@ -2866,16 +2888,27 @@ console.log('🔍 [新着チェック] ユーザーID比較:', {
           
           // 自分の投稿は除外
           if (latestPostAuthorId === userId) {
-            console.log('⏭️ [HomePage] 自分の投稿のため新着バナー非表示');
-            setLatestPostTime(latestTime + 100);
-            console.log('✅ [HomePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
-          } else {
-            console.log('🆕 [HomePage] メンバーの新着投稿を検知！バナー表示ON');
-            setHasNewPosts(true);
-            
-            // 最新投稿時刻を更新
-            setLatestPostTime(latestTime + 100);
-          }
+  console.log('⏭️ [HomePage] 自分の投稿のため新着バナー非表示');
+  setLatestPostTime(latestTime + 100);
+  
+  // localStorage も更新
+  if (userId) {
+    saveLastViewedTimestamp(userId, latestTime + 100);
+  }
+  console.log('✅ [HomePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
+} else {
+  console.log('🆕 [HomePage] メンバーの新着投稿を検知！バナー表示ON');
+setBannerType('newPost'); // ← この行を追加
+setHasNewPosts(true);
+  
+  // 最新投稿時刻を更新
+  setLatestPostTime(latestTime + 100);
+  
+  // localStorage も更新
+  if (userId) {
+    saveLastViewedTimestamp(userId, latestTime + 100);
+  }
+}
         } else {
           console.log('ℹ️ [HomePage] 新着投稿なし');
         }
@@ -2892,7 +2925,7 @@ console.log('🔍 [新着チェック] ユーザーID比較:', {
     console.log('🛑 [HomePage] 新着チェックタイマー停止');
     clearInterval(newPostCheckInterval);
   };
-}, [justDeleted, latestPostTime]);
+}, [justDeleted]);
 
 
 useEffect(() => {
@@ -3813,9 +3846,43 @@ setHasNewPosts(false);
 
 // ⭐⭐⭐ ここに追加 ⭐⭐⭐
 const userId = localStorage.getItem('daily-report-user-id');
-if (userId && latestPostTime > 0) {
-  saveLastViewedTimestamp(userId, latestPostTime + 100);
-  console.log('💾 [新着バナークリック] lastViewed更新:', new Date(latestPostTime + 100).toLocaleString('ja-JP'));
+if (userId) {
+  // Firestoreから直接最新の投稿時刻を取得
+  const fetchLatestPostTime = async () => {
+    try {
+      const { collection, query, orderBy, limit, getDocs } = await import('firebase/firestore');
+      const { getFirestore } = await import('firebase/firestore');
+      const db = getFirestore();
+      
+      const postsRef = collection(db, 'posts');
+      const q = query(postsRef, orderBy('createdAt', 'desc'), limit(1));
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        const latestPost = snapshot.docs[0].data();
+        const latestTime = latestPost.createdAt?.toDate
+          ? latestPost.createdAt.toDate().getTime()
+          : (typeof latestPost.createdAt === 'number' ? latestPost.createdAt : 0);
+        
+        if (latestTime > 0) {
+          console.log('👉 [HomePage] バナークリック時に最新時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
+          setLatestPostTime(latestTime);
+          saveLastViewedTimestamp(userId, latestTime);
+            // 👇 ここに追加
+  console.log('🔍 [デバッグ] setLatestPostTime実行後:', {
+    '設定した値': latestTime,
+    '現在のstate値': latestPostTime,
+    '現在のref値': latestPostTimeRef.current
+  });
+
+        }
+      }
+    } catch (error) {
+      console.error('❌ [HomePage] 最新投稿時刻の取得エラー:', error);
+    }
+  };
+  
+  fetchLatestPostTime();
 }
 
 // データを再取得して最新投稿時刻を更新
@@ -3831,8 +3898,10 @@ if (window.refreshHomePage) {
   }
 }}
         >
-          <span>新しい投稿があります。</span>
-          <span>更新</span>
+          <span>
+  {bannerType === 'newPost' ? '新着投稿があります' : '投稿を読み込みました'}
+</span>
+{bannerType === 'newPost' && <span>更新</span>}
         </div>
       )}
         
