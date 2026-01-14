@@ -3839,60 +3839,59 @@ const resetFilters = () => {
             whiteSpace: 'nowrap',
           }}
           onClick={async () => {
+  // バナーを非表示
+  setHasNewPosts(false);
+  
+  // bannerTypeに応じて処理を分岐
+  if (bannerType === 'reload') {
+    // リロード時バナー: バナーを消すだけ
+    console.log('✅ [HomePage] リロード時バナーを閉じました');
+    return;
+  }
+  
+  // 新着検知バナー: データ再取得
   console.log('🔄 [HomePage] 新着バナーをクリック - 再取得開始');
   
-// ⭐ 新着バナーを非表示にして、lastViewedを更新
-setHasNewPosts(false);
-
-// ⭐⭐⭐ ここに追加 ⭐⭐⭐
-const userId = localStorage.getItem('daily-report-user-id');
-if (userId) {
-  // Firestoreから直接最新の投稿時刻を取得
-  const fetchLatestPostTime = async () => {
-    try {
-      const { collection, query, orderBy, limit, getDocs } = await import('firebase/firestore');
-      const { getFirestore } = await import('firebase/firestore');
-      const db = getFirestore();
-      
-      const postsRef = collection(db, 'posts');
-      const q = query(postsRef, orderBy('createdAt', 'desc'), limit(1));
-      const snapshot = await getDocs(q);
-      
-      if (!snapshot.empty) {
-        const latestPost = snapshot.docs[0].data();
-        const latestTime = latestPost.createdAt?.toDate
-          ? latestPost.createdAt.toDate().getTime()
-          : (typeof latestPost.createdAt === 'number' ? latestPost.createdAt : 0);
+  const userId = localStorage.getItem('daily-report-user-id');
+  if (userId) {
+    // Firestoreから直接最新の投稿時刻を取得
+    const fetchLatestPostTime = async () => {
+      try {
+        const { collection, query, orderBy, limit, getDocs } = await import('firebase/firestore');
+        const { getFirestore } = await import('firebase/firestore');
+        const db = getFirestore();
         
-        if (latestTime > 0) {
-          console.log('👉 [HomePage] バナークリック時に最新時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
-          setLatestPostTime(latestTime);
-          saveLastViewedTimestamp(userId, latestTime);
-            // 👇 ここに追加
-  console.log('🔍 [デバッグ] setLatestPostTime実行後:', {
-    '設定した値': latestTime,
-    '現在のstate値': latestPostTime,
-    '現在のref値': latestPostTimeRef.current
-  });
-
+        const postsRef = collection(db, 'posts');
+        const q = query(postsRef, orderBy('createdAt', 'desc'), limit(1));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          const latestPost = snapshot.docs[0].data();
+          const latestTime = latestPost.createdAt?.toDate
+            ? latestPost.createdAt.toDate().getTime()
+            : (typeof latestPost.createdAt === 'number' ? latestPost.createdAt : 0);
+          
+          if (latestTime > 0) {
+            console.log('👉 [HomePage] バナークリック時に最新時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
+            setLatestPostTime(latestTime);
+            saveLastViewedTimestamp(userId, latestTime);
+            console.log('🔍 [デバッグ] setLatestPostTime実行後:', {
+              '設定した値': latestTime,
+              '現在のstate値': latestPostTime,
+              '現在のref値': latestPostTimeRef.current
+            });
+          }
         }
+      } catch (error) {
+        console.error('❌ [HomePage] 最新投稿時刻の取得エラー:', error);
       }
-    } catch (error) {
-      console.error('❌ [HomePage] 最新投稿時刻の取得エラー:', error);
-    }
-  };
+    };
+    
+    fetchLatestPostTime();
+  }
   
-  fetchLatestPostTime();
-}
-
-// データを再取得して最新投稿時刻を更新
-if (window.refreshHomePage) {
-  window.refreshHomePage();
-}
-  
+  // データを再取得
   setLoading(true);
-  
-  // データ再取得
   if (window.refreshHomePage) {
     window.refreshHomePage();
   }
