@@ -26,6 +26,11 @@ const getEnvironmentSuffix = () => {
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return '*';  // ローカル環境
   }
+
+  // 本番環境のURLを明示的にチェック
+  if (hostname === 'nippo-app-v2.vercel.app') {
+    return '';  // 本番環境（何も表示しない）
+  }
   
   if (hostname.includes('vercel.app')) {
     return '**';  // プレビュー環境
