@@ -17,11 +17,24 @@ const GroupTopPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-   // 🎯 環境判定（本番 or テスト）
-const isTestEnvironment = typeof window !== 'undefined' && (
-  window.location.hostname.includes('vercel.app') ||
-  window.location.hostname === 'localhost'
-);
+   // 🎯 環境判定（本番 / プレビュー / ローカル）
+const getEnvironmentSuffix = () => {
+  if (typeof window === 'undefined') return '';
+  
+  const hostname = window.location.hostname;
+  
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return '*';  // ローカル環境
+  }
+  
+  if (hostname.includes('vercel.app')) {
+    return '**';  // プレビュー環境
+  }
+  
+  return '';  // 本番環境
+};
+
+const environmentSuffix = getEnvironmentSuffix();
   
   // グループ名の表示制限を追跡するための参照
   const groupNameRef = useRef<HTMLHeadingElement>(null);
@@ -1095,8 +1108,7 @@ const bottomBackgroundTop = '65vh';
       textOverflow: 'ellipsis',
     }}
   >
-    {isTestEnvironment && '🧪テスト '}
-    {group.name}
+   {group.name}{environmentSuffix}
   </h1>
   
   {/* チェックイン・チェックアウトボタン */}
