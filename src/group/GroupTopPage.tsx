@@ -18,8 +18,10 @@ const GroupTopPage: React.FC = () => {
   const [searchParams] = useSearchParams();
 
    // 🎯 環境判定（本番 or テスト）
-  const isTestEnvironment = typeof window !== 'undefined' && 
-  window.location.hostname.includes('git-develop');
+const isTestEnvironment = typeof window !== 'undefined' && (
+  window.location.hostname.includes('vercel.app') ||
+  window.location.hostname === 'localhost'
+);
   
   // グループ名の表示制限を追跡するための参照
   const groupNameRef = useRef<HTMLHeadingElement>(null);
