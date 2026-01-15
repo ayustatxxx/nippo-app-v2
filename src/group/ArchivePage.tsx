@@ -1,22 +1,67 @@
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import GroupFooterNav from '../components/GroupFooterNav';
 import React, { useEffect, useState, useRef } from 'react';
 import * as html2pdflib from 'html2pdf.js';
 import { Post, Memo } from '../types';
 import MemoModal, { MemoDisplay } from '../components/MemoModal';
 import ImageGalleryModal from '../components/ImageGalleryModal';
-import { getGroupPosts, markPostAsRead, getPostReadStatus } from "../utils/firestoreService";
+import ReadByModal from '../components/ReadByModal'; 
+import { getGroupPosts, markPostAsRead, removePostAsRead, getPostReadStatus } from "../utils/firestoreService";
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 import { DisplayNameResolver } from '../utils/displayNameResolver';  
 import { getUser } from '../firebase/firestore';
 import { MemoService } from '../utils/memoService';
 import Header from '../components/Header';
-import { deleteDoc, doc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
-// ⭐ キャッシュ変数
+// 🔸 新着バナー用：「最後に見た時刻」を保存・読み込みするためのキー
+const LAST_VIEWED_KEY_PREFIX = 'archive-last-viewed-';
+
+const getLastViewedKey = (groupId: string) =>
+  `${LAST_VIEWED_KEY_PREFIX}${groupId}`;
+
+// 「最後に見た時刻」を保存
+const saveLastViewedTimestamp = (groupId: string, latestMs: number) => {
+  if (!Number.isFinite(latestMs) || latestMs <= 0) return;
+
+  const key = getLastViewedKey(groupId);
+  localStorage.setItem(key, String(latestMs));
+  console.log('[新着保存] lastViewedTimestamp を保存しました', {
+    key,
+    value: latestMs,
+  });
+};
+
+// 「最後に見た時刻」を読み込み
+const loadLastViewedTimestamp = (groupId: string): number | null => {
+  const key = getLastViewedKey(groupId);
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+
+  const ms = Number(raw);
+  if (!Number.isFinite(ms) || ms <= 0) {
+    console.warn('[新着チェック] Invalid な lastViewed を検出したのでリセットします', {
+      key,
+      raw,
+    });
+    localStorage.removeItem(key);
+    return null;
+  }
+
+  return ms;
+};
+
+
+// 🔥 キャッシュ設定
+const CACHE_DURATION = 30000; // 30秒（30,000ミリ秒）-
+const PRIORITY_LOAD_COUNT = 10; // 優先的に画像を読み込む投稿数
+
+
+// ⭐ メモリキャッシュ変数を追加 ⭐
 let archivePostsCache: { [groupId: string]: Post[] } = {};
 let archivePostsCacheTime: { [groupId: string]: number } = {};
+
 
 // グローバル関数の型定義
 declare global {
@@ -85,9 +130,10 @@ const WorkTimePostCard: React.FC<{
   shouldShowSelection: () => boolean;
   setSelectedPostForStatus: (postId: string | null) => void;
   getContainerStatusStyle: (status: string) => any;
-  handleAddMemo: (postId: string) => void; // ← この行を追加
+  handleAddMemo: (postId: string) => void;
   setPosts: React.Dispatch<React.SetStateAction<Post[]>>;
   setFilteredPosts: React.Dispatch<React.SetStateAction<Post[]>>;
+  from?: 'archive' | 'home';  
 }> = ({
   post,
   onDelete,
@@ -102,12 +148,13 @@ const WorkTimePostCard: React.FC<{
   handleAddMemo, 
   setPosts,
   setFilteredPosts,
+  from = 'archive',  
 }) => {
 
   return (
     <div
       style={{
-        backgroundColor: 'rgba(255, 251, 236, 0.3)', // #FFFBEC with 70% opacity (30% transparent)
+        backgroundColor: '#ffffff22', // 通常投稿と同じ背景色
         backdropFilter: 'blur(4px)', // ぼかし効果を追加（透明度があるため）
         color: '#fff', // テキスト色を通常投稿と同じ白色に戻す
         padding: '1rem',
@@ -180,17 +227,19 @@ const WorkTimePostCard: React.FC<{
          {post.message.length > MAX_MESSAGE_LENGTH ? (
             <div>
               {`${post.message.substring(0, MAX_MESSAGE_LENGTH)}...`}
-              {post.isEdited && (
-                <span
-                  style={{
-                    color: '#F0DB4F',
-                    fontSize: '0.8rem',
-                    marginLeft: '0.5rem',
-                  }}
-                >
-                  （編集済み）
-                </span>
-              )}
+              {post.isManuallyEdited && (
+  <div style={{ marginTop: '0.5rem' }}>
+    <span
+      style={{
+        color: '#F0DB4F',
+        fontSize: '0.9rem',
+      }}
+    >
+      (編集済み)
+    </span>
+  </div>
+)}
+          
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -213,26 +262,185 @@ const WorkTimePostCard: React.FC<{
               </button>
             </div>
           ) : (
-            <div>
-              {post.message}
-              {post.isEdited && (
-                <span
-                  style={{
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    fontSize: '0.8rem',
-                    marginLeft: '0.5rem',
-                  }}
-                >
-                  （編集済み）
-                </span>
-              )}
-            </div>
+
+            
+            
+           // 🆕 チェックイン投稿の場合は新フォーマット
+post.tags?.includes('#チェックイン') ? (() => {
+  const timeInfo = extractTimeInfo(post.message || '');
+  const cleanMessage = removeTimeInfo(post.message || '');
+  const duration = post.tags?.includes('#チェックアウト') 
+    ? calculateWorkDuration(post.message || '') 
+    : null;
+  
+  return (
+    <div>
+      {/* 作業開始・終了を1行に */}
+      {(timeInfo.startTime || timeInfo.endTime) && (
+        <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+          {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
+          {timeInfo.startTime && timeInfo.endTime && '  ー  '}
+          {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
+        </div>
+      )}
+      
+      {/* 区切り線 + 作業時間 + 区切り線 */}
+      {duration && (
+        <>
+          <div style={{ 
+            borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+          <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+           ■ 作業時間: {duration}
+          </div>
+          <div style={{ 
+            borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+        </>
+      )}
+      
+{/* 最終更新日時 */}
+{post.isManuallyEdited && post.updatedAt ? (() => {
+  console.log('🔍 [WorkTimePostCard] post.isManuallyEdited:', post.isManuallyEdited, 'post.updatedAt:', post.updatedAt);
+  let timestamp = post.updatedAt;
+  let date;
+  if (typeof timestamp === 'number') {
+    date = new Date(timestamp);
+  } else if (timestamp && typeof timestamp === 'object' && 'toDate' in timestamp) {
+    date = (timestamp as any).toDate();
+  } else if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+    date = new Date((timestamp as any).seconds * 1000);
+  } else {
+    return null;
+  }
+  
+  const dateString = date.toLocaleString('ja-JP', { 
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: 'numeric', 
+    day: 'numeric',
+    weekday: 'short',
+    hour: '2-digit', 
+    minute: '2-digit' 
+  }).replace(/\//g, ' / ');
+  
+  return (
+    <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+      <span style={{ fontSize: '0.9rem' }}>最終更新:</span>
+      {' '}
+      {dateString}
+    </div>
+  );
+})() : null}
+
+{/* クリーンなメッセージ + 編集済み */}
+{cleanMessage && (
+  <div style={{ marginTop: '0.5rem' }}>
+    <span style={{ color: '#FFFFFF' }}>{cleanMessage}</span>
+{post.isManuallyEdited && (
+  <div style={{ marginTop: '0.5rem' }}>
+    <span style={{
+      color: '#F0DB4F',
+      fontSize: '0.9rem',
+    }}>
+      （編集済み）
+    </span>
+  </div>
+)}
+  </div>
+)}
+
+{/* メッセージがない場合の編集済み表示 */}
+{!cleanMessage && post.isManuallyEdited && (
+  <div style={{ marginTop: '0.5rem' }}>
+    <span style={{
+      color: '#F0DB4F',
+      fontSize: '0.9rem',
+    }}>
+      （編集済み）
+    </span>
+  </div>
+)}
+    </div>
+  );
+})() : (
+  // 通常投稿の場合はそのまま表示
+  <div>
+    {console.log('🔍 [post.message] post.id:', post.id, 'message:', post.message, 'isManuallyEdited:', post.isManuallyEdited)}
+    {post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+    {(() => {
+      const shouldHideEdited = post.tags?.includes('#出退勤時間') && 
+                              post.tags?.includes('#チェックイン') && 
+                              post.tags?.includes('#チェックアウト');
+      
+      console.log('🔍 [編集済み判定]', {
+        postId: post.id,
+        isEdited: post.isEdited,
+        tags: post.tags,
+        shouldHideEdited: shouldHideEdited,
+        willShow: post.isEdited && !shouldHideEdited
+      });
+      
+      return null;
+    })()} 
+
+{/* 🔍 デバッグ: 条件確認 */}
+{(() => {
+  console.log('🔍 [条件確認] post.id:', post.id, 'isManuallyEdited:', post.isManuallyEdited, 'tags:', post.tags);
+  return null;
+})()}
+
+{post.isManuallyEdited && !(
+  post.tags?.includes('#出退勤時間') &&
+  post.tags?.includes('#チェックイン') &&
+  post.tags?.includes('#チェックアウト')
+) && (
+  <>
+    {/* 最終更新日時 */}
+{(() => {
+  console.log('🔍 [通常カード-最終更新] post.id:', post.id, 'updatedAt:', post.updatedAt, 'editedAt:', post.editedAt, 'isManuallyEdited:', post.isManuallyEdited);
+  
+  if (!post.updatedAt) return null;
+  const timestamp = post.updatedAt;
+      const date = new Date(timestamp);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+      const weekday = weekdays[date.getDay()];
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      
+      return (
+        <div style={{ fontSize: '0.9rem', color: '#ddd', marginTop: '0.3rem' }}>
+          最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
+        </div>
+      );
+    })()}
+    
+    <span
+      style={{
+        color: '■#F0DB4F',
+        fontSize: '0.8rem',
+        marginLeft: '0.5rem',
+      }}
+    >
+      （編集済み）
+    </span>
+  </>
+)}
+  </div>
+)
           )}
         </div>
       )}
 
       {/* メッセージがない場合の編集済み表示 */}
-      {(!post.message || post.message.length === 0) && post.isEdited && (
+     {(!post.message || post.message.length === 0) && post.isManuallyEdited && (
         <div
           style={{
             marginBottom: '0.8rem',
@@ -323,11 +531,17 @@ const WorkTimePostCard: React.FC<{
   {(() => {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "";
     const readStatus = getPostReadStatus(post, currentUserId);
-    
-    if (readStatus.isAuthor) {
+
+// 🆕 チェックイン・チェックアウト投稿では既読を非表示
+if (post.tags?.includes('#出退勤時間')) {
+  return null;
+}
+
+if (readStatus.isAuthor) {
       // 投稿者の場合：背景に適応した既読カウント表示
       return (
-        <div style={{
+        <div 
+          style={{
           display: 'flex',
           alignItems: 'center',
           gap: '0.4rem',
@@ -337,7 +551,8 @@ const WorkTimePostCard: React.FC<{
           fontSize: '0.75rem',
           color: '#ffffff', // 白文字でコントラスト確保
           fontWeight: '500',
-          backdropFilter: 'blur(4px)' // 背景ぼかしで可読性向上
+          backdropFilter: 'blur(4px)', // 背景ぼかしで可読性向上
+cursor: 'pointer'  // 🆕 クリック可能を示すカーソル
         }}>
           <div style={{
             width: '16px',
@@ -376,20 +591,6 @@ const WorkTimePostCard: React.FC<{
             target.dataset.processing = 'true';
             
             try {
-              if (!readStatus.isRead) {
-                try {
-                  await markPostAsRead(post.id, currentUserId);
-                  console.log('✅ 既読マーク完了:', post.id);
-
-                     // WorkTimePostCard内では親のリフレッシュ機能のみ使用
-      if (window.refreshArchivePage) {
-        window.refreshArchivePage();
-      }
-
-                } catch (error) {
-                  console.error('❌ 既読マークエラー:', error);
-                }
-              }
               
               setSelectedPostForStatus(post.id);
             } finally {
@@ -413,27 +614,6 @@ const WorkTimePostCard: React.FC<{
 
   {/* 右側 - ボタン群 */}
   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-  {/* メモボタン（全員に表示） */}
-  <button
-  onClick={(e) => {
-    console.log('🔴🔴🔴 [DEBUG] メモボタンがクリックされました！');
-    console.log('🔴 [DEBUG] イベント:', e);
-    console.log('🔴 [DEBUG] post.id:', post.id);
-    console.log('🔴 [DEBUG] handleAddMemo関数:', handleAddMemo);
-    handleAddMemo(post.id);
-  }}
-    style={{
-      padding: '0.4rem 1rem',
-      backgroundColor: 'rgb(0, 102, 114)',
-      color: '#F0DB4F',
-      border: 'none',
-      borderRadius: '20px',
-      fontSize: '0.75rem',
-      cursor: 'pointer',
-    }}
-  >
-    メモ
-  </button>
 
   {/* 詳細ボタン */}
   <button
@@ -454,13 +634,14 @@ const WorkTimePostCard: React.FC<{
     詳細
   </button>
 
-  {/* 削除ボタン（投稿者のみ表示） */}
-  {(() => {
-    const currentUserId = localStorage.getItem('daily-report-user-id') || '';
-    const isAuthor = post.userId === currentUserId || 
-                     post.createdBy === currentUserId ||
-                     post.authorId === currentUserId;
-    return isAuthor ? (
+ {/* 削除ボタン（投稿者のみ表示 & Archiveのみ） */}
+{from === 'archive' && (() => {  // ⭐ from === 'archive' && を追加
+  const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+  const isAuthor = post.userId === currentUserId ||
+                   post.createdBy === currentUserId ||
+                   post.authorId === currentUserId;
+  
+  return isAuthor ? (
       <button
         onClick={() => onDelete(post.id)}
         style={{
@@ -482,30 +663,6 @@ const WorkTimePostCard: React.FC<{
   })()}
 </div>
 </div>
-
-
-{/* メモ表示エリア - 投稿の下部に追加 */}
-{(post as PostWithMemos).memos && (post as PostWithMemos).memos!.length > 0 && (
-  <div style={{ marginTop: '1rem', paddingTop: '0.8rem', borderTop: '1px solid #ffffff33' }}>
-    <div style={{ fontSize: '0.8rem', color: '#F0DB4F', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-      メモ ({(post as PostWithMemos).memos!.length}件)
-    </div>
-    {(post as PostWithMemos).memos!.map((memo, index) => (
-      <div key={memo.id} style={{ 
-        backgroundColor: '#ffffff11', 
-        padding: '0.5rem', 
-        borderRadius: '6px', 
-        marginBottom: '0.3rem',
-        fontSize: '0.8rem'
-      }}>
-        <div style={{ color: '#ddd' }}>{memo.content}</div>
-        <div style={{ color: '#aaa', fontSize: '0.7rem', marginTop: '0.2rem' }}>
-          {memo.createdByName} • {new Date(memo.createdAt).toLocaleDateString('ja-JP')}
-        </div>
-      </div>
-    ))}
-  </div>
-)}
     </div>
   );
 };
@@ -537,33 +694,31 @@ const useClickOutside = (
 };
 
 
-// 検索スコア計算関数（優先度付き検索）
 // 検索スコア計算関数（AND検索対応版）
 const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
   let totalScore = 0;
-  let matchedKeywords = 0; // ★ 追加：マッチしたキーワード数をカウント
+  let matchedKeywords = 0;
   
   keywords.forEach(keyword => {
     let score = 0;
     const message = post.message.toLowerCase();
     const username = (post.username || '').toLowerCase();
-    const status = (post.status || '未確認').toLowerCase();
+    const status = (post.statusByUser?.[currentUserId] || '未確認').toLowerCase();
     
     // メモの処理
-    const memoTexts: string[] = [];
-    const memoTags: string[] = [];
-    
-    if (post.memos) {
-      post.memos.forEach(memo => {
-        const memoContent = memo.content || '';
-        const hashTags = memoContent.match(/#[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+/g) || [];
-        memoTags.push(...hashTags);
-        const textWithoutTags = memoContent.replace(/#[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+/g, '').trim();
-        if (textWithoutTags) {
-          memoTexts.push(textWithoutTags);
-        }
-      });
-    }
+const memoTexts: string[] = [];
+
+
+if (post.memos) {
+  post.memos.forEach(memo => {
+    const content = memo.content.toLowerCase();
+    const tags = ((memo as any).tags || []).join(' ').toLowerCase();
+    const combined = `${content} ${tags}`;
+    console.log('🔍 [メモ統合]:', { content, tags, combined });
+    memoTexts.push(combined);
+  });
+}
     
     const memoTextContent = memoTexts.join(' ').toLowerCase();
     
@@ -574,12 +729,12 @@ const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number =
       score += 5;
     }
     
-    // 2. メモタグ完全一致（5点）
-    if (memoTags.some(tag => 
-      tag.replace(/^#/, '').toLowerCase() === keyword
-    )) {
-      score += 5;
-    }
+    // 2. メモタグ完全一致（5点）← 削除（メモのテキストとタグを統合したため）
+    // if (memoTags.some(tag => 
+    //   tag.replace(/^#/, '').toLowerCase() === keyword
+    // )) {
+    //   score += 5;
+    // }
     
     // 3. 投稿タグ部分一致（3点）
     if (post.tags?.some(tag => 
@@ -589,13 +744,14 @@ const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number =
       score += 3;
     }
     
-    // 4. メモタグ部分一致（3点）
-    if (memoTags.some(tag => 
-      tag.replace(/^#/, '').toLowerCase().includes(keyword) &&
-      tag.replace(/^#/, '').toLowerCase() !== keyword
-    )) {
-      score += 3;
-    }
+    // 4. メモタグ部分一致（3点）← 削除（メモのテキストとタグを統合したため）
+    // if (memoTags.some(tag => 
+    //   tag.replace(/^#/, '').toLowerCase().includes(keyword) &&
+    //   tag.replace(/^#/, '').toLowerCase() !== keyword
+    // )) {
+    //   score += 3;
+    // }
+   
     
     // 5. ユーザー名完全一致（4点）
     if (username === keyword) {
@@ -649,11 +805,94 @@ const calculateSearchScore = (post: PostWithMemos, keywords: string[]): number =
 };
 
 
+// 🆕 作業時間を計算する関数
+const calculateWorkDuration = (message: string): string | null => {
+  const startTimeMatch = message.match(/作業開始:\s*(\d{2}):(\d{2})/);
+  const endTimeMatch = message.match(/作業終了:\s*(\d{2}):(\d{2})/);
+  
+  if (!startTimeMatch || !endTimeMatch) {
+    return null;
+  }
+  
+  const startHour = parseInt(startTimeMatch[1]);
+  const startMinute = parseInt(startTimeMatch[2]);
+  const endHour = parseInt(endTimeMatch[1]);
+  const endMinute = parseInt(endTimeMatch[2]);
+  
+  // 分単位に変換
+  const startTotalMinutes = startHour * 60 + startMinute;
+  let endTotalMinutes = endHour * 60 + endMinute;
+  
+  // 日付をまたぐ場合の対応
+  if (endTotalMinutes < startTotalMinutes) {
+    endTotalMinutes += 24 * 60;
+  }
+  
+  const durationMinutes = endTotalMinutes - startTotalMinutes;
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  
+  return `${hours}時間${minutes}分`;
+};
+
+// 🆕 メッセージから時刻情報を削除する関数
+const removeTimeInfo = (message: string): string => {
+  return message
+    .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+    .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+    .replace(/日付:[^\n]+\n?/g, '')
+    .trim();
+};
+
+// 🆕 時刻情報を抽出する関数
+const extractTimeInfo = (message: string) => {
+  // 新フォーマット: "開始: 23:31 ー 終了: 23:31"
+  const newFormatMatch = message.match(/開始:\s*(\d{2}:\d{2})\s*ー\s*終了:\s*(\d{2}:\d{2})/);
+  
+  // 旧フォーマット: "作業開始: 23:31" "作業終了: 23:31"
+  const oldStartMatch = message.match(/作業開始:\s*(\d{2}:\d{2})/);
+  const oldEndMatch = message.match(/作業終了:\s*(\d{2}:\d{2})/);
+  
+  // チェックインのみ: "開始: 23:31"
+  const startOnlyMatch = message.match(/^開始:\s*(\d{2}:\d{2})/m);
+  
+  // 日付（新旧フォーマット対応）
+  const newDateMatch = message.match(/開始日:\s*(.+?)(?:\n|$)/);
+  const oldDateMatch = message.match(/日付:\s*(.+?)(?:\n|$)/);
+  const dateMatch = newDateMatch || oldDateMatch;
+  
+  // 新フォーマットを優先、なければ旧フォーマット、それもなければチェックインのみ
+  let startTime = null;
+  let endTime = null;
+  
+  if (newFormatMatch) {
+    startTime = newFormatMatch[1];
+    endTime = newFormatMatch[2];
+  } else if (oldStartMatch) {
+    startTime = oldStartMatch[1];
+    if (oldEndMatch) {
+      endTime = oldEndMatch[1];
+    }
+  } else if (startOnlyMatch) {
+    startTime = startOnlyMatch[1];
+  }
+  
+  return {
+    startTime,
+    endTime,
+    date: dateMatch?.[1] || null,
+  };
+};
+
+// ★ 追加: 削除直後フラグ（グローバル変数）
+let isJustDeleted = false;
 
 const ArchivePage: React.FC = () => {
+ 
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams(); 
+  const location = useLocation();
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -661,12 +900,63 @@ const ArchivePage: React.FC = () => {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Phase A4: ユーザー情報取得
+  const [user, setUser] = useState<{ uid: string } | null>(null);
+
+  // ユーザー情報を取得
+  useEffect(() => {
+    const initUser = async () => {
+      const userId = localStorage.getItem('daily-report-user-id') || '';
+const fetchedUser = await getUser(userId);
+      if (fetchedUser) {
+        setUser({ uid: fetchedUser.id });
+      }
+    };
+    initUser();
+  }, []);
+
+
+// ⭐ 新着チェック用のState ⭐
+const [hasNewPosts, setHasNewPosts] = useState(false);
+const [justDeleted, setJustDeleted] = useState(false); // ← 追加
+const [readByModalOpen, setReadByModalOpen] = useState(false);
+const [selectedPostReadBy, setSelectedPostReadBy] = useState<{ [userId: string]: number }>({});
+const [latestPostTime, setLatestPostTime] = useState<number>(() => {
+  const saved = localStorage.getItem(`latestPostTime_${groupId}`);
+  console.log('🔄 [ArchivePage] latestPostTime初期化:', {
+    groupId,
+    saved,
+    復元値: saved ? parseInt(saved) : 0
+  });
+  return saved ? parseInt(saved) : 0;
+});
+
+// ⭐ Phase A3: 段階的読み込み用のState
+const [displayedPostsCount, setDisplayedPostsCount] = useState(10); // 初回は10件
+// Phase A4: ページネーション用のState
+ const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(() => {
+  // ページ遷移から戻ってきた時にlastVisibleDocIdを復元
+  const savedDocId = localStorage.getItem(`lastVisibleDocId_${groupId}`);
+  console.log('🔄 [Phase A4] lastVisibleDoc初期化:', savedDocId || 'なし');
+  return null; // 実際のDocオブジェクトはFirestore取得後に設定
+});
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+const POSTS_PER_LOAD = 10; // スクロール時に読み込む件数（初回は5件固定）
+
 
   // 検索関連のステート
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredPosts, setFilteredPosts] = useState<Post[]>([]);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+
+  // 🆕 検索結果の総件数
+const [searchResultCount, setSearchResultCount] = useState<number | null>(null);
+const [isCountingResults, setIsCountingResults] = useState(false);
+
+const [isSearchActive, setIsSearchActive] = useState(false);
+const [searchInput, setSearchInput] = useState('');
 
   // 初期表示を「false」に変更
   const [showFilter, setShowFilter] = useState(false);
@@ -1079,11 +1369,32 @@ const shouldShowExportButton = () => {
 const handleViewPostDetails = async (postId: string) => {
   console.log('🔍 [ArchivePage] 投稿詳細を開く:', postId);
   
-  const targetPost = posts.find(post => post.id === postId);
+  let targetPost = posts.find(post => post.id === postId);
+  
+  // 🌟 postsになければFirestoreから直接取得
   if (!targetPost) {
-    console.warn('⚠️ 投稿が見つかりません:', postId);
-    return;
+    console.log('📥 [ArchivePage] postsにないため、Firestoreから取得します:', postId);
+    try {
+      const userId = localStorage.getItem('daily-report-user-id') || '';
+      targetPost = await UnifiedCoreSystem.getPost(postId, userId);
+      if (!targetPost) {
+        console.error('❌ [ArchivePage] Firestoreにも投稿が見つかりません:', postId);
+        return;
+      }
+      console.log('✅ [ArchivePage] Firestoreから投稿を取得しました:', targetPost.id);
+    } catch (error) {
+      console.error('❌ [ArchivePage] Firestore取得エラー:', error);
+      return;
+    }
   }
+  
+  // 🆕 ここに追加！
+  console.log('🔍 [ArchivePage-handleViewPostDetails] 見つかった投稿:', {
+    id: targetPost?.id,
+    isEdited: targetPost?.isEdited,
+    isManuallyEdited: targetPost?.isManuallyEdited,
+    editedAt: targetPost?.editedAt
+  });
   
   // 🌟 メモをまだ取得していない、または空の場合のみ取得
   const needsFetchMemos = !targetPost.memos || targetPost.memos.length === 0;
@@ -1143,10 +1454,72 @@ useEffect(() => {
   const fetchPosts = async () => {
     try {
       setLoading(true);
+
+      setLoading(true);
+      
+      
+      // ⭐ メモリキャッシュから読み込み（HomePageと同じ方式）⭐
+const cacheData = archivePostsCache[groupId];
+const cacheTime = archivePostsCacheTime[groupId];
+
+if (cacheData && cacheData.length > 0 && Date.now() - cacheTime < CACHE_DURATION) {
+  const cacheAge = Date.now() - cacheTime;
+  
+  console.log('💾 [ArchivePage] メモリキャッシュから読み込み（画像付き）:', {
+    groupId,
+    cacheAge: `${Math.floor(cacheAge / 1000)}秒前`,
+    postsCount: cacheData.length,
+    remainingTime: `あと${Math.floor((CACHE_DURATION - cacheAge) / 1000)}秒有効`
+  });
+  
+  setPosts(cacheData);
+  setFilteredPosts(cacheData);
+  setLoading(false);
+
+// ⭐ 修正: lastVisibleDocの復元を先に完了させる
+      const savedDocId = localStorage.getItem(`lastVisibleDocId_${groupId}`);
+      if (savedDocId) {
+        console.log('🔄 [Phase A4] キャッシュ復元時にlastVisibleDoc復元開始:', savedDocId);
+        try {
+          const restoredDoc = await restoreLastVisibleDoc(savedDocId);
+          if (restoredDoc) {
+            setLastVisibleDoc(restoredDoc);
+            console.log('✅ [Phase A4] lastVisibleDoc復元完了');
+          } else {
+            console.warn('⚠️ [Phase A4] lastVisibleDoc復元失敗 - スクロール追加取得は最初からになります');
+            setHasMorePosts(true);
+          }
+        } catch (error) {
+          console.error('❌ [Phase A4] lastVisibleDoc復元エラー:', error);
+          setHasMorePosts(true);
+        }
+      } else {
+        console.log('ℹ️ [Phase A4] lastVisibleDocIdが保存されていません（初回取得）');
+      }
+
+  
+  console.log('⚡ [ArchivePage] 画像付き高速表示完了: 0ms');
+  return;
+}
+
+// Phase A4: キャッシュから復元できた場合は初回取得をスキップ
+if (posts.length > 0) {
+  console.log('✅ [Phase A4] キャッシュから復元済み、Firestore初回取得スキップ');
+  return;
+}
+
+console.log('🔍 [ArchivePage] キャッシュなし、Firestoreから取得開始');
+      
+      
+      // 🔥 キャッシュなし or 期限切れ → Firestoreから取得
+      console.log('🔄 [ArchivePage] Firestoreから取得中...', { groupId });
+      
+      // ← ここから既存のコードが続く
       
       // localStorageフラグをチェック
       const updateFlag = localStorage.getItem('daily-report-posts-updated');
       console.log('🔍 [Archive] 投稿データ取得開始');
+
       
       if (!groupId) {
         console.error('groupIdが見つかりません');
@@ -1157,17 +1530,98 @@ useEffect(() => {
       // ✅ ユーザーIDを取得
       const userId = localStorage.getItem('daily-report-user-id') || '';
     
-      // APIが未実装のため空データで初期化
-      console.log('🔍 [Archive] Firestoreから投稿を取得中...');
-      console.log('📄 [Archive] UnifiedCoreSystem統合開始');
-      const fetchedPosts = await UnifiedCoreSystem.getGroupPosts(groupId, userId);  // ✅ 修正
-      console.log('✅ [Archive] データ取得完了:', fetchedPosts.length, '件');
-      console.log('✅ [Archive] 投稿取得完了:', fetchedPosts.length, '件');
+      // Phase A4: 段階的取得（初回10件のみ）
+     console.log('🔄 [Archive] Firestore段階的取得開始...');
+console.log('📦 [Archive] UnifiedCoreSystem.getGroupPostsPaginated使用');
+
+// ⏱️ パフォーマンス計測開始
+const startTime = performance.now();
+
+// Phase A4: 段階的取得（初回10件のみ）
+const result = await UnifiedCoreSystem.getGroupPostsPaginated(
+  groupId,
+  userId,
+  10  // 初回10件のみ取得
+);
+
+
+setLastVisibleDoc(result.lastDoc);
+
+// Phase A4: lastVisibleDocId を localStorage に保存
+if (result.lastDoc?.id) {
+  localStorage.setItem(`lastVisibleDocId_${groupId}`, result.lastDoc.id);
+  console.log('💾 [Phase A4] 初回取得後 lastVisibleDocId保存:', result.lastDoc.id);
+}
+
+setHasMorePosts(result.hasMore);
+
+// ⏱️ パフォーマンス計測終了
+const endTime = performance.now();
+const duration = endTime - startTime;
+
+console.log('✅ [Archive] 初回取得完了:', result.posts.length, '件');
+console.log('📊 [Archive] 続きあり:', result.hasMore);
+console.log('⏱️ [性能計測] ArchivePage初回表示:', {
+  合計時間: `${duration.toFixed(0)}ms`,
+  投稿数: result.posts.length,
+  平均_1件: `${(duration / result.posts.length).toFixed(0)}ms`,
+  画像込み: 'YES'
+});
+      
+      const fetchedPosts = result.posts;
+      setLastVisibleDoc(result.lastDoc);
+      setHasMorePosts(result.hasMore);
+      
+      console.log('✅ [Archive] 初回取得完了:', result.posts.length, '件');
+      console.log('📊 [Archive] 続きあり:', result.hasMore);
+
+      fetchedPosts.forEach(post => {
+       if (post.id === 'C3ZW1j0GDORx5XKi7vLw') { 
+          console.log('📝 [Archive投稿チェック] テスト投稿発見!');
+          console.log('  - isEdited:', post.isEdited);
+          console.log('  - isManuallyEdited:', post.isManuallyEdited);
+          console.log('  - editedAt:', post.editedAt);
+        }
+      });
 
       setPosts(fetchedPosts);
       setFilteredPosts(fetchedPosts);
       
-      
+// ⭐ 追加: データ更新時に最新投稿時刻を更新（バナー消去判定用）
+if (fetchedPosts.length > 0) {
+  const validTimestamps = fetchedPosts
+    .map(p => p.createdAt)
+    .filter(t => t !== null && t !== undefined && typeof t === 'object' && t && 'seconds' in t)
+.map(t => (t as any).seconds * 1000);
+  
+  if (validTimestamps.length > 0) {
+   const latestTimestamp = Math.max(...validTimestamps);
+setLatestPostTime(prev => Math.max(prev, latestTimestamp));
+    localStorage.setItem(
+      `archive-latest-post-${groupId}`,
+      JSON.stringify({
+        timestamp: latestTimestamp,
+        date: new Date(latestTimestamp).toLocaleString('ja-JP')
+      })
+    );
+    console.log('📌 [ArchivePage] 最新投稿時刻を記録:', {
+      timestamp: latestTimestamp,
+      date: new Date(latestTimestamp).toLocaleString('ja-JP'),
+      postsCount: fetchedPosts.length,
+      validTimestamps: validTimestamps.length
+    });
+  }
+}
+  
+     // ⭐ メモリキャッシュに保存（画像も含めて全部保存）⭐
+archivePostsCache[groupId] = fetchedPosts;
+archivePostsCacheTime[groupId] = Date.now();
+
+console.log('✅ [ArchivePage] メモリキャッシュ保存完了（画像付き）:', {
+  groupId,
+  postsCount: fetchedPosts.length,
+  validUntil: new Date(Date.now() + CACHE_DURATION).toLocaleTimeString('ja-JP')
+});
       
     } catch (error) {
       console.error('❌ [Archive] 投稿データのロード中にエラーが発生しました', error);
@@ -1180,15 +1634,14 @@ useEffect(() => {
 
   fetchPosts();
   
-  // localStorage更新フラグを監視
-  const handleStorageChange = () => {
-    fetchPosts();
-  };
-  
-  window.addEventListener('storage', handleStorageChange);
-  
- 
-  // 定期的な更新チェック
+ // localStorage更新フラグを監視
+const handleStorageChange = () => {
+  fetchPosts();
+};
+
+window.addEventListener('storage', handleStorageChange);
+
+/* ❌ 定期的な更新チェックを無効化（30秒の新着チェックで十分）
 const interval = setInterval(() => {
   const currentFlag = localStorage.getItem('daily-report-posts-updated');
   if (currentFlag && currentFlag !== localStorage.getItem('last-archive-update')) {
@@ -1197,12 +1650,221 @@ const interval = setInterval(() => {
     fetchPosts();
   }
 }, 5000);
-  
-  return () => {
-    window.removeEventListener('storage', handleStorageChange);
-    clearInterval(interval);
-  };
+*/
+
+return () => {
+  window.removeEventListener('storage', handleStorageChange);
+};
 }, [groupId]);
+
+// ⭐ 新着チェックタイマー（60秒ごと）⭐
+useEffect(() => {
+  if (!groupId) return;
+
+  // 検索中は自動更新をスキップ
+  if (isSearchActive) {
+    console.log('🔍 検索中のため自動更新を停止');
+    return;
+  }
+
+    console.log('⏰ [ArchivePage] 新着チェックタイマー開始');
+
+    // 60秒ごとに新着チェックを実行
+    const checkInterval = setInterval(() => {
+      checkForNewPosts();
+    }, 60000);// 60秒 = 60,000ミリ秒
+
+    // クリーンアップ
+    return () => {
+      console.log('🛑 [ArchivePage] 新着チェックタイマー停止');
+      clearInterval(checkInterval);
+    };
+  }, [latestPostTime, isSearchActive]);  // isSearchActiveを追加
+
+
+
+ // ★ Phase A3 + A4: スクロール検知（2段階読み込み）
+useEffect(() => {
+  let scrollTimeout: NodeJS.Timeout | null = null;
+  
+  const handleScroll = () => {
+    // 検索中はスクロール追加読み込みをスキップ
+    if (isSearchActive) {
+      console.log('🔍 検索中のためスクロール追加読み込みをスキップ');
+      return;
+    }
+    
+    // ローディング中はスキップ
+    if (isLoadingMore) {
+      console.log('⏳ [ArchivePage] ローディング中のためスキップ');
+      return;
+    }
+    
+    const scrollPosition = window.innerHeight + window.scrollY;
+    const pageHeight = document.documentElement.scrollHeight;
+    
+    // 下から300px以内に到達したら追加読み込み
+    if (pageHeight - scrollPosition < 300) {
+      
+      // デバウンス処理: 200ms待ってから実行
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+      }
+      
+      scrollTimeout = setTimeout(async () => {
+        // Phase A3: まずメモリ内のデータを表示
+        if (displayedPostsCount < filteredPosts.length) {
+          setDisplayedPostsCount(prev => {
+            const newCount = Math.min(prev + POSTS_PER_LOAD, filteredPosts.length);
+            console.log('📜 [ArchivePage-A3] メモリ内追加:', prev, '→', newCount, '/', filteredPosts.length);
+            return newCount;
+          });
+        }
+        // Phase A4: メモリ内のデータを全部表示したら、Firestoreから追加取得
+        else if (!isLoadingMore && hasMorePosts && groupId && user?.uid) {
+          setIsLoadingMore(true);
+          
+          try {
+            console.log('📦 [ArchivePage-A4] Firestore追加取得開始...');
+            console.log('🔍 [ArchivePage-A4] 現在の状態:', {
+              lastVisibleDocId: lastVisibleDoc?.id || 'なし',
+              isLoadingMore,
+              hasMorePosts,
+              displayedPostsCount,
+              filteredPostsLength: filteredPosts.length
+            }); 
+
+            const scrollStartTime = performance.now();
+            const result = await UnifiedCoreSystem.getGroupPostsPaginated(
+              groupId,
+              user.uid,
+              10,
+              lastVisibleDoc
+            );
+
+            const scrollEndTime = performance.now();
+            const scrollDuration = scrollEndTime - scrollStartTime;
+
+            console.log('✅ [ArchivePage-A4] 追加取得完了:', result.posts.length, '件');
+            console.log('📊 [ArchivePage-A4] 続きあり:', result.hasMore);
+            console.log('⏱️ [性能計測] スクロール追加読み込み:', {
+              合計時間: `${scrollDuration.toFixed(0)}ms`,
+              投稿数: result.posts.length,
+              平均_1件: `${(scrollDuration / result.posts.length).toFixed(0)}ms`
+            });
+            
+            // 既存の投稿に追加
+            setPosts(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newPosts = result.posts.filter(p => !existingIds.has(p.id));
+              return [...prev, ...newPosts];
+            });
+            setFilteredPosts(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newPosts = result.posts.filter(p => !existingIds.has(p.id));
+              return [...prev, ...newPosts];
+            });
+            setLastVisibleDoc(result.lastDoc);
+
+            if (result.lastDoc?.id) {
+              localStorage.setItem(`lastVisibleDocId_${groupId}`, result.lastDoc.id);
+              console.log('💾 [Phase A4] スクロール追加後 lastVisibleDocId保存:', result.lastDoc.id);
+            }
+
+            setHasMorePosts(result.hasMore);
+            
+            // 表示件数も増やす
+            setDisplayedPostsCount(prev => prev + result.posts.length);
+            
+          } catch (error) {
+            console.error('❌ [ArchivePage-A4] 追加取得エラー:', error);
+          } finally {
+            setIsLoadingMore(false);
+          }
+        }
+      }, 200); // 200ms待つ
+    }
+  };
+
+  window.addEventListener('scroll', handleScroll);
+  return () => {
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+    window.removeEventListener('scroll', handleScroll);
+  };
+}, [displayedPostsCount, filteredPosts.length, isLoadingMore, hasMorePosts, lastVisibleDoc, groupId, user?.uid, POSTS_PER_LOAD, isSearchActive]);
+
+    // 📦 Phase A4: lastVisibleDocIdからDocumentSnapshotを復元
+  const restoreLastVisibleDoc = async (docId: string): Promise<any> => {
+    try {
+      console.log('🔄 [Phase A4] DocumentSnapshot復元開始:', docId);
+      const docRef = doc(db, 'posts', docId);
+      const docSnapshot = await getDoc(docRef);
+      
+      if (docSnapshot.exists()) {
+        console.log('✅ [Phase A4] DocumentSnapshot復元成功:', docId);
+        return docSnapshot;
+      } else {
+        console.warn('⚠️ [Phase A4] ドキュメントが存在しません:', docId);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ [Phase A4] DocumentSnapshot復元エラー:', error);
+      return null;
+    }
+  };
+
+  // ⭐ 投稿取得時に最新タイムスタンプを記録 ⭐
+useEffect(() => {
+  if (posts.length > 0) {
+    const timestamps = posts
+      .map(p => {
+        const createdAt = p.createdAt;
+        if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'object' && typeof (createdAt as any).toMillis === 'function') {
+          return (createdAt as any).toMillis();
+        }
+        return createdAt || 0;
+      })
+      .filter(t => t > 0);
+    
+    if (timestamps.length > 0) {
+    const latest = Math.max(...timestamps);
+// 現在の値より新しい場合のみ更新
+setLatestPostTime(prev => Math.max(prev, latest));
+localStorage.setItem(`latestPostTime_${groupId}`, latest.toString());
+console.log('✅ [ArchivePage] latestPostTime を設定しました:', {
+  設定値: latest,
+  日時: new Date(latest).toLocaleString('ja-JP'),
+  localStorage保存: 'OK'
+});
+console.log('📌 [ArchivePage] 最新投稿時刻を記録:', {
+
+        timestamp: latest,
+        date: new Date(latest).toLocaleString('ja-JP'),
+        postsCount: posts.length,
+        validTimestamps: timestamps.length
+      });
+    }
+  }
+}, [posts]);
+
+// ★ モーダル自動表示用のuseEffect（EditPageから戻ってきた時） ★
+useEffect(() => {
+  const locationState = location.state;
+  
+  if (locationState?.openPostDetail && posts.length > 0) {
+    const postId = locationState.openPostDetail;
+    
+    console.log('🔍 [ArchivePage] モーダル自動表示:', postId);
+    
+    // モーダルを開く
+    handleViewPostDetails(postId);
+    
+    // stateをクリア（再表示を防ぐ）
+    navigate(location.pathname + location.search, { replace: true, state: {} });
+  }
+}, [posts, location.state]);
 
 
 // ✅ Step 4: PostPage.tsxからの更新イベント監視システム
@@ -1217,13 +1879,18 @@ window.refreshArchivePage = () => {
     if (!groupId) return;
     try {
       setLoading(true);
+
+            // キャッシュをクリア（手動リフレッシュ時は常に最新データを取得）
+delete archivePostsCache[groupId];
+delete archivePostsCacheTime[groupId];
+console.log('🗑️ [ArchivePage] ステータス更新 - メモリキャッシュクリア');
         
         // 実際のFirestoreからデータを取得する処理をここに実装
         // 現在は空配列で初期化されているため、実際のAPI呼び出しに置き換える必要がある
         
         // 暫定的な処理（将来的にFirestore APIに置き換え）
         // Firestoreから実際のデータを取得
-        const refreshedPosts = await getGroupPosts(groupId);
+       const refreshedPosts = await getGroupPosts(groupId);
 
 if (refreshedPosts && refreshedPosts.length > 0) {
   setPosts(refreshedPosts);
@@ -1244,31 +1911,70 @@ if (refreshedPosts && refreshedPosts.length > 0) {
     refreshData();
   };
   
-  // PostPage.tsxからの更新イベント監視
+
+// PostPage.tsxからの更新イベント監視
 const handlePostsUpdate = (event: any) => {
   console.log('📢 [ArchivePage] 投稿更新イベントを受信:', event.detail);
   
   // 該当するグループの投稿かチェック
   if (event.detail && event.detail.newPost && event.detail.newPost.groupId === groupId) {
     console.log('✅ [ArchivePage] 該当グループの投稿更新:', event.detail.newPost.groupId);
-    // データ再取得
-    if (window.refreshArchivePage) {
-      window.refreshArchivePage();
-    }
-  } else if (!event.detail) {
-    // 詳細情報がない場合は安全のため更新
-    console.log('🔄 [ArchivePage] 詳細不明のため安全のため更新');
     
-    // ⭐ localStorageをチェックしてメモ保存かどうか確認 ⭐
-    const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
-    if (lastUpdate.startsWith('memo_saved')) {
-      console.log('🔄 [ArchivePage] メモ保存と判定：500ms後にリフレッシュ');
-      setTimeout(() => {
-        if (window.refreshArchivePage) {
-          window.refreshArchivePage();
-        }
-      }, 500);
-    } else {
+    // ⭐ Phase A2b: 新着バナーを表示（メモ保存以外） ⭐
+// localStorage をチェックしてメモ保存でないことを確認
+const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
+const timeDiff = Date.now() - parseInt(lastUpdate.replace('memo_saved_', ''));
+
+if (!lastUpdate.startsWith('memo_saved_') || timeDiff >= 70000) {
+  // 自分の投稿かチェック
+  const postAuthorId = event.detail.newPost.authorId || event.detail.newPost.userId || event.detail.newPost.createdBy;
+  const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+  
+  if (postAuthorId === currentUserId) {
+    console.log('⏭️ [ArchivePage] 自分の投稿のため新着バナー非表示');
+  } else {
+    setHasNewPosts(true);
+    console.log('🆕 [ArchivePage] 投稿イベント受信 → 新着バナー表示ON');
+  }
+} else {
+  console.log('📝 [ArchivePage] メモ保存イベントのため新着バナー非表示');
+}
+    
+    // データ再取得 (自分の投稿以外)
+    const postAuthorId = event.detail.newPost.authorId || event.detail.newPost.userId || event.detail.newPost.createdBy;
+    const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+    
+    if (postAuthorId !== currentUserId && window.refreshArchivePage) {
+      console.log('🔄 [ArchivePage] 他人の投稿のためデータ再取得');
+      window.refreshArchivePage();
+    } else if (postAuthorId === currentUserId) {
+      console.log('⏭️ [ArchivePage] 自分の投稿のためリフレッシュスキップ');
+    }
+    
+ } else if (!event.detail) {
+  // 詳細情報がない場合は安全のため更新
+  console.log('⚠️ [ArchivePage] 詳細不明のため安全のため更新');
+  
+  // ★ 修正: 削除直後はバナーを表示しない
+// ⭐ 修正: 削除直後とメモ保存直後はバナーを表示しない
+const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
+const timeDiff = Date.now() - parseInt(lastUpdate.replace('memo_saved_', ''));
+
+if (isJustDeleted) {
+  console.log('⏭️ [ArchivePage] 削除直後のため新着バナー表示をスキップ');
+} else if (lastUpdate.startsWith('memo_saved_') && timeDiff < 70000) {
+  console.log('📝 [ArchivePage] メモ保存後70秒以内のため新着バナー表示をスキップ');
+} else {
+  // 詳細不明の場合は、念のため新着バナーは表示しない（安全側）
+  console.log('📩 [ArchivePage] 詳細不明イベント → 新着バナー非表示（安全側）');
+}
+  
+if (lastUpdate.startsWith('memo_saved_')) {
+  console.log('✅ [ArchivePage] メモ保存検知 - リフレッシュ不要');
+  // メモ保存時は全件取得不要（メモカウントは自動更新される）
+  return;
+} 
+else {
       // メモ以外はすぐにリフレッシュ
       if (window.refreshArchivePage) {
         window.refreshArchivePage();
@@ -1289,15 +1995,12 @@ const checkForUpdates = () => {
     const storedGroupId = localStorage.getItem('last-updated-group-id');
     if (!storedGroupId || storedGroupId === groupId) {
       
-      // ⭐ メモ保存の場合は少し待ってからリフレッシュ ⭐
-      if (currentFlag.startsWith('memo_saved')) {
-        console.log('🔄 [ArchivePage] メモ反映のため500ms後にリフレッシュ');
-        setTimeout(() => {
-          if (window.refreshArchivePage) {
-            window.refreshArchivePage();
-          }
-        }, 500);
-      } else {
+   if (currentFlag.startsWith('memo_saved_')) {
+  console.log('✅ [ArchivePage] メモ保存検知 - リフレッシュ不要');
+  // メモ保存時は全件取得不要（メモカウントは自動更新される）
+  return;
+}
+ else {
         // メモ以外はすぐにリフレッシュ
         if (window.refreshArchivePage) {
           window.refreshArchivePage();
@@ -1312,8 +2015,7 @@ const checkForUpdates = () => {
   window.addEventListener('postsUpdated', handlePostsUpdate);
   window.addEventListener('refreshPosts', handlePostsUpdate);
   
-  // ポーリング開始（1秒間隔）
-  const pollingInterval = setInterval(checkForUpdates, 1000);
+
 
   // 詳細モーダルからの削除イベントを監視
 const handleArchiveDelete = (event: CustomEvent) => {
@@ -1330,7 +2032,6 @@ window.addEventListener('archiveDelete', handleArchiveDelete as EventListener);
     console.log('🔌 [ArchivePage] 更新イベント監視を終了');
     window.removeEventListener('postsUpdated', handlePostsUpdate);
     window.removeEventListener('refreshPosts', handlePostsUpdate);
-    clearInterval(pollingInterval);
 
     window.removeEventListener('archiveDelete', handleArchiveDelete as EventListener);
     
@@ -1375,250 +2076,421 @@ window.addEventListener('archiveDelete', handleArchiveDelete as EventListener);
     };
   }, [showFilter, selectedPostIds.size, startDate, endDate, searchQuery]); // 依存配列を追加
 
+  
+
+// 🆕 Firestoreで検索条件に合う投稿数をカウント
+const countSearchResults = async (
+  groupId: string,
+  searchQuery: string,
+  startDate: Date | null,
+  endDate: Date | null
+): Promise<number> => {
+  try {
+    console.log('📊 [検索カウント] 開始:', { searchQuery, startDate, endDate });
+    
+    const { collection, query, where, getDocs, getFirestore } = await import('firebase/firestore');
+    const db = getFirestore();
+    
+    const postsRef = collection(db, 'posts');
+    let q = query(postsRef, where('groupId', '==', groupId));
+    
+    // 日付フィルターを追加
+    if (startDate) {
+      const startTimestamp = startDate.getTime();
+      q = query(q, where('timestamp', '>=', startTimestamp));
+    }
+    if (endDate) {
+      const endTimestamp = new Date(endDate).setHours(23, 59, 59, 999);
+      q = query(q, where('timestamp', '<=', endTimestamp));
+    }
+    
+    const snapshot = await getDocs(q);
+    const allPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
+    
+    console.log('📊 [検索カウント] Firestoreから取得:', allPosts.length, '件');
+    
+    // キーワード検索を適用
+   if (!searchQuery && !startDate && !endDate) {
+  return allPosts.length;
+}
+    
+    const keywords = searchQuery.toLowerCase().split(/[\s,]+/).filter(Boolean);
+    const textKeywords = keywords.filter(k => !k.startsWith('#'));
+    const tagKeywords = keywords.filter(k => k.startsWith('#')).map(k => k.substring(1));
+    
+    const matchedPosts = allPosts.filter(post => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
+      // タグ検索
+      if (tagKeywords.length > 0) {
+        const hasAllTags = tagKeywords.every(keyword =>
+          post.tags?.some(tag => tag.toLowerCase().includes(keyword))
+        );
+        if (!hasAllTags) return false;
+      }
+      
+      // テキスト検索
+      if (textKeywords.length > 0) {
+        const message = (post.message || '').toLowerCase();
+        const username = (post.username || '').toLowerCase();
+        const status = (post.statusByUser?.[currentUserId] || '未確認').toLowerCase();
+        const memoContent = (post as any).memos 
+          ? (post as any).memos.map((memo: any) => memo.content).join(' ').toLowerCase()
+          : '';
+        
+        const tags = (post.tags || []).join(' ').toLowerCase();
+        
+        const hasAllKeywords = textKeywords.every(keyword =>
+          message.includes(keyword) || 
+          username.includes(keyword) ||
+          status.includes(keyword) ||
+          memoContent.includes(keyword) ||
+          tags.includes(keyword)
+        );
+        if (!hasAllKeywords) return false;
+      }
+      
+      return true;
+    });
+    
+    console.log('✅ [検索カウント] マッチ:', matchedPosts.length, '件');
+    return matchedPosts.length;
+    
+  } catch (error) {
+    console.error('❌ [検索カウント] エラー:', error);
+    return 0;
+  }
+};
 
 
-
-useEffect(() => {
+  useEffect(() => {
   console.log('🔍 [検索デバッグ] 検索開始:', searchQuery);
   
-  const keywords = searchQuery
-    .toLowerCase()
-    .split(/[\s,]+/)
-    .filter(Boolean);
+ // 🆕 検索条件がある場合、Firestoreから全件取得して検索
+  if (searchQuery || startDate || endDate) {
+    setIsCountingResults(true);
+    setIsSearchActive(true);
+    
+    
+    // 非同期処理で全件取得
+    (async () => {
+      try {
+        // 1. Firestoreから全投稿を取得
+        const userId = localStorage.getItem('daily-report-user-id') || '';
+        console.log('📥 [検索] Firestoreから全件取得開始...');
+        
+        const result = await UnifiedCoreSystem.getGroupPostsPaginated(
+          groupId || '',
+          userId,
+          999  // 大きな数値で全件取得
+        );
+        
+        const allPosts = result.posts;
+        console.log('📥 [検索] Firestoreから全件取得完了:', allPosts.length, '件');
+        
+        // 🌟 全投稿のメモを取得
+        console.log('📝 [ArchivePage検索] メモを取得中...');
+        const postsWithMemos = await Promise.all(
+          allPosts.map(async (post) => {
+            try {
+              const memos = await MemoService.getPostMemosForUser(post.id, userId);
+              return {
+                ...post,
+                memos: memos
+              };
+            } catch (error) {
+              console.error('メモ取得エラー:', post.id, error);
+              return post;
+            }
+          })
+        );
+        console.log('✅ [ArchivePage検索] メモ取得完了');
+        
+        // 2. postsを更新（これでクライアント検索が全件を対象にできる）
+        setPosts(postsWithMemos);
+        
+         // 3. カウント取得（クライアント検索の結果を使用）
+        // countSearchResults は username を持っていないため使用しない
+        // const count = await countSearchResults(groupId || '', searchQuery, startDate, endDate);
+        // setSearchResultCount(count);
+        // setIsCountingResults(false);
+        
+       // console.log('📊 [検索結果] 総件数:', count);
+        // console.log('📊 [検索結果] posts更新完了:', allPosts.length, '件');
+        
+        // 🆕 クライアント検索を実行（allPostsを直接使う）
+        const keywords = searchQuery
+          .toLowerCase()
+          .split(/[\s,]+/)
+          .filter(Boolean);
+        
+        const tagKeywords = keywords.filter((keyword) => keyword.startsWith('#'));
+        const textKeywords = keywords.filter((keyword) => !keyword.startsWith('#'));
+        
+        console.log('🔍 [検索デバッグ] テキストキーワード:', textKeywords);
+        console.log('🔍 [検索デバッグ] タグキーワード:', tagKeywords);
+       console.log('🔍🔍🔍 [重要] searchQuery:', JSON.stringify(searchQuery), 'keywords.length:', keywords.length, 'keywords:', keywords);
+      
 
-  const tagKeywords = keywords.filter((keyword) => keyword.startsWith('#'));
-  const textKeywords = keywords.filter((keyword) => !keyword.startsWith('#'));
+if (keywords.length === 0) {
 
-  console.log('🔍 [検索デバッグ] テキストキーワード:', textKeywords);
-  console.log('🔍 [検索デバッグ] タグキーワード:', tagKeywords);
-
-  if (keywords.length === 0) {
-    // 検索クエリが空の場合、すべての投稿を表示
-    const filtered = posts.filter(post => {
-      const postDate = new Date(post.timestamp);
-      const isInDateRange = (!startDate || postDate >= startDate) && 
-                           (!endDate || postDate <= endDate);
-      return isInDateRange;
-    });
-    setFilteredPosts(filtered);
-    return;
+  // 検索クエリが空の場合、すべての投稿を表示
+  const filtered = postsWithMemos.filter(post => {
+    try {
+      let postDate: Date | null = null;
+      
+      // ⭐ timestampまたはcreatedAtから日付を取得
+      if (post.timestamp) {
+  if (typeof post.timestamp === 'number') {
+    postDate = new Date(post.timestamp);
+  } else if (typeof (post.timestamp as any).toDate === 'function') {
+    postDate = (post.timestamp as any).toDate();
+  } else if ((post.timestamp as any).seconds) {
+    postDate = new Date((post.timestamp as any).seconds * 1000);
+  }
+} else if (post.createdAt) {
+  if (typeof post.createdAt === 'number') {
+    postDate = new Date(post.createdAt);
+  } else if (typeof (post.createdAt as any).toDate === 'function') {
+    postDate = (post.createdAt as any).toDate();
+  } else if ((post.createdAt as any).seconds) {
+    postDate = new Date((post.createdAt as any).seconds * 1000);
   }
 
-  console.log('🔍 [検索デバッグ] テキスト検索を開始します');
-
-  const textFiltered = posts.filter((post) => {
-    console.log('🔍 [検索デバッグ] 投稿', post.id + ':');
-
-    const message = post.message.toLowerCase();
-    const username = (post.username || '').toLowerCase();
-    
-    // ★ ステータス検索を追加 ★
-    const status = (post.status || '未確認').toLowerCase();
-    console.log('🔍 [検索デバッグ] ステータス:', post.status);
-
-    // メモの内容を取得して結合
-    const memoContent = (post as PostWithMemos).memos 
-      ? (post as PostWithMemos).memos!.map(memo => `${memo.content}`).join(' ').toLowerCase()
-      : '';
-
-    console.log('🔍 [検索デバッグ] メモ内容:', memoContent);
-
-    // ★ ステータスも検索対象に追加 ★
-    const matchesText = textKeywords.some(
-      (keyword) => 
-        message.includes(keyword) || 
-        username.includes(keyword) ||
-        status.includes(keyword) ||  // ← ステータス検索を追加
-        memoContent.includes(keyword)
-    );
-
-    console.log('🔍 [検索デバッグ] テキストマッチ結果:', matchesText);
-
-    if (matchesText) {
-      console.log('✅ [検索デバッグ] 投稿', post.id, 'がマッチしました');
-    }
-
-    return matchesText;
-  });
-
-  console.log('🔍 [検索デバッグ] テキスト検索後の結果数:', textFiltered.length);
-
- 
- // 優先度付き検索の実装
-let combinedFiltered = posts;
-
-if (textKeywords.length > 0 || tagKeywords.length > 0) {
-  // 全てのキーワードを統合
-  const allKeywords = [...textKeywords, ...tagKeywords.map(tag => tag.substring(1))];
-  
-  console.log('🔍 [検索デバッグ] 統合キーワード:', allKeywords);
-  
-  // 各投稿にスコアを付けて、スコアが0より大きいもののみを抽出
-  const scoredPosts = posts.map(post => ({
-    post: post as PostWithMemos,
-    score: calculateSearchScore(post as PostWithMemos, allKeywords)
-  }));
-  
-  console.log('🔍 [検索デバッグ] スコア付き投稿サンプル:', 
-    scoredPosts.slice(0, 3).map(item => ({ 
-      message: item.post.message.substring(0, 30), 
-      score: item.score 
-    }))
-  );
-  
-  combinedFiltered = scoredPosts
-    .filter(item => item.score > 0) // スコアが0より大きい投稿のみ
-    .sort((a, b) => b.score - a.score) // スコアの高い順にソート
-    .map(item => item.post); // 投稿データのみを取り出し
-}
-
-console.log('🔍 [検索デバッグ] 優先度付き検索後の結果数:', combinedFiltered.length);
-
-// 日付フィルター
-// ⭐⭐⭐ 日付フィルターの正しい実装（修正版） ⭐⭐⭐
-if (startDate || endDate) {
-  console.log('📅 [日付フィルター] 開始:', { 
-    startDate, 
-    endDate,
-    投稿数: combinedFiltered.length  // HomePage: filtered.length
-  });
-  
-  combinedFiltered = combinedFiltered.filter(post => {  // HomePage: filtered = filtered.filter
-    try {
-      // timestampを使用（最も確実）
-      if (post.timestamp) {
-        const postDate = new Date(post.timestamp);
-        
-        console.log('📅 投稿日付チェック:', {
-          投稿ID: post.id,
-          timestamp: post.timestamp,
-          日付JST: postDate.toLocaleString('ja-JP'),
-          日付のみ: postDate.toLocaleDateString('ja-JP'),
-          開始日: startDate,
-          終了日: endDate
-        });
-        
-        // ⭐ 日付のみを比較（時刻を無視） ⭐
-        const postDateOnly = new Date(
-          postDate.getFullYear(),
-          postDate.getMonth(),
-          postDate.getDate()
-        );
-        
-        // 開始日でフィルター
-        if (startDate) {
-          const start = new Date(startDate);
-          const startDateOnly = new Date(
-            start.getFullYear(),
-            start.getMonth(),
-            start.getDate()
-          );
-          
-          console.log('🔍 比較（開始日）:', {
-            投稿日: postDateOnly.toLocaleDateString('ja-JP'),
-            開始日: startDateOnly.toLocaleDateString('ja-JP'),
-            判定: postDateOnly >= startDateOnly ? '✅' : '❌'
-          });
-          
-          if (postDateOnly < startDateOnly) {
-            console.log('❌ 開始日より前 → 非表示');
-            return false;
-          }
-        }
-        
-        // 終了日でフィルター
-        if (endDate) {
-          const end = new Date(endDate);
-          const endDateOnly = new Date(
-            end.getFullYear(),
-            end.getMonth(),
-            end.getDate()
-          );
-          
-          console.log('🔍 比較（終了日）:', {
-            投稿日: postDateOnly.toLocaleDateString('ja-JP'),
-            終了日: endDateOnly.toLocaleDateString('ja-JP'),
-            判定: postDateOnly <= endDateOnly ? '✅' : '❌'
-          });
-          
-          if (postDateOnly > endDateOnly) {
-            console.log('❌ 終了日より後 → 非表示');
-            return false;
-          }
-        }
-        
-        console.log('✅ 範囲内 → 表示');
-        return true;
       }
       
-      // timestampがない場合はcreatedAtを使用
-      if (post.createdAt) {
-        let postDate: Date;
-        
-        if (typeof post.createdAt === 'number') {
-          postDate = new Date(post.createdAt);
-        } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
-          postDate = (post.createdAt as any).toDate();
-        } else {
-          postDate = new Date();
-        }
-        
-        // 日付のみを比較
-        const postDateOnly = new Date(
-          postDate.getFullYear(),
-          postDate.getMonth(),
-          postDate.getDate()
-        );
-        
-        if (startDate) {
-          const start = new Date(startDate);
-          const startDateOnly = new Date(
-            start.getFullYear(),
-            start.getMonth(),
-            start.getDate()
-          );
-          if (postDateOnly < startDateOnly) return false;
-        }
-        
-        if (endDate) {
-          const end = new Date(endDate);
-          const endDateOnly = new Date(
-            end.getFullYear(),
-            end.getMonth(),
-            end.getDate()
-          );
-          if (postDateOnly > endDateOnly) return false;
-        }
-        
-        return true;
+
+      if (!postDate || isNaN(postDate.getTime())) {
+        return true; // 日付が取得できない場合は表示する
       }
       
-      // どちらもない場合は表示（安全策）
-      console.warn('⚠️ timestampとcreatedAtがありません:', post.id);
+      // ⭐ 日付のみで比較（時刻を除外）
+      const postDateOnly = new Date(
+        postDate.getFullYear(),
+        postDate.getMonth(),
+        postDate.getDate()
+      );
+      
+
+      if (startDate) {
+        const start = new Date(startDate);
+        const startDateOnly = new Date(
+          start.getFullYear(),
+          start.getMonth(),
+          start.getDate()
+        );
+        if (postDateOnly < startDateOnly) return false;
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate);
+        const endDateOnly = new Date(
+          end.getFullYear(),
+          end.getMonth(),
+          end.getDate(),
+          23, 59, 59, 999
+        );
+        if (postDateOnly > endDateOnly) return false;
+      }
+      
       return true;
-      
     } catch (error) {
       console.error('❌ 日付フィルターエラー:', error);
       return true;
     }
   });
-  
-  console.log('✅ [日付フィルター] 完了:', { 残り投稿数: combinedFiltered.length });  // HomePage: filtered.length
+  setFilteredPosts(filtered);
+setSearchResultCount(filtered.length);  // ← 追加
+setIsCountingResults(false);            // ← 追加
+return;
 }
+        
+        console.log('🔍 [検索デバッグ] テキスト検索を開始します');
+        
+       let textFiltered = postsWithMemos.filter((post) => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
+  console.log('🔍 [検索デバッグ] 投稿', post.id + ':');
+          
+          const message = post.message.toLowerCase();
+          const username = (post.username || '').toLowerCase();
+          
+          const status = (post.statusByUser?.[currentUserId] || '未確認').toLowerCase();
+          console.log('🔍 [検索デバッグ] ステータス:', post.statusByUser?.[currentUserId]);
+          
+          const memoContent = (post as PostWithMemos).memos 
+  ? (post as PostWithMemos).memos!.map(memo => {
+      const content = memo.content.toLowerCase();
+      const tags = ((memo as any).tags || []).join(' ').toLowerCase();
+      return `${content} ${tags}`;
+    }).join(' ')
+  : '';
+          console.log('🔍 [検索デバッグ] メモ内容:', memoContent);
+          
+          const tags = (post.tags || []).join(' ').toLowerCase();
+          console.log('🔍 [検索デバッグ] タグ:', tags);
+          
+          const matchesText = textKeywords.every(
+            (keyword) => 
+              message.includes(keyword) || 
+              username.includes(keyword) ||
+              status.includes(keyword) ||
+              memoContent.includes(keyword) ||
+              tags.includes(keyword)
+          );
+          
+          console.log('🔍 [検索デバッグ] テキストマッチ結果:', matchesText);
+          
+          if (matchesText) {
+            console.log('✅ [検索デバッグ] 投稿', post.id, 'がマッチしました');
+          }
+          
+          return matchesText;
+        });
+        
+        console.log('🔍 [検索デバッグ] テキスト検索後の結果数:', textFiltered.length);
+        
+        // 日付フィルター
+        if (startDate || endDate) {
+          console.log('📅 [日付フィルター] 開始:', {
+            startDate,
+            endDate,
+            投稿数: textFiltered.length
+          });
+          
+  textFiltered = textFiltered.filter(post => {
+  try {
+    let postDate: Date | null = null;
+    
+    // timestampまたはcreatedAtから日付を取得
+    if (post.timestamp) {
+      if (typeof post.timestamp === 'number') {
+        postDate = new Date(post.timestamp);
+      } else if (post.timestamp && typeof (post.timestamp as any).toDate === 'function') {
+        postDate = (post.timestamp as any).toDate();
+      } else {
+        postDate = new Date(post.timestamp);
+      }
+    } else if (post.createdAt) {
+      if (typeof post.createdAt === 'number') {
+        postDate = new Date(post.createdAt);
+      } else if (post.createdAt && typeof (post.createdAt as any).toDate === 'function') {
+        postDate = (post.createdAt as any).toDate();
+      } else {
+        postDate = new Date();
+      }
+    }
+    
+    // 日付取得失敗時はフィルターをスキップ
+    if (!postDate || isNaN(postDate.getTime())) {
+      return true;
+    }
+    
+    // 日付のみで比較（時刻除外）
+    const postDateOnly = new Date(
+      postDate.getFullYear(),
+      postDate.getMonth(),
+      postDate.getDate()
+    );
+    
+    // 開始日チェック
+    if (startDate) {
+      const startDateOnly = new Date(
+        new Date(startDate).getFullYear(),
+        new Date(startDate).getMonth(),
+        new Date(startDate).getDate()
+      );
+      if (postDateOnly < startDateOnly) {
+        return false;
+      }
+    }
+    
+    // 終了日チェック
+    if (endDate) {
+      const endDateOnly = new Date(
+        new Date(endDate).getFullYear(),
+        new Date(endDate).getMonth(),
+        new Date(endDate).getDate()
+      );
+      if (postDateOnly > endDateOnly) {
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('❌ 日付フィルターエラー:', error);
+    return true;
+  }
+});
 
-setFilteredPosts(combinedFiltered);  // HomePage: setFilteredItems(filtered);
-}, [searchQuery, posts, startDate, endDate, selectAll]);
+console.log('✅ [日付フィルター] 完了:', { 残り投稿数: textFiltered.length });
+        }
+        
+        setFilteredPosts(textFiltered);
+
+        // 🆕 検索結果のカウント更新（クライアント検索の結果を使用）
+        setSearchResultCount(textFiltered.length);
+        setIsCountingResults(false);
+        console.log('📊 [検索結果] 総件数:', textFiltered.length);
+        
+      } catch (error) {
+        console.error('❌ [検索] 全件取得失敗:', error);
+        setIsCountingResults(false);
+      }
+    })();
+  } else {
+    setSearchResultCount(null);
+    setIsSearchActive(false);
+    
+    // 🆕 検索クリア時は初期表示（10件）に戻す
+    (async () => {
+      try {
+        setLoading(true);  // ← 修正
+        const userId = localStorage.getItem('daily-report-user-id') || '';
+        console.log('🔄 [検索クリア] 初期表示（10件）に戻します');
+        
+        const result = await UnifiedCoreSystem.getGroupPostsPaginated(groupId || '', userId, 10);
+        setPosts(result.posts);
+        setFilteredPosts(result.posts);
+        setLoading(false);  // ← 修正
+        
+        console.log('✅ [検索クリア] 初期表示に戻りました:', result.posts.length, '件');
+      } catch (error) {
+        console.error('❌ [検索クリア] 初期表示の取得失敗:', error);
+        setLoading(false);  // ← 修正
+      }
+    })();
+  }
+  
+
+// ⭐ Phase A3: 検索・フィルター実行時は表示件数をリセット
+// 検索時は全件表示、通常時は10件表示
+if (searchQuery || startDate || endDate) {
+  // 検索時は大きな数値で全件表示
+  setDisplayedPostsCount(999);
+} else {
+  setDisplayedPostsCount(10);
+}
+}, [searchQuery, startDate, endDate]);
     
 
   const groupedPosts = React.useMemo(() => {
-    const groups = filteredPosts.reduce((acc: Record<string, Post[]>, post) => {
-      const dateTimeParts = post.time.split('　');
-      const dateKey = dateTimeParts[0];
+  // ⭐ Phase A3: 表示件数制限を適用
+  const displayedFilteredPosts = filteredPosts.slice(0, displayedPostsCount);
+  
+  const groups = displayedFilteredPosts.reduce((acc: Record<string, Post[]>, post) => {
+  // timeフィールドが存在しない場合の安全な処理
+  if (!post.time) {
+    console.warn('⚠️ [ArchivePage] timeフィールドがありません:', post.id);
+    return acc;  // この投稿をスキップ
+  }
+  
+  const dateTimeParts = post.time.split('　');
+  const dateKey = dateTimeParts[0];
 
-      if (!acc[dateKey]) acc[dateKey] = [];
-      acc[dateKey].push(post);
-      return acc;
-    }, {});
+  if (!acc[dateKey]) acc[dateKey] = [];
+  acc[dateKey].push(post);
+  return acc;
+}, {});
 
     // 各日付内でのさらなるソート
     Object.keys(groups).forEach((date) => {
@@ -1651,13 +2523,21 @@ setFilteredPosts(combinedFiltered);  // HomePage: setFilteredItems(filtered);
         );
       })
     );
-  }, [filteredPosts]);
+  }, [filteredPosts, displayedPostsCount]);
 
   const clearSearch = () => {
-    setSearchQuery('');
-    setStartDate(null);
-    setEndDate(null);
-  };
+  console.log('🧹 [clearSearch] クリア開始');
+  console.log('🧹 [clearSearch] クリア前 searchInput:', searchInput);
+  console.log('🧹 [clearSearch] クリア前 searchQuery:', searchQuery);
+  
+  setSearchQuery('');
+  setSearchInput('');  // 👈 追加1：入力中の文字もクリア
+  setStartDate(null);
+  setEndDate(null);
+  setIsSearchActive(false);  // 👈 追加2：検索モード終了
+  
+  console.log('🧹 [clearSearch] setSearchInput(\'\') 実行完了');
+};
 
   
   const handleDelete = async (postId: string) => {
@@ -1676,7 +2556,26 @@ setFilteredPosts(combinedFiltered);  // HomePage: setFilteredItems(filtered);
     
     // Firestoreから削除
     await deleteDoc(doc(db, 'posts', postId));
+   
+    // キャッシュをクリア
+delete archivePostsCache[groupId];
+delete archivePostsCacheTime[groupId];
+console.log('🗑️ [ArchivePage] 投稿削除 - メモリキャッシュクリア');
     console.log('✅ [Archive] Firestore削除完了:', postId);
+
+// ★ 追加: 削除時は新着バナーを非表示
+console.log('🚫 [削除デバッグ] 新着バナーを非表示にします');
+setHasNewPosts(false);
+setJustDeleted(true);
+isJustDeleted = true;  // ← 追加: グローバル変数も更新
+console.log('✅ [削除デバッグ] setHasNewPosts(false)実行完了');
+
+// 5秒後に削除フラグをクリア
+setTimeout(() => {
+  setJustDeleted(false);
+  isJustDeleted = false;  // ← 追加: グローバル変数もクリア
+  console.log('🔄 [削除デバッグ] 削除フラグをクリア');
+}, 5000);
 
    
 
@@ -1723,7 +2622,175 @@ setTimeout(() => {
   }
 };
 
+// ⭐ バックグラウンド更新関数（ローディング表示なし）⭐
+const backgroundRefresh = async () => {
+  if (!groupId) return;
   
+  try {
+    console.log('🔄 [ArchivePage] バックグラウンド更新開始（既読反映用）');
+    
+    const userId = localStorage.getItem('daily-report-user-id') || '';
+    const result = await UnifiedCoreSystem.getGroupPostsPaginated(groupId, userId, 10);
+    const freshPosts = result.posts;
+    
+    // ローディング表示なしでデータ更新
+    setPosts(freshPosts);
+// 検索中の場合は filteredPosts を更新しない
+if (!searchQuery && !startDate && !endDate) {
+  setFilteredPosts(freshPosts);
+}
+    
+    // 最新タイムスタンプ更新
+    if (freshPosts.length > 0) {
+      const timestamps = freshPosts
+        .map(p => {
+          const createdAt = p.createdAt;
+          if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'object' && typeof (createdAt as any).toMillis === 'function') {
+            return (createdAt as any).toMillis();
+          }
+          return p.createdAt || 0;
+        })
+        .filter(t => t > 0);
+      
+      if (timestamps.length > 0) {
+        const latest = Math.max(...timestamps);
+        setLatestPostTime(prev => Math.max(prev, latest));
+      }
+    }
+    
+    console.log('✅ [ArchivePage] バックグラウンド更新完了:', freshPosts.length, '件');
+  } catch (error) {
+    console.error('❌ [ArchivePage] バックグラウンド更新エラー:', error);
+  }
+};
+  
+// ⭐ 新着チェック関数 ⭐
+const checkForNewPosts = async () => {
+   // ★ 追加: 削除直後はチェックをスキップ
+  if (isJustDeleted) {  // ← justDeleted → isJustDeleted に変更
+  console.log('⏭️ [新着チェック] 削除直後のためスキップ');
+  return;
+}
+
+  if (!groupId) return;
+  
+  try {
+    console.log('🔍 [ArchivePage] 新着チェック開始');
+    console.log('📊 [ArchivePage] 現在の最新投稿時刻:', new Date(latestPostTime).toLocaleString('ja-JP'));
+    
+    // Firestoreから最新の投稿のタイムスタンプのみ取得
+    const { collection, query, where, orderBy, limit, getDocs } = await import('firebase/firestore');
+    const { getFirestore } = await import('firebase/firestore');
+    const db = getFirestore();
+    
+    const postsRef = collection(db, 'posts');
+    const q = query(
+      postsRef,
+      where('groupId', '==', groupId),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+    
+    const snapshot = await getDocs(q);
+    
+    if (!snapshot.empty) {
+  const latestPost = snapshot.docs[0].data();
+  // Timestamp型を数値に変換
+const latestTime = latestPost.createdAt?.toMillis 
+  ? latestPost.createdAt.toMillis() 
+  : (typeof latestPost.createdAt === 'number' ? latestPost.createdAt : 0);
+  
+  console.log('🔍 [新着チェック] Firestoreから取得したデータ:', {
+    latestPostId: snapshot.docs[0].id,
+    createdAt: latestPost.createdAt,
+    createdAtType: typeof latestPost.createdAt,
+    latestTime: latestTime,
+    latestDate: latestTime > 0 ? new Date(latestTime).toLocaleString('ja-JP') : 'Invalid'
+  });
+  
+  console.log('🔍 [新着チェック] 最新投稿時刻:', {
+    latest: latestTime > 0 ? new Date(latestTime).toLocaleString('ja-JP') : 'Invalid',
+    current: latestPostTime > 0 ? new Date(latestPostTime).toLocaleString('ja-JP') : 'Invalid',
+    差分: latestTime - latestPostTime,
+    新着あり: latestTime > latestPostTime
+  });
+
+    // 現在表示中の最新投稿より新しい投稿があれば通知
+  if (latestTime > 0 && latestPostTime > 0 && latestTime > latestPostTime) {
+  const latestPostAuthorId = latestPost.authorId || latestPost.userId || latestPost.createdBy;
+  const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+
+
+
+    // ⭐ ここにデバッグログを追加 ⭐
+  console.log('🔍🔍🔍 [新着チェック詳細]', {
+    latestPostTime,
+    latestTime,
+    差分: latestTime - latestPostTime,
+    latestPostTimeの日時: new Date(latestPostTime).toLocaleString('ja-JP'),
+    latestTimeの日時: new Date(latestTime).toLocaleString('ja-JP')
+  });
+  
+  const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
+  console.log('🔍🔍🔍 [localStorage確認]', {
+    lastUpdate,
+    isMemoSaved: lastUpdate.startsWith('memo_saved_'),
+    生のlastUpdate: lastUpdate
+  });
+  const timeDiff = Date.now() - parseInt(lastUpdate.replace('memo_saved_', ''));
+
+  // ⭐ ここから追加 ⭐
+console.log('⏱️⏱️⏱️ [timeDiff計算詳細]', {
+  現在時刻: Date.now(),
+  lastUpdate,
+  lastUpdateから抽出したタイムスタンプ: parseInt(lastUpdate.replace('memo_saved_', '')),
+  timeDiff,
+  判定結果: lastUpdate.startsWith('memo_saved_') && timeDiff < 70000
+});
+  
+  if (lastUpdate.startsWith('memo_saved_') && timeDiff < 70000) {
+  console.log('📝 [ArchivePage] メモ保存後70秒以内のため、新着バナーは表示しません');
+  console.log('⏱️ [ArchivePage] メモ保存からの経過時間:', timeDiff, 'ms');
+} else if (latestPostAuthorId === currentUserId) {
+  // ⭐ 自分の投稿の場合は新着バナーを表示しない
+  console.log('⏭️ [ArchivePage] 自分の投稿のため新着バナー非表示');
+  setLatestPostTime(latestTime);
+  console.log('✅ [ArchivePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
+} else {
+  // ⭐ 他人の投稿の場合のみ新着バナーを表示
+console.log('🆕 [ArchivePage] メンバーの新着投稿を検知！バナー表示ON');
+setHasNewPosts(true);
+setLatestPostTime(latestTime);  // ← この1行を追加
+console.log('✅ [ArchivePage] 最新投稿時刻を更新:', new Date(latestTime).toLocaleString('ja-JP'));
+}
+} else {
+  console.log('ℹ️ [ArchivePage] 新着投稿なし');
+  
+  // ⭐ 新着バナーを消す（60秒経過したので） ⭐
+  if (hasNewPosts) {
+    console.log('🔄 [ArchivePage] 60秒経過 → 新着バナーを自動で非表示');
+    setHasNewPosts(false);
+  }
+  
+  // ⭐ キャッシュ期限切れならバックグラウンド更新（既読反映用） ⭐
+  const now = Date.now();
+  const lastCacheTime = archivePostsCacheTime[groupId || ''] || 0;
+  const cacheAge = now - lastCacheTime;
+  
+  if (cacheAge > CACHE_DURATION) {
+    console.log('🔄 [ArchivePage] キャッシュ期限切れ（' + Math.floor(cacheAge/1000) + '秒経過）、バックグラウンド更新実行');
+    await backgroundRefresh();
+  } else {
+    console.log('✅ [ArchivePage] キャッシュ有効（残り' + Math.floor((CACHE_DURATION - cacheAge)/1000) + '秒）、更新不要');
+  }
+}
+    } else {
+      console.log('⚠️ [ArchivePage] 投稿が見つかりませんでした');
+    }
+  } catch (error) {
+    console.error('❌ [ArchivePage] 新着チェック失敗:', error);
+  }
+};
 
 // ステータス更新処理の修正版（デバッグログ強化 + Firestore直接更新）
 const handleStatusUpdate = async (postId: string, newStatus: string) => {
@@ -1750,12 +2817,25 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
       
       const postRef = doc(db, 'posts', postId);
       await updateDoc(postRef, {
-        status: newStatus,
-        statusUpdatedAt: Date.now(),
-        statusUpdatedBy: currentUserId
-      });
+  [`statusByUser.${currentUserId}`]: newStatus,  
+  statusUpdatedAt: Date.now(),
+  statusUpdatedBy: currentUserId
+});
       
       console.log('✅ [ArchivePage] Firestore更新完了:', postId, newStatus);
+
+      // ⭐ ステータスに応じて既読を操作 ⭐
+if (newStatus === '確認済み') {
+  // 確認済みにした場合は既読をつける
+  await markPostAsRead(postId, currentUserId);
+  console.log('✅ [ArchivePage] 既読マーク追加:', postId);
+} else if (newStatus === '未確認') {
+  // 未確認に戻した場合は既読を削除
+  await removePostAsRead(postId, currentUserId);
+  console.log('✅ [ArchivePage] 既読マーク削除:', postId);
+}
+
+
       
     } catch (firestoreError) {
       console.error('❌ [ArchivePage] Firestore更新失敗:', firestoreError);
@@ -1766,24 +2846,42 @@ const handleStatusUpdate = async (postId: string, newStatus: string) => {
     // 2. ローカル状態を更新
     console.log('🔄 [ArchivePage] ローカル状態更新開始');
     
-    const updatedPosts = posts.map(post => 
-      post.id === postId ? { 
-        ...post, 
-        status: newStatus as '未確認' | '確認済み',
-        statusUpdatedAt: Date.now(),
-        statusUpdatedBy: currentUserId
-      } : post
-    );
+    const updatedPosts = posts.map(post => {
+  if (post.id !== postId) return post;
+  
+  // ステータス更新と既読情報の同期
+  const updatedPost = {
+  ...post,
+  statusByUser: {
+    ...post.statusByUser,
+    [currentUserId]: newStatus
+  },
+  statusUpdatedAt: Date.now(),
+  statusUpdatedBy: currentUserId
+};
+  
+  // 既読情報も更新
+  if (newStatus === '確認済み') {
+    // 既読追加
+    updatedPost.readBy = { ...(post.readBy || {}), [currentUserId]: Date.now() };
+  } else if (newStatus === '未確認' && post.readBy?.[currentUserId]) {
+    // 既読削除
+    const { [currentUserId]: removed, ...remainingReadBy } = post.readBy;
+    updatedPost.readBy = remainingReadBy;
+  }
+  
+  return updatedPost;
+});
     
     setPosts(updatedPosts);
-    setFilteredPosts(filteredPosts.map(post => 
-      post.id === postId ? { 
-        ...post, 
-        status: newStatus as '未確認' | '確認済み',
-        statusUpdatedAt: Date.now(),
-        statusUpdatedBy: currentUserId
-      } : post
-    ));
+   setFilteredPosts(prevFiltered => prevFiltered.map(post => {
+  if (post.id !== postId) return post;
+  
+  // updatedPostsから更新済みのpostを取得
+  const updated = updatedPosts.find(p => p.id === postId);
+  return updated || post;
+}));
+  
     
     setSelectedPostForStatus(null);
     
@@ -2121,8 +3219,27 @@ const PostDetailModal: React.FC<{
   onClose: () => void;
   navigate: (path: string) => void;
   onMemoClick: (post: Post) => void;
-}> = ({ post, onClose, navigate, onMemoClick }) => {
+  from?: 'archive' | 'home';  // ⭐ この行を追加
+}> = ({ post, onClose, navigate, onMemoClick, from = 'archive' }) => {  
+  
+
+  // 🆕 デバッグログを追加
+  console.log('🔍 [PostDetailModal] 受け取った投稿:', {
+    id: post.id,
+    isEdited: post.isEdited,
+    isManuallyEdited: post.isManuallyEdited,
+    editedAt: post.editedAt
+  });
+  
   const [displayPost, setDisplayPost] = useState<Post>(post);
+
+    // 🆕 デバッグログを追加
+  console.log('🔍 [PostDetailModal] displayPost初期化:', {
+    id: displayPost.id,
+    isEdited: displayPost.isEdited,
+    isManuallyEdited: displayPost.isManuallyEdited,
+    editedAt: displayPost.editedAt
+  });
   
   // 現在ログインしているユーザーのIDを取得
   const currentUserId = localStorage.getItem("daily-report-user-id") || "";
@@ -2132,26 +3249,61 @@ const PostDetailModal: React.FC<{
                    displayPost.createdBy === currentUserId ||
                    displayPost.authorId === currentUserId;
 
-  // ユーザー情報を取得して表示名・会社名・役職を補完
-  useEffect(() => {
-    const fetchUserInfo = async () => {
-      try {
-        const userInfo = await getUser(displayPost.userId);
-        if (userInfo) {
-          setDisplayPost(prevPost => ({
-            ...prevPost,
-            username: userInfo.displayName || userInfo.username || prevPost.username,
-            company: userInfo.company || '会社名なし',
-            position: userInfo.position || '役職なし'
-          }));
-        }
-      } catch (error) {
-        console.error('ユーザー情報取得エラー:', error);
-      }
-    };
 
-    fetchUserInfo();
-  }, [displayPost.userId]);
+  // ユーザー情報を取得して表示名・会社名・役職を補完
+useEffect(() => {
+  const fetchUserInfo = async () => {
+    try {
+      const userInfo = await getUser(displayPost.userId);
+      if (userInfo) {
+        console.log('🔍 [PostDetailModal-useEffect] setDisplayPost実行前:', {
+          displayPost_isManuallyEdited: displayPost.isManuallyEdited
+        });
+        
+        setDisplayPost(prevPost => {
+  console.log('🔍 [PostDetailModal-useEffect] prevPost:', {
+    id: prevPost.id,
+    isEdited: prevPost.isEdited,
+    isManuallyEdited: prevPost.isManuallyEdited
+  });
+  
+  return {
+    ...prevPost,
+    ...post,  // ← これを追加！post props の全データを含める
+    username: userInfo.displayName || userInfo.username || prevPost.username,
+    company: userInfo.company || '会社名なし',
+    position: userInfo.position || '役職なし'
+  };
+});
+      }
+    } catch (error) {
+      console.error('ユーザー情報取得エラー:', error);
+    }
+  };
+  
+  fetchUserInfo();
+}, [displayPost.userId]);
+
+  // 🔧 親から渡されるpostが更新されたらdisplayPostも更新
+  useEffect(() => {
+       console.log('🔄 [PostDetailModal] post propsが更新されました:', {
+      post_id: post.id,
+      post_isManuallyEdited: post.isManuallyEdited,
+      post_isEdited: post.isEdited,
+      displayPost_isManuallyEdited: displayPost.isManuallyEdited,
+      displayPost_isEdited: displayPost.isEdited
+    });
+    
+    // propsのpostが変わったらdisplayPostを更新
+    if (post.id === displayPost.id) {
+      setDisplayPost(prev => ({
+        ...prev,
+        isEdited: post.isEdited,
+        isManuallyEdited: post.isManuallyEdited,
+        editedAt: post.editedAt
+      }));
+    }
+  }, [post.isEdited, post.isManuallyEdited, post.editedAt]);
     
       return (
         <div
@@ -2231,21 +3383,6 @@ const PostDetailModal: React.FC<{
                     {displayPost.position || '役職なし'} • {displayPost.company || '会社名なし'}
                   </div>
                 </div>
-                
-                {/* 日時表示 */}
-                <div style={{ 
-                  padding: '0.4rem 0.8rem',
-                  borderRadius: '8px',
-                  color: '#055A68',
-                  fontSize: '0.85rem',
-                  fontWeight: '500',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'flex-end',
-                  gap: '0.0rem'
-                }}>
-                  <div>{extractTime(displayPost.time)}</div>
-                </div>
               </div>
               
               
@@ -2253,8 +3390,10 @@ const PostDetailModal: React.FC<{
               {/* 投稿内容 */}
               <div style={{ padding: '1.2rem' }}>
                 
+               
+                
                 {/* メッセージ */}
-                {displayPost.message && (
+                {displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '') && (
                   <div style={{
                     whiteSpace: 'pre-wrap',
                     lineHeight: '1.6',
@@ -2262,32 +3401,88 @@ const PostDetailModal: React.FC<{
                     fontSize: '1rem',
                     marginBottom: '1.5rem'
                   }}>
-                    {displayPost.message}
-                    {displayPost.isEdited && (
-                      <span style={{
-                        color: 'rgba(5, 90, 104, 0.7)',
-                        fontSize: '0.85rem',
-                        marginLeft: '0.5rem'
-                      }}>
-                        （編集済み）
-                      </span>
-                    )}
-                  </div>
-                )}
+                    {/* チェックイン投稿は整形表示、通常投稿はそのまま表示 */}
+{displayPost.tags?.includes('#チェックイン') ? (
+  (() => {
+    const timeInfo = extractTimeInfo(displayPost.message || '');
+    const cleanMessage = removeTimeInfo(displayPost.message || '');
+    const duration = displayPost.tags?.includes('#チェックアウト') 
+      ? calculateWorkDuration(displayPost.message || '') 
+      : null;
     
-                {/* メッセージがない場合の編集済み表示 */}
-                {!displayPost.message && displayPost.isEdited && (
-                  <div style={{
-                    whiteSpace: 'pre-wrap',
-                    lineHeight: '1.6',
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    fontSize: '0.85rem',
-                    marginBottom: '1.5rem',
-                    fontStyle: 'italic'
-                  }}>
-                    （編集済み）
+    return (
+      <div>
+        {(timeInfo.startTime || timeInfo.endTime) && (
+          <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+            {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
+            {timeInfo.startTime && timeInfo.endTime && '  ー  '}
+            {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
+          </div>
+        )}
+
+        {duration && (
+          <>
+            <div style={{ 
+              borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+              width: '65%',
+              margin: '0.5rem 0'
+            }} />
+            <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+              ■ 作業時間: {duration} 
+            </div>
+            <div style={{ 
+              borderTop: '1px solid rgba(5, 90, 104, 0.3)',
+              width: '65%',
+              margin: '0.5rem 0'
+            }} />
+          </>
+        )}
+
+        
+        {cleanMessage && (
+          <div style={{ marginTop: '0.8rem' }}>
+            {cleanMessage}
+          </div>
+        )}
+      </div>
+    );
+  })()
+) : (
+  <div>
+    {displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+  </div>
+)}
+{displayPost.isManuallyEdited && (
+  <span style={{
+    color: '#d97706',
+    fontSize: '0.85rem',
+    marginLeft: '0.5rem',
+    fontWeight: '500'
+  }}>
+    （修正済み）
+  </span>
+)}
+ {/* 最終更新日時 */}
+  {displayPost.isManuallyEdited && displayPost.updatedAt && (() => {
+    const timestamp = displayPost.updatedAt;
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+    const weekday = weekdays[date.getDay()];
+    
+    return (
+      <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '12px' }}>
+        最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
+      </div>
+    );
+  })()}
                   </div>
                 )}
+
                 
                 {/* タグ */}
                 {displayPost.tags && displayPost.tags.length > 0 && (
@@ -2336,20 +3531,48 @@ const PostDetailModal: React.FC<{
                           cursor: 'pointer'
                         }}
                         onClick={() => {
-      if (!displayPost?.photoUrls || displayPost.photoUrls.length === 0) {
+  console.log('🔥🔥🔥 ArchivePage画像onClick実行！');
+  
+  if (!displayPost?.photoUrls || displayPost.photoUrls.length === 0) {
         console.warn('⚠️ 画像データが不完全');
         return;
       }
       
-      const imageIndex = (displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images).findIndex(photoUrl => photoUrl === url);
-setGalleryImages(displayPost.photoUrls && displayPost.photoUrls.length > 0 ? displayPost.photoUrls : displayPost.images);
+      // サムネイルと画像データを取得
+const thumbnailPhotos = [
+  ...(displayPost.thumbnails?.highQuality || []),
+  ...(displayPost.thumbnails?.standard || [])
+];
+const photoUrls = displayPost.photoUrls || [];
+
+// インデックスを取得
+let imageIndex = photoUrls.findIndex(photoUrl => photoUrl === url);
+if (imageIndex === -1) {
+  imageIndex = 0;
+}
+
+// フルサイズ画像を使用
+const fullSizeImages = displayPost.images && displayPost.images.length > 0 
+  ? displayPost.images 
+  : photoUrls;
+
+console.log('🎨 [ArchivePage画像クリック]:', {
+  thumbnailUrl: url.substring(0, 50),
+  thumbnailUrlLength: url.length,
+  thumbnailIndex: imageIndex,
+  hasPostImages: displayPost.images && displayPost.images.length > 0,
+  postImagesLength: displayPost.images?.length,
+  postImagesDataLength: displayPost.images?.[0]?.length,
+  photoUrlsLength: photoUrls.length,
+  photoUrlsDataLength: photoUrls[0]?.length,
+  fullSizeImagesCount: fullSizeImages?.length,
+  fullSizeImageDataLength: fullSizeImages[0]?.length,
+  usingFullSize: displayPost.images && displayPost.images.length > 0
+});
+
+setGalleryImages(fullSizeImages);
 setGalleryIndex(imageIndex);
-      setGalleryOpen(true);
-      
-      console.log('✅ モーダル画像設定完了:', {
-        imageIndex,
-        totalImages: displayPost.photoUrls.length
-      });
+setGalleryOpen(true);
     }}
                       >
                         <img
@@ -2511,17 +3734,17 @@ setGalleryIndex(imageIndex);
   
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background:
-          'linear-gradient(to top, rgb(7, 112, 144), rgb(7, 107, 127), rgb(0, 102, 114))',
-        padding: '1.5rem',
-        boxSizing: 'border-box',
-        paddingTop: '4rem', // ヘッダーの高さ分のパディングを追加
-        paddingBottom: '80px', // フッター分の余白を追加
-      }}
-    >
+   <div
+  style={{
+    minHeight: '100vh',
+    background:
+      'linear-gradient(to top, rgb(7, 112, 144), rgb(7, 107, 127), rgb(0, 102, 114))',
+    padding: '1.5rem',
+    boxSizing: 'border-box',
+    paddingTop: '6.5rem',
+    paddingBottom: '80px',
+  }}
+>
       <div
         style={{
           maxWidth: '480px',
@@ -2531,7 +3754,6 @@ setGalleryIndex(imageIndex);
             : '0rem',
         }}
       >
-        ,
         <style>
           {`
             @keyframes fadeIn {
@@ -2541,25 +3763,31 @@ setGalleryIndex(imageIndex);
           `}
         </style>
         {/* ヘッダー部分 - 固定表示 */}
-        <div
-          style={{
-            position: 'fixed', // 画面上部に固定
-            top: 0,
-            left: 0,
-            width: '100%',
-            zIndex: 100,
-            background:
-              'linear-gradient(to right, rgb(0, 102, 114), rgb(7, 107, 127))', // ヘッダー背景
-            padding: '0.65rem',
-            boxSizing: 'border-box',
-          }}
-        >
+       <div
+  style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '60px',
+    zIndex: 100,
+    background:
+      'linear-gradient(to right, rgb(0, 102, 114), rgb(7, 107, 127))',
+    display: 'flex',
+    alignItems: 'center',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+    boxSizing: 'border-box',
+  }}
+>
           <div
-            style={{
-              maxWidth: '480px',
-              margin: '0 auto',
-            }}
-          >
+  style={{
+    maxWidth: '480px',
+    margin: '0 auto',
+    width: '100%',
+    padding: '0 1.5rem',
+    boxSizing: 'border-box',
+  }}
+>
             <div
               style={{
                 display: 'flex',
@@ -2593,29 +3821,19 @@ setGalleryIndex(imageIndex);
 }}
               >
                 <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#F0DB4F"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ marginRight: '0.5rem' }}
-                >
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#F0DB4F"
+  strokeWidth="2"
+  strokeLinecap="round"
+  strokeLinejoin="round"
+>
+  <path d="M15 18l-6-6 6-6" />
+</svg>
 
-                <h2
-                  style={{
-                    fontSize: '2rem',
-                    letterSpacing: '0.03em',
-                    color: '#F0DB4F',
-                    margin: 0,
-                  }}
-                >
-                  Archive
-                </h2>
+           
               </div>
 
               {/* 検索アイコン - アクティブ状態を視覚的に表示 */}
@@ -2796,27 +4014,47 @@ setGalleryIndex(imageIndex);
                       <line x1="21" y1="21" x2="16.65" y2="16.65" />
                     </svg>
                   </div>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="キーワード・#タグで検索"
-                    className="search-input"
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      backgroundColor: '#ffffff12',
-                      padding: '0.7rem',
-                      paddingLeft: '2rem',
-                      color: '#fff',
-                      fontSize: '0.95rem',
-                      borderRadius: '40px',
-                      outline: 'none',
-                    }}
-                  />
+               <input
+  type="text"
+  value={searchInput}  // ← searchQueryではなくsearchInput
+  onChange={(e) => {
+    setSearchInput(e.target.value);  // 入力中の値を更新
+  }}
+  onKeyDown={(e) => {
+  if (e.key === 'Enter') {
+    setSearchQuery(searchInput);
+    setIsSearchActive(true);
+  }
+}}
+onBlur={() => {
+  // スマホの「完了」ボタン対応：フォーカスが外れたときに検索実行
+  if (searchInput !== searchQuery) {
+    setSearchQuery(searchInput);
+    setIsSearchActive(true);
+  }
+}}
+placeholder="キーワード・#タグで検索"
+  className="search-input"
+  style={{
+    flex: 1,
+    border: 'none',
+    backgroundColor: '#ffffff12',
+    padding: '0.7rem',
+    paddingLeft: '2rem',
+    color: '#fff',
+    fontSize: '0.95rem',
+    borderRadius: '40px',
+    outline: 'none',
+  }}
+/>
                   {searchQuery && (
                     <button
-                      onClick={() => setSearchQuery('')}
+                  onClick={() => {
+  setSearchQuery('');
+  setSearchInput('');
+  setStartDate(null);  // ← 追加
+  setEndDate(null);    // ← 追加
+}}
                       style={{
                         position: 'absolute',
                         right: '10px',
@@ -2889,6 +4127,7 @@ setGalleryIndex(imageIndex);
                           color: '#fff',
                           fontSize: '0.9rem',
                           boxSizing: 'border-box',
+                          colorScheme: 'dark',
                         }}
                       />
                     </div>
@@ -2924,6 +4163,7 @@ setGalleryIndex(imageIndex);
                           color: '#fff',
                           fontSize: '0.9rem',
                           boxSizing: 'border-box',
+                          colorScheme: 'dark',
                         }}
                       />
                     </div>
@@ -2977,7 +4217,12 @@ setGalleryIndex(imageIndex);
                     {/* 検索条件クリアボタン */}
                     {(startDate || endDate || searchQuery) && (
                       <button
-                        onClick={clearSearch}
+                    onClick={() => {
+  setSearchQuery('');
+  setSearchInput('');
+  setStartDate(null);  // ← 追加
+  setEndDate(null);    // ← 追加
+}}
                         style={{
                           padding: '0.5rem 1rem',
                           backgroundColor: '#ffffff12',
@@ -3074,6 +4319,76 @@ setGalleryIndex(imageIndex);
         )}
 
         
+        {/* ⭐ 新着通知バナー（画面上部固定表示） ⭐ */}
+{hasNewPosts && (
+  <div
+    style={{
+      position: 'fixed',
+      top: '100px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 1000,
+      backgroundColor: '#FFFFFF',
+      color: '#055A68',
+      padding: '15px 25px',  
+      borderRadius: '10px',
+      boxShadow: '0 0 12px rgba(0,0,0,0.3)',
+      cursor: 'pointer',
+      display: 'flex',
+      flexDirection: 'row', 
+      alignItems: 'center',
+      gap: '8px',
+      fontSize: '0.9rem',
+      fontWeight: '500',
+      maxWidth: 'calc(100% - 32px)',
+    }}
+    onClick={async () => {
+      console.log('🔄 [ArchivePage] 新着バナーをクリック - 再取得開始');
+      setHasNewPosts(false);
+      setLoading(true);
+      
+      // キャッシュクリア
+      delete archivePostsCache[groupId || ''];
+      delete archivePostsCacheTime[groupId || ''];
+      
+      // 最新データ取得
+      const userId = localStorage.getItem('daily-report-user-id') || '';
+     const result = await UnifiedCoreSystem.getGroupPostsPaginated(groupId || '', userId, 10);
+const freshPosts = result.posts;  // ← 投稿データだけを取り出す
+
+setPosts(freshPosts);
+setFilteredPosts(freshPosts);
+
+      // ⭐ 最新タイムスタンプを更新（バナー再表示を防ぐ） ⭐
+  if (freshPosts.length > 0) {
+    const timestamps = freshPosts
+  .map(p => {
+    // Firestoreから取得した直後なので、Timestamp型の可能性がある
+    const createdAt = p.createdAt;
+if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'object' && typeof (createdAt as any).toMillis === 'function') {
+  return (createdAt as any).toMillis();
+}
+    return p.createdAt || 0;
+  })
+  .filter(t => t > 0);
+    if (timestamps.length > 0) {
+      const latest = Math.max(...timestamps);
+      setLatestPostTime(latest);
+      console.log('✅ [ArchivePage] バナークリック後、最新時刻を更新:', new Date(latest).toLocaleString('ja-JP'));
+    }
+  }
+
+      setLoading(false);
+      
+      console.log('✅ [ArchivePage] 最新データ取得完了:', freshPosts.length, '件');
+    }}
+  >
+<span style={{ whiteSpace: 'nowrap' }}>新しい投稿があります。</span>
+<span style={{ whiteSpace: 'nowrap' }}>
+<span style={{ textDecoration: 'underline' }}>  更新</span>
+</span>
+  </div>
+)}
 
 
 
@@ -3105,9 +4420,29 @@ setGalleryIndex(imageIndex);
             </>
           )}
         </div>
-        )}
+       )}
        
-        
+        {/* ページタイトル - GroupListPageと同じスタイル */}
+        {!loading && (
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '1.5rem',
+            maxWidth: '480px',
+            width: '100%',
+            margin: '0 auto 1.5rem auto',
+          }}>
+            <h2 style={{ 
+              fontSize: '2rem', 
+              letterSpacing: '0.01em', 
+              color: '#F0DB4F', 
+              margin: 0 
+            }}>
+              Archive
+            </h2>
+          </div>
+        )}
 
 {/* 投稿リスト */}
 {!loading && (
@@ -3125,16 +4460,34 @@ setGalleryIndex(imageIndex);
         }}
       >
         <h3 style={{ 
-          color: '#97c9c2', 
-          fontSize: '1.5rem',
-          letterSpacing: 'normal',
-          margin: 0
-        }}>
-          フィルター適用中
-          <span style={{ fontSize: '0.9rem', color: '#97c9c2', marginLeft: '0.5rem' }}>
-            ({filteredPosts.length}件)
-          </span>
-        </h3>
+            color: '#97c9c2', 
+            fontSize: '1.5rem',
+            letterSpacing: 'normal',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            フィルター適用中
+            {isCountingResults ? (
+              <div style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid rgba(151, 201, 194, 0.3)',
+                borderTop: '2px solid #97c9c2',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+            ) : searchResultCount !== null ? (
+              <span style={{ fontSize: '0.9rem', color: '#F0DB4F', fontWeight: 'bold' }}>
+                (全{searchResultCount}件)
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.9rem', color: '#97c9c2' }}>
+                ({filteredPosts.length}件)
+              </span>
+            )}
+          </h3>
       </div>
     )}
 
@@ -3163,8 +4516,20 @@ setGalleryIndex(imageIndex);
           {date}
         </h3>
 
-        {postsForDate.map((post) =>
-          post.isWorkTimePost ? (
+        {postsForDate.map((post) => {
+  const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
+  // デバッグ: isWorkTimePostの値を確認
+  if (post.tags?.includes('#出退勤時間')) {
+    console.log('🔍 [ArchivePage レンダリング判定]', {
+      postId: post.id,
+      isWorkTimePost: post.isWorkTimePost,
+      isEdited: post.isEdited,
+      tags: post.tags,
+      message: post.message?.substring(0, 50)
+    });
+  }
+  
+  return post.isWorkTimePost ? (
             // 作業時間投稿の専用カードを表示
             <WorkTimePostCard
   key={post.id}
@@ -3181,6 +4546,7 @@ setGalleryIndex(imageIndex);
   handleAddMemo={handleAddMemo} 
   setPosts={setPosts}
   setFilteredPosts={setFilteredPosts}
+  from="archive"  // ⭐ この行を追加!
 />
           ) : (
             // 通常の投稿カード
@@ -3284,10 +4650,145 @@ setGalleryIndex(imageIndex);
                       </button>
                     </div>
                   ) : (
-                    <div>
-                      {post.message}
-                    </div>
-                  )}
+  // 🆕 チェックイン投稿の場合は新フォーマット
+post.tags?.includes('#チェックイン') ? (() => {
+  const timeInfo = extractTimeInfo(post.message || '');
+  const cleanMessage = removeTimeInfo(post.message || '');
+  const duration = post.tags?.includes('#チェックアウト') 
+    ? calculateWorkDuration(post.message || '') 
+    : null;
+  
+  return (
+       
+        <div>
+          
+
+      {/* 作業開始・終了を1行に */}
+      {(timeInfo.startTime || timeInfo.endTime) && (
+        <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+          {timeInfo.startTime && `開始: ${timeInfo.startTime}`}
+          {timeInfo.startTime && timeInfo.endTime && '  ー  '}
+          {timeInfo.endTime && `終了: ${timeInfo.endTime}`}
+        </div>
+      )}
+      
+      {/* 区切り線 + 作業時間 + 区切り線 */}
+      {duration && (
+        <>
+          <div style={{ 
+            borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+          <div style={{ marginBottom: '0.5rem', color: '#FFFFFF' }}>
+           ■ 作業時間: {duration}
+          </div>
+          <div style={{ 
+            borderTop: '1px solid rgba(255, 255, 255, 0.3)',
+            width: '65%',
+            margin: '0.5rem 0'
+          }} />
+        </>
+      )}
+      
+      {/* 最終更新日時の表示 */}
+{(() => {
+  console.log('🔍 [最終更新表示] post.id:', post.id, 'isManuallyEdited:', post.isManuallyEdited, 'updatedAt:', post.updatedAt, 'editedAt:', post.editedAt, 'createdAt:', post.createdAt);
+  let timestamp = post.updatedAt || post.editedAt || post.createdAt;
+  
+  // updatedAt がない場合は表示しない
+  if (!timestamp) {
+    return null;
+  }
+  
+  // Firestore Timestamp を Date に変換
+  let date;
+  if (typeof timestamp === 'number') {
+    date = new Date(timestamp);
+  } else if (timestamp && typeof timestamp === 'object' && 'toDate' in timestamp) {
+    date = (timestamp as any).toDate();
+  } else if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+    date = new Date((timestamp as any).seconds * 1000);
+  } else {
+    return null;
+  }
+  
+  const dateString = date.toLocaleString('ja-JP', { 
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: 'numeric', 
+    day: 'numeric',
+    weekday: 'short',
+    hour: '2-digit', 
+    minute: '2-digit' 
+  }).replace(/\//g, ' / ');
+  
+  return (
+    <div style={{ marginBottom: '0.5rem', color: '#333' }}>
+      <span style={{ color: '#666', fontSize: '0.9rem' }}>
+        最終更新:
+      </span>
+      {' '}
+      {dateString}
+    </div>
+  );
+})()}
+      
+      {/* クリーンなメッセージ */}
+      {cleanMessage && (
+        <div style={{ marginTop: '0.5rem', color: '#FFFFFF' }}>
+          {cleanMessage}
+        </div>
+      )}
+      
+      {/* 編集済み表示 */}
+      {post.isManuallyEdited && (
+  <span style={{
+    color: '#F0DB4F',
+    fontSize: '0.8rem',
+  }}>
+          （編集済み）
+        </span>
+      )}
+    </div>
+  );
+})() : (
+  // 通常投稿の場合はそのまま表示
+<div>
+  {post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+  
+  {post.isManuallyEdited && (
+    <span style={{
+      color: '#F0DB4F',
+      fontSize: '0.9rem',
+      display: 'block',
+      marginTop: '0.3rem'
+    }}>
+      （編集済み）
+    </span>
+  )}
+  
+  {/* 最終更新日時の表示 */}
+  {post.isManuallyEdited && post.updatedAt && (() => {
+    const timestamp = post.updatedAt;
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+    const weekday = weekdays[date.getDay()];
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    
+    return (
+      <div style={{ fontSize: '0.9rem', color: '#ddd', marginTop: '0.3rem' }}>
+        最終更新: {year} / {month} / {day} ({weekday}) {hours}:{minutes}
+      </div>
+    );
+  })()}
+</div>
+)
+)}
                 </div>
               )}
               {post.tags && post.tags.length > 0 && (
@@ -3320,6 +4821,8 @@ setGalleryIndex(imageIndex);
                 </div>
               )}
 
+            
+
               {post.photoUrls && post.photoUrls.length > 0 && (
                 <div
                   style={{
@@ -3343,11 +4846,27 @@ setGalleryIndex(imageIndex);
                           cursor: 'pointer',
                         }}
                         onClick={() => {
-                          const imageIndex = (post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images).findIndex(photoUrl => photoUrl === url);
-setGalleryImages(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : post.images);
-                          setGalleryIndex(imageIndex);
-                          setGalleryOpen(true);
-                        }}
+  const imageIndex = post.photoUrls.findIndex(photoUrl => photoUrl === url);
+  
+  // フルサイズ画像を使用
+  const fullSizeImages = post.images && post.images.length > 0 
+    ? post.images 
+    : post.photoUrls;
+  
+  console.log('🎨 [ArchivePage 3742行目] 画像クリック:', {
+    photoUrlsLength: post.photoUrls?.length,
+    photoUrlsDataLength: post.photoUrls?.[0]?.length,
+    postImagesLength: post.images?.length,
+    postImagesDataLength: post.images?.[0]?.length,
+    fullSizeImagesLength: fullSizeImages.length,
+    fullSizeImageDataLength: fullSizeImages[0]?.length,
+    usingFullSize: post.images && post.images.length > 0
+  });
+  
+  setGalleryImages(fullSizeImages);
+  setGalleryIndex(imageIndex);
+  setGalleryOpen(true);
+}}
                       >
                         <img
                           src={url}
@@ -3439,11 +4958,21 @@ setGalleryImages(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : 
   {(() => {
     const currentUserId = localStorage.getItem("daily-report-user-id") || "";
     const readStatus = getPostReadStatus(post, currentUserId);
-    
-    if (readStatus.isAuthor) {
+
+// 🆕 チェックイン・チェックアウト投稿では既読を非表示
+if (post.tags?.includes('#出退勤時間')) {
+  return null;
+}
+
+if (readStatus.isAuthor) {
       // 投稿者の場合：既読カウント表示
       return (
-        <div style={{
+        <div 
+          onClick={() => {
+            setSelectedPostReadBy(post.readBy || {});
+            setReadByModalOpen(true);
+          }}
+          style={{
           display: 'flex',
           alignItems: 'center',
           gap: '0.4rem',
@@ -3452,7 +4981,8 @@ setGalleryImages(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : 
           borderRadius: '20px',
           fontSize: '0.75rem',
           color: 'white',
-          fontWeight: '500'
+          fontWeight: '500',
+          cursor: 'pointer'  // 🆕 クリック可能を示すカーソル
         }}>
           <div style={{
   width: '16px',
@@ -3468,11 +4998,6 @@ setGalleryImages(post.photoUrls && post.photoUrls.length > 0 ? post.photoUrls : 
 }}>
   {(() => {
     const readCount = Object.keys(post.readBy || {}).length;
-    console.log('📊 [既読数デバッグ] 投稿ID:', post.id);
-console.log('📊 [既読数デバッグ] readBy:', post.readBy);
-console.log('📊 [既読数デバッグ] readCount:', readCount);
-console.log('📊 [既読数デバッグ] 現在のユーザー:', currentUserId);
-console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
     return readCount;
   })()}
 </div>
@@ -3483,7 +5008,7 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
       // 投稿者以外の場合：従来のステータスポップアップを復活
       return (
         <span 
-          style={getContainerStatusStyle(post.status || '未確認')} onClick={async (e) => {
+          style={getContainerStatusStyle(post.statusByUser?.[currentUserId] || '未確認')} onClick={async (e) => {
             e.preventDefault();
             e.stopPropagation();
             
@@ -3493,29 +5018,6 @@ console.log('📊 [既読数デバッグ] 投稿者:', post.authorId);
             target.dataset.processing = 'true';
             
             try {
-              // まず既読マークを実行
-              if (!readStatus.isRead) {
-                try {
-                  await markPostAsRead(post.id, currentUserId);
-                  console.log('✅ 既読マーク完了:', post.id);
-                  
-            // 既読マーク後の状態更新処理
-if (window.refreshArchivePage) {
-  const lastUpdate = localStorage.getItem('daily-report-posts-updated') || '';
-  if (lastUpdate.startsWith('memo_saved')) {
-    console.log('⏱️ [ArchivePage] メモ保存直後：1000ms待機してからリフレッシュ');
-    setTimeout(() => {
-      window.refreshArchivePage();
-    }, 1000);
-  } else {
-    window.refreshArchivePage();
-  }
-}
-                  
-                } catch (error) {
-                  console.error('❌ 既読マークエラー:', error);
-                }
-              }
               
               // ステータス選択ポップアップを表示
               setSelectedPostForStatus(post.id);
@@ -3530,7 +5032,7 @@ if (window.refreshArchivePage) {
           onMouseEnter={(e) => e.currentTarget.style.opacity = '0.6'}
           onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
         >
-          {post.status || '未確認'}
+         {post.statusByUser?.[currentUserId] || '未確認'}
         </span>
       );
     }
@@ -3588,8 +5090,8 @@ if (window.refreshArchivePage) {
 </div>
               </div>
             </div>
-          )
-        )}
+          );
+        })}
       </div>
     ))}
   </>
@@ -4165,7 +5667,11 @@ if (window.refreshArchivePage) {
   onSave={handleSaveMemo}
 />
 
-
+<ReadByModal
+  isOpen={readByModalOpen}
+  onClose={() => setReadByModalOpen(false)}
+  readBy={selectedPostReadBy}
+/>
 
 
 {/* 投稿詳細モーダル */}
@@ -4175,6 +5681,7 @@ if (window.refreshArchivePage) {
     onClose={() => setSelectedPostForDetail(null)}
     navigate={navigate}
     onMemoClick={(post) => handleAddMemo(post.id)}
+    from="archive" 
   />
 )}
       {/* グループフッターナビゲーション */}
@@ -4182,7 +5689,9 @@ if (window.refreshArchivePage) {
     </div>
   );
 };
-// キャッシュ無効化関数（GroupTopPageなどから呼び出し可能）
+
+
+// キャッシュ無効化関数（PostPageなどから呼び出し可能）
 export const invalidateArchiveCache = (groupId?: string) => {
   if (groupId) {
     delete archivePostsCache[groupId];

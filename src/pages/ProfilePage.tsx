@@ -25,7 +25,6 @@ const ProfilePage: React.FC = () => {
     fullName: '',
     company: '',
     position: '',
-    phone: '',
     email: '',
     notifications: true,
     reportFrequency: 'daily' as ReportFrequency
@@ -104,7 +103,6 @@ useEffect(() => {
           email: currentUser.email || '',
           company: currentUser.company || '',
           position: currentUser.position || '',
-          phone: currentUser.phone || '',
           notifications: currentUser.settings?.notifications ?? true,
           reportFrequency: currentUser.settings?.reportFrequency || 'daily'
         };
@@ -183,7 +181,6 @@ useEffect(() => {
     fullName: formData.fullName,
     company: formData.company,
     position: formData.position,
-    phone: formData.phone
   });
 
   console.log('💾 【保存前】現在のuser:', {
@@ -210,7 +207,6 @@ useEffect(() => {
       fullName: formData.fullName.trim(),
       company: formData.company.trim(),
       position: formData.position.trim(),
-      phone: formData.phone.trim(),
       email: formData.email.trim(),
       profileImage: tempProfileImage || profileImage || '',
       settings: {
@@ -278,7 +274,6 @@ const toggleEditMode = () => {
         // ⭐ user直下とprofileDataの両方をチェック
         company: user.company || user.profileData?.company || '',
         position: user.position || user.profileData?.position || '',
-        phone: user.phone || user.profileData?.phone || '',
         notifications: user.settings?.notifications ?? true,
         reportFrequency: user.settings?.reportFrequency || 'daily'
       });
@@ -440,9 +435,9 @@ const handleLogout = () => {
         `}
       </style>
       <Header 
-        title="NIPPO" 
-        showBackButton={false}
-      />
+  title="MYQUEST"  // ← NIPPOをMYQUESTに変更
+  showBackButton={false}
+/>
       <div style={{ 
         maxWidth: '480px', 
         margin: '0 auto',
@@ -464,7 +459,7 @@ const handleLogout = () => {
             color: '#055A68', 
             margin: 0
           }}>
-            Profile
+            My Page
           </h2>
         </div>
 
@@ -787,39 +782,7 @@ const handleLogout = () => {
                       />
                     </div>
 
-                    {/* 電話番号 */}
-                    <div style={{ marginBottom: '2rem' }}>
-                      <label
-                        style={{
-                          display: 'block',
-                          marginBottom: '0.5rem',
-                          color: '#055A68',
-                          fontSize: '0.9rem',
-                          fontWeight: '500'
-                        }}
-                      >
-                        電話番号
-                      </label>
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        className="profile-input"
-                        style={{
-                          width: '100%',
-                          padding: '0.8rem',
-                          backgroundColor: '#f5f5f5',
-                          border: '1px solid #ddd',
-                          borderRadius: '8px',
-                          color: '#055A68',
-                          fontSize: '1rem',
-                          boxSizing: 'border-box',
-                          transition: 'all 0.3s ease'
-                        }}
-                        placeholder="電話番号を入力"
-                      />
-                    </div>
+                   
 
                     {/* 設定見出し */}
                     <h4 style={{ 
@@ -1114,23 +1077,6 @@ const handleLogout = () => {
                           fontWeight: '500' 
                         }}>
                          {user?.position || user?.profileData?.position || formData?.position || '未設定'}
-                        </div>
-                      </div>
-
-                      <div style={{ marginBottom: '0' }}>
-                        <div style={{ 
-                          fontSize: '0.85rem', 
-                          color: '#055A68', 
-                          opacity: 0.8,
-                          marginBottom: '0.4rem' 
-                        }}>
-                          電話番号
-                        </div>
-                        <div style={{ 
-                          fontSize: '1.1rem',
-                          fontWeight: '500' 
-                        }}>
-                         {user?.phone || user?.profileData?.phone || formData?.phone || '未設定'}
                         </div>
                       </div>
                     </div>

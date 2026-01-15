@@ -1,6 +1,3 @@
-// src/hooks/useFooterVisibility.ts
-// このファイルは：スクロール方向に応じてフッターと+ボタンの表示を制御します
-
 import { useState, useEffect } from 'react';
 import { useScrollDirection } from './useScrollDirection';
 
@@ -11,6 +8,9 @@ interface FooterVisibilityState {
   animationTrigger: 'scroll-up' | 'scroll-down' | 'fab-tap' | 'initial';  // どんな操作で変わったか
 }
 
+// localStorage のキー
+const FOOTER_STATE_KEY = 'footer-visibility-state';
+
 export const useFooterVisibility = (): FooterVisibilityState & {
   toggleFooter: () => void;  // +ボタンをタップした時の関数
 } => {
@@ -18,31 +18,71 @@ export const useFooterVisibility = (): FooterVisibilityState & {
   // スクロール方向を監視
   const { direction, isScrolling } = useScrollDirection(15);
   
-  // フッターの表示状態を管理
-  const [state, setState] = useState<FooterVisibilityState>({
-    showFooter: false,              // 最初はフッターを隠す
-    showFAB: true,                  // 最初は+ボタンを表示
-    animationTrigger: 'initial'     // 初期状態
-  });
+  // localStorageから前回の状態を復元
+  const getSavedState = (): FooterVisibilityState => {
+    try {
+      const saved = localStorage.getItem(FOOTER_STATE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        console.log('📥 フッター状態を復元:', parsed);
+        return parsed;
+      }
+    } catch (error) {
+      console.error('フッター状態の復元に失敗:', error);
+    }
+    // デフォルト値
+    return {
+      showFooter: false,
+      showFAB: true,
+      animationTrigger: 'initial'
+    };
+  };
+  
+  // フッターの表示状態を管理（localStorageから復元）
+  const [state, setState] = useState<FooterVisibilityState>(getSavedState);
+
+  // 状態が変更されたらlocalStorageに保存
+  useEffect(() => {
+    try {
+      localStorage.setItem(FOOTER_STATE_KEY, JSON.stringify(state));
+    } catch (error) {
+      console.error('フッター状態の保存に失敗:', error);
+    }
+  }, [state]);
+
+  // 🆕 storageイベントを監視（他のコンポーネントからの変更を検知）
+  useEffect(() => {
+    const handleStorageChange = (e: Event) => {
+      const newState = getSavedState();
+      console.log('📨 storage イベント検知:', newState);
+      setState(newState);
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   // スクロール方向に基づいて表示を制御
   useEffect(() => {
     // スクロールしていない時は何もしない
     if (!isScrolling) return;
 
-    if (direction === 'down') {
-      // 下スクロール：URLバーが隠れるのでフッターを表示、+ボタンは隠す
+    if (direction === 'up') {
+      // 上スクロール：コンテンツを見返す時にフッターを表示、+ボタンは隠す
       setState({
         showFooter: true,
         showFAB: false,
-        animationTrigger: 'scroll-down'
+        animationTrigger: 'scroll-up'
       });
-    } else if (direction === 'up') {
-      // 上スクロール：URLバーが表示されるのでフッターを隠す、+ボタンを表示
+    } else if (direction === 'down') {
+      // 下スクロール：新しいコンテンツを見る時にフッターを隠す、+ボタンを表示
       setState({
         showFooter: false,
         showFAB: true,
-        animationTrigger: 'scroll-up'
+        animationTrigger: 'scroll-down'
       });
     }
   }, [direction, isScrolling]);

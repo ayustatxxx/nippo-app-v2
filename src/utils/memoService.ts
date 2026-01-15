@@ -100,7 +100,8 @@ export class MemoService {
     const newMemo = {
       ...memo,
       createdAt: Date.now(),
-      tags: memo.tags || []  // ← 明示的に追加
+      tags: memo.tags || [],  // ← 明示的に追加
+      isMemoOnly: true  // ← ⭐ この1行を追加！
     };
     
     console.log('💾 [MemoService] メモ保存開始:', newMemo);
@@ -109,7 +110,7 @@ export class MemoService {
     const memosRef = collection(db, 'memos');
     await addDoc(memosRef, newMemo);
     
-    console.log('✅ [MemoService] メモ保存完了');
+    console.log('✅ [MemoService] メモ保存完了（投稿のupdatedAtは更新されません）');
   },
   undefined,
   'メモ保存に失敗しました'

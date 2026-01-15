@@ -444,25 +444,24 @@ const getJapaneseErrorMessage = (error: string) => {
             borderBottom: "1px solid #2a2a3d",
           }}
         >
-          <h1
-            style={{
-              fontSize: "2rem",
-              color: "#F0DB4F",
-              margin: 0,
-              fontWeight: "bold",
-            }}
-          >
-            NIPPO
-          </h1>
+        <img
+  src="/myquest-logo.png"
+  alt="MYQUEST"
+  style={{
+    width: "240px",
+    height: "auto",
+    margin: "20px 0 0 0",  // 上 右 下 左 の順
+  }}
+/>
           <p
             style={{
               color: "#ffffff99",
-              marginTop: "2.5rem",
-              marginBottom: "-0.5rem",
+              marginTop: "1.5rem",
+              marginBottom: "-2.0rem",
             }}
           >
             {isLogin
-              ? "アカウントにログインして始めましょう"
+              ? "ログインして始めましょう！"
               : "新しいアカウントを作成しましょう"}
           </p>
         </div>
@@ -582,14 +581,14 @@ const getJapaneseErrorMessage = (error: string) => {
           </div>
 
           {/* Password field */}
-          <div style={{ marginBottom: "1.5rem" }}>
+          <div style={{ marginBottom: "1rem" }}>
             <label
               htmlFor="password"
               style={{
                 display: "block",
                 marginBottom: "0.5rem",
                 color: "#fff",
-                fontSize: "0.9rem",
+                fontSize: "1rem",
                 fontWeight: "500",
               }}
             >
@@ -619,7 +618,7 @@ const getJapaneseErrorMessage = (error: string) => {
             style={{
               display: "flex",
               alignItems: "center",
-              marginBottom: "2rem",
+              marginBottom: "1.8rem",
             }}
           >
             <input
@@ -719,7 +718,7 @@ const getJapaneseErrorMessage = (error: string) => {
             style={{
               display: "flex",
               alignItems: "center",
-              marginBottom: "1.5rem",
+              marginBottom: "1rem",
             }}
           >
             <div

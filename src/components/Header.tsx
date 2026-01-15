@@ -72,16 +72,27 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           )}
           <h1
-            style={{
-              color: '#F0DB4F',
-              fontSize: '1.5rem',
-              margin: 0,
-              fontWeight: 'bold',
-              letterSpacing: '0.05em',
-            }}
-          >
-            {title}
-          </h1>
+  style={{
+    color: '#F0DB4F',
+    fontSize: '1.5rem',
+    margin: 0,
+    fontWeight: 'bold',
+    letterSpacing: '0.05em',
+  }}
+>
+  {title === "NIPPO" || title === "MYQUEST" ? (
+    <img
+      src="/myquest-logo.png"
+      alt="MYQUEST"
+      style={{
+        height: "24px",
+        width: "auto",
+      }}
+    />
+  ) : (
+    title
+  )}
+</h1>
         </div>
 
         {/* 右側に検索アイコンを配置 */}

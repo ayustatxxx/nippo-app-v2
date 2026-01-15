@@ -7,6 +7,8 @@ import { DBUtil, STORES } from '../utils/dbUtil';
 import GroupFooterNav from '../components/GroupFooterNav';
 import { getGroupWithFirestore } from '../utils/dbUtil';
 import UnifiedCoreSystem from '../core/UnifiedCoreSystem';
+import { invalidateArchiveCache } from './ArchivePage';
+
 
 
 
@@ -15,9 +17,24 @@ const GroupTopPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-   // 🎯 環境判定（本番 or テスト）
-  const isTestEnvironment = typeof window !== 'undefined' && 
-  window.location.hostname.includes('git-develop');
+   // 🎯 環境判定（本番 / プレビュー / ローカル）
+const getEnvironmentSuffix = () => {
+  if (typeof window === 'undefined') return '';
+  
+  const hostname = window.location.hostname;
+  
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return '*';  // ローカル環境
+  }
+  
+  if (hostname.includes('vercel.app')) {
+    return '**';  // プレビュー環境
+  }
+  
+  return '';  // 本番環境
+};
+
+const environmentSuffix = getEnvironmentSuffix();
   
   // グループ名の表示制限を追跡するための参照
   const groupNameRef = useRef<HTMLHeadingElement>(null);
@@ -78,13 +95,98 @@ const GroupTopPage: React.FC = () => {
   const [checkInPostId, setCheckInPostId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false); // 処理中フラグ
   const [checkInTime, setCheckInTime] = useState<number | null>(null); // チェックイン時刻
-  const [isInitialized, setIsInitialized] = useState(false); 
   const [isLoadingCheckInState, setIsLoadingCheckInState] = useState(true); 
 
+
+// GroupTopPage読み込み時にフッターを必ず閉じる
+useEffect(() => {
+  console.log('🚪 GroupTopPage: フッターを閉じる処理実行', { groupId });
   
-  useEffect(() => {
-    // データ読み込み処理
-    const loadData = async () => {
+  const closeFooter = () => {
+    const footerState = {
+      showFooter: false,
+      showFAB: true,
+      animationTrigger: 'initial'
+    };
+    localStorage.setItem('footer-visibility-state', JSON.stringify(footerState));
+    window.dispatchEvent(new Event('storage'));
+    console.log('✅ フッター閉じる処理完了');
+  };
+  
+  // 即座に閉じる
+  closeFooter();
+  
+  // 念のため、複数回実行して確実に閉じる
+  const timerId1 = setTimeout(closeFooter, 50);
+  const timerId2 = setTimeout(closeFooter, 100);
+  const timerId3 = setTimeout(closeFooter, 200);
+  
+  return () => {
+    clearTimeout(timerId1);
+    clearTimeout(timerId2);
+    clearTimeout(timerId3);
+  };
+}, []); // 空の依存配列 = コンポーネントマウント時に1回だけ実行
+
+// groupId が変わった時にも閉じる
+useEffect(() => {
+  if (groupId) {
+    console.log('🔄 groupId変更: フッターを閉じる', { groupId });
+    const footerState = {
+      showFooter: false,
+      showFAB: true,
+      animationTrigger: 'initial'
+    };
+    localStorage.setItem('footer-visibility-state', JSON.stringify(footerState));
+    window.dispatchEvent(new Event('storage'));
+  }
+}, [groupId]);
+
+
+// // ★ EditPageからの更新を検知してリフレッシュ ★
+// useEffect(() => {
+//   console.log('🎧 [GroupTopPage] 投稿更新イベント監視を開始');
+  
+//   const handlePostsUpdate = async () => {
+//     console.log('📢 [GroupTopPage] 投稿更新イベントを受信');
+//     // チェックイン状態を再確認
+//     const userIdFromStorage = localStorage.getItem("daily-report-user-id");
+//     if (userIdFromStorage && groupId) {
+//       console.log('🔄 [GroupTopPage] チェックイン状態を再確認中...');
+//       await checkTodayWorkTimePost(userIdFromStorage);
+//     }
+//   };
+  
+//   // localStorageフラグ監視
+//   let lastUpdateFlag = localStorage.getItem('daily-report-posts-updated') || '';
+//   const checkForUpdates = () => {
+//     const currentFlag = localStorage.getItem('daily-report-posts-updated') || '';
+//     if (currentFlag !== lastUpdateFlag && currentFlag !== '') {
+//       console.log('📱 [GroupTopPage] localStorageフラグ変更を検知:', currentFlag);
+//       lastUpdateFlag = currentFlag;
+//       handlePostsUpdate();
+//     }
+//   };
+  
+//   // イベントリスナーの設定
+//   window.addEventListener('postsUpdated', handlePostsUpdate);
+//   window.addEventListener('refreshPosts', handlePostsUpdate);
+  
+//   // ポーリング開始（1秒間隔）
+//   const pollingInterval = setInterval(checkForUpdates, 1000);
+  
+//   // クリーンアップ
+//   return () => {
+//     console.log('🔌 [GroupTopPage] 更新イベント監視を終了');
+//     window.removeEventListener('postsUpdated', handlePostsUpdate);
+//     window.removeEventListener('refreshPosts', handlePostsUpdate);
+//     clearInterval(pollingInterval);
+//   };
+// }, [groupId]);
+
+useEffect(() => {
+  // データ読み込み処理
+  const loadData = async () => {
       if (!groupId) {
         console.error('グループIDが見つかりません');
         return;
@@ -153,15 +255,10 @@ try {
   }
 
   
-  // 今日の作業時間投稿を確認（初回のみ）
-if (!isInitialized) {
-  console.log('📍 checkTodayWorkTimePost 呼び出し直前');
-  await checkTodayWorkTimePost(userIdFromStorage);
-  console.log('📍 checkTodayWorkTimePost 呼び出し直後');
-  setIsInitialized(true);
-} else {
-  console.log('📍 checkTodayWorkTimePost スキップ（既に初期化済み）');
-}
+// 今日の作業時間投稿を確認（ページに戻るたびに実行）
+console.log('📍 checkTodayWorkTimePost 呼び出し直前');
+await checkTodayWorkTimePost(userIdFromStorage);
+console.log('📍 checkTodayWorkTimePost 呼び出し直後');
 
     
   } catch (error) {
@@ -171,104 +268,130 @@ if (!isInitialized) {
 
 loadData();
 }, [groupId]);
+
+// ページが表示されるたびにチェックイン状態を再確認
+useEffect(() => {
+  const recheckCheckInState = async () => {
+    const userIdFromStorage = localStorage.getItem("daily-report-user-id");
+    if (userIdFromStorage && groupId) {
+      console.log('🔄 ページ表示時: チェックイン状態を再確認');
+console.log('🔄 [デバッグ] ページ表示時の再確認:', {
+  userIdFromStorage,
+  groupId,
+  現在時刻: new Date().toISOString()
+});
+await checkTodayWorkTimePost(userIdFromStorage);
+    }
+  };
   
+  recheckCheckInState();
+}, [groupId]);
 
- // 今日の作業時間投稿を確認（改善版）
-const checkTodayWorkTimePost = async (userId: string) => {
-  try {
-    setIsLoadingCheckInState(true);
-    console.log('🔍 今日のチェックイン状態を確認中...');
-    
-    const dbUtil = DBUtil.getInstance();
-    await dbUtil.initDB();
-    
-    // 今日の日付を取得
-    const today = new Date();
-    const dateStr = `${today.getFullYear()} / ${today.getMonth() + 1} / ${today.getDate()}`;
-    
-    console.log('📅 検索対象日付:', dateStr);
-    
-    // 少し待ってからIndexedDBを確認（同期を待つ）
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // 今日の作業時間投稿を検索（エラーハンドリング強化）
-    let posts = [];
+  
+// 今日の作業時間投稿を確認（日跨ぎ対応版）
+  const checkTodayWorkTimePost = async (userId: string) => {
     try {
-      posts = await dbUtil.getAll<any>(STORES.POSTS);
-      console.log('📦 取得した投稿数:', posts.length);
-    } catch (dbError) {
-      console.error('❌ IndexedDB取得エラー:', dbError);
-      posts = [];
-    }
-    
-    // 🔧 新しいロジック：今日の全ての出退勤投稿を取得
-    const todayWorkTimePosts = posts.filter(post => {
-      const isUserMatch = post.userId === userId;
-      const isGroupMatch = post.groupId === groupId;
-      const hasWorkTimeTag = post.tags?.includes('#出退勤時間');
-      const isToday = post.createdAt && new Date(post.createdAt).toDateString() === today.toDateString();
+      setIsLoadingCheckInState(true);
+      console.log('🔍 チェックイン状態を確認中...');
       
-      return isUserMatch && isGroupMatch && hasWorkTimeTag && isToday;
-    });
-
-    console.log('📦 今日の出退勤投稿数:', todayWorkTimePosts.length);
-
-    // 投稿が0件の場合
-    if (todayWorkTimePosts.length === 0) {
-      console.log('❌ チェックイン状態の投稿なし');
-      setIsCheckedIn(false);
-      setCheckInPostId(null);
-      setCheckInTime(null);
-      return;
-    }
-
-    // 🔧 重要：最新の投稿を取得（createdAtでソート）
-    const latestPost = todayWorkTimePosts.sort((a, b) => {
-      const timeA = new Date(a.createdAt).getTime();
-      const timeB = new Date(b.createdAt).getTime();
-      return timeB - timeA; // 新しい順にソート
-    })[0];
-
-    console.log('📋 最新の出退勤投稿:', {
-      id: latestPost.id,
-      tags: latestPost.tags,
-      createdAt: latestPost.createdAt
-    });
-
-    // 🔧 最新の投稿がチェックインかチェックアウトかを判定
-    const hasCheckInTag = latestPost.tags?.includes('#チェックイン');
-    const hasCheckOutTag = latestPost.tags?.includes('#チェックアウト');
-
-    if (hasCheckInTag && !hasCheckOutTag) {
-      // 最新がチェックイン → チェックイン中
-      console.log('✅ チェックイン状態の投稿を発見:', latestPost.id);
-      setIsCheckedIn(true);
-      setCheckInPostId(latestPost.id);
+      const dbUtil = DBUtil.getInstance();
+      await dbUtil.initDB();
+      const posts = await dbUtil.getAll<any>(STORES.POSTS);
       
-      // チェックイン時刻を復元
-      if (latestPost.createdAt) {
-        setCheckInTime(new Date(latestPost.createdAt).getTime());
+      const now = new Date();
+      console.log('📅 現在時刻:', now.toISOString());
+      
+      // 🔍 チェックイン中の投稿を検索（チェックアウトタグがないもの）
+      const checkInPosts = posts.filter(post => {
+  const isUserMatch = post.userId === userId;
+  const isGroupMatch = post.groupId === groupId;
+  const hasWorkTimeTag = post.tags?.includes('#出退勤時間');
+  
+  
+  // チェックアウト: "作業開始"と"作業終了"両方
+  const hasCheckOut = post.message?.includes('作業終了') || 
+                    post.message?.includes('終了:') ||
+                    post.message?.includes('■ 作業時間:');
+  
+  return isUserMatch && isGroupMatch && hasWorkTimeTag && !hasCheckOut;
+});
+      
+      if (checkInPosts.length === 0) {
+        console.log('❌ チェックイン状態の投稿なし');
+        setIsCheckedIn(false);
+        setCheckInPostId(null);
+        setCheckInTime(null);
+        return;
       }
-    } else if (hasCheckOutTag) {
-      // 最新がチェックアウト → チェックアウト済み
-      console.log('✅ チェックアウト済み:', latestPost.id);
-      setIsCheckedIn(false);
-      setCheckInPostId(null);
-      setCheckInTime(null);
-    } else {
-      // どちらのタグもない場合（念のため）
-      console.log('⚠️ タグ情報が不明:', latestPost.id);
-      setIsCheckedIn(false);
-      setCheckInPostId(null);
-      setCheckInTime(null);
+      
+      // 最新のチェックイン投稿を取得
+      const latestCheckIn = checkInPosts.sort((a, b) => {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+        return timeB - timeA;
+      })[0];
+      
+      // 経過時間を計算
+      let postDate: Date = new Date();
+      if (typeof latestCheckIn.createdAt === 'object' && 'toDate' in latestCheckIn.createdAt) {
+        postDate = (latestCheckIn.createdAt as any).toDate();
+      } else if (latestCheckIn.createdAt instanceof Date) {
+        postDate = latestCheckIn.createdAt;
+      } else if (typeof latestCheckIn.createdAt === 'string') {
+        postDate = new Date(latestCheckIn.createdAt);
+      }
+      
+      const elapsed = now.getTime() - postDate.getTime();
+      const hoursElapsed = Math.floor(elapsed / (1000 * 60 * 60));
+      
+      console.log(`⏰ チェックイン投稿発見: ${hoursElapsed}時間前`);
+      
+      // 🎯 24時間超過している場合、確認ダイアログ
+      if (hoursElapsed > 24) {
+        const dateStr = postDate.toLocaleString('ja-JP', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        const confirmed = confirm(
+          `⚠️ ${hoursElapsed}時間前のチェックイン投稿が見つかりました\n\n` +
+          `チェックイン時刻: ${dateStr}\n\n` +
+          `このままチェックアウトしますか？\n` +
+          `（${hoursElapsed}時間の作業時間として記録されます）\n\n` +
+          `※後で編集ページから時間を修正できます`
+        );
+        
+        if (!confirmed) {
+          console.log('⚠️ ユーザーがキャンセル: チェックイン状態を非表示');
+          setIsCheckedIn(false);
+          setCheckInPostId(null);
+          setCheckInTime(null);
+          return;
+        }
+        
+        console.log('✅ ユーザーが承認: チェックアウトを許可');
+      }
+      
+      // チェックイン状態をセット
+      setIsCheckedIn(true);
+      setCheckInPostId(latestCheckIn.id);
+      setCheckInTime(postDate.getTime());
+      
+      console.log('✅ チェックイン状態を設定:', {
+        postId: latestCheckIn.id,
+        経過時間: `${hoursElapsed}時間`
+      });
+      
+    } catch (error) {
+      console.error('チェックイン状態確認エラー:', error);
+    } finally {
+      setIsLoadingCheckInState(false);
     }
-    
-  } catch (error) {
-    console.error('作業時間投稿の確認エラー:', error);
-  } finally {
-    setIsLoadingCheckInState(false);
-  }
-};
+  };
+ 
   
   // グループ名の高さを測定し、必要に応じて切り詰める
   useEffect(() => {
@@ -303,10 +426,15 @@ const checkTodayWorkTimePost = async (userId: string) => {
       console.log('遷移先:', `/group/${groupId}/post`);
       navigate(`/group/${groupId}/post`);
       break;
-    case 'history':
-      console.log('遷移先:', `/group/${groupId}/archive`);
-      navigate(`/group/${groupId}/archive`);
-      break;
+case 'history':
+  console.log('遷移先:', `/group/${groupId}/archive`);
+  // ⭐ Archiveページ遷移前にキャッシュをクリア
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem(`archiveCache_${groupId}`);
+    console.log('🗑️ [GroupTopPage] Archiveキャッシュをクリア');
+  }
+  navigate(`/group/${groupId}/archive`);
+  break;
     case 'members':
       console.log('遷移先:', `/group/${groupId}/members`);
       navigate(`/group/${groupId}/members`);
@@ -346,32 +474,8 @@ const handleBack = () => {
   
 // チェックイン・チェックアウト処理（完全版 - ガード強化）
 const handleCheckInOut = async () => {
-  // 🔍 診断ログ追加（ここから）
-  console.log('🔍🔍🔍 ===== handleCheckInOut 呼び出し診断 =====');
-  console.log('📞 呼び出し元のスタックトレース:');
-  console.log(new Error().stack);
-  console.log('📊 現在の状態:');
-  console.log({
-    isCheckedIn,
-    isProcessing,
-    isLoadingCheckInState,
-    checkInPostId,
-    checkInTime
-  });
-  console.log('🔍🔍🔍 =========================================');
-
-    // ここから追加 ↓
-  console.log('🎯 イベント情報詳細:');
-  console.log('- イベントタイプ:', window.event?.type);
-  console.log('- イベント全体:', window.event);
-  console.log('- フォーカス中の要素:', document.activeElement);
-  console.log('- フォーカス中の要素タグ:', document.activeElement?.tagName);
-  
-  const button = document.activeElement;
-  if (button?.tagName === 'BUTTON') {
-    console.log('- ボタンのテキスト:', button.textContent);
-    console.log('- ボタンのdisabled:', button.hasAttribute('disabled'));
-  }
+  // デバッグログ
+  console.log('🔍 handleCheckInOut 実行:', { isCheckedIn, isProcessing });
 
 
   // 強力なガード：処理中は実行しない
@@ -410,115 +514,400 @@ const handleCheckInOut = async () => {
     const date = `${now.getFullYear()} / ${now.getMonth() + 1} / ${now.getDate()}（${weekday}）`;
     const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     
-    if (!isCheckedIn) {
-      // チェックイン処理
-      try {
-        console.log('🔵 チェックイン処理開始');
-        
-        const postId = await UnifiedCoreSystem.savePost({
-          message: `作業開始: ${time}\n日時: ${date}　${time}`,
-          files: [],
-          tags: ["#出退勤時間", "#チェックイン"],
-          groupId: groupId
-        });
+   if (!isCheckedIn) {
+  // チェックイン処理
+  try {
+    console.log('🔵 チェックイン処理開始');
+    
+    const now = new Date();
+    const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    const weekday = weekdays[now.getDay()];
+    const date = `${now.getFullYear()} / ${now.getMonth() + 1} / ${now.getDate()}（${weekday}）`;
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    
+    const postId = await UnifiedCoreSystem.savePost({
+  message: `開始: ${time}\n日付: ${date}`,
+  files: [],
+  tags: ["#出退勤時間"],
+  groupId: groupId,
+  checkInTime: now.getTime(),
+} as any);
 
-        console.log('✅ チェックイン投稿保存完了:', postId);
+    console.log('✅ チェックイン投稿保存完了:', postId);
 
-// ⭐ ここから追加：HomePageとArchivePageに通知 ⭐
-const updateFlag = Date.now().toString();  // ← ✅ 数値のみ！
-localStorage.setItem('daily-report-posts-updated', updateFlag);
-localStorage.setItem('posts-need-refresh', 'true');  // ← ✅ 'true'に統一
-console.log('🔍 [デバッグ] チェックイン通知:', updateFlag);
-
-// イベント発火
-window.dispatchEvent(new Event('storage'));
-window.dispatchEvent(new CustomEvent('refreshPosts'));
-
-console.log('📢 [GroupTopPage] チェックイン通知を送信');
-
-
-// ⭐ さらに追加：HomePageのキャッシュを強制無効化 ⭐
-if (window.forceRefreshPosts) {
-  window.forceRefreshPosts();
+    // ✅ checkInTimeを追加で保存
+const dbUtil = DBUtil.getInstance();
+await dbUtil.initDB();
+const savedPost = await dbUtil.get(STORES.POSTS, postId) as any;
+if (savedPost) {
+  savedPost.checkInTime = now.getTime();
+  await dbUtil.save(STORES.POSTS, savedPost);
+  console.log('✅ checkInTimeを保存完了:', now.getTime());
 }
-window.dispatchEvent(new CustomEvent('postsUpdated'));
 
+    // ⭐ ここから追加：HomePageとArchivePageに通知 ⭐
+    const updateFlag = Date.now().toString();
+    localStorage.setItem('daily-report-posts-updated', updateFlag);
+    localStorage.setItem('posts-need-refresh', 'true');
+    console.log('🔍 [デバッグ] チェックイン通知:', updateFlag);
 
-        
-        // 状態を更新
-        setIsCheckedIn(true);
-        setCheckInPostId(postId);
-        setCheckInTime(now.getTime()); // チェックイン時刻を記録
-        
-        // 成功メッセージ
-        alert(`✅ 作業開始を記録しました (${time})`);
-        
-      } catch (error) {
-        console.error('❌ チェックイン保存エラー:', error);
-        alert('チェックイン記録の保存に失敗しました。もう一度お試しください。');
-      }
+    // イベント発火
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('refreshPosts'));
+
+    console.log('📢 [GroupTopPage] チェックイン通知を送信');
+
+     // 🆕 キャッシュをクリアして最新データを表示
+    if (groupId) {
+      invalidateArchiveCache(groupId);
+      console.log('🗑️ [CheckIn] ArchivePageのキャッシュをクリア');
+    }
+
+    // ⭐ さらに追加：HomePageのキャッシュを強制無効化 ⭐
+    if (window.forceRefreshPosts) {
+      window.forceRefreshPosts();
+    }
+    window.dispatchEvent(new CustomEvent('postsUpdated'));
+    
+    // 状態を更新
+    setIsCheckedIn(true);
+    setCheckInPostId(postId);
+    setCheckInTime(now.getTime()); // チェックイン時刻を記録
+    
+    // 成功メッセージ
+    alert(`✅ 作業開始を記録しました (${time})`);
+    
+  } catch (error) {
+    console.error('❌ チェックイン保存エラー:', error);
+    alert('チェックイン記録の保存に失敗しました。もう一度お試しください。');
+  }
       
-    } else {
-      // チェックアウト処理
-      try {
-        console.log('🔴 チェックアウト処理開始');
-        
-        // 作業時間を計算（実際の時間差）
-        let hours = 0;
-        let minutes = 0;
-        
-        if (checkInTime) {
-          const duration = Math.floor((now.getTime() - checkInTime) / 1000 / 60); // 分単位
-          hours = Math.floor(duration / 60);
-          minutes = duration % 60;
-          console.log(`⏱️ 作業時間計算: ${hours}時間${minutes}分`);
-        } else {
-          // フォールバック（チェックイン時刻が不明な場合）
-          hours = 8;
-          minutes = 0;
-          console.log('⚠️ チェックイン時刻不明、デフォルト値使用');
-        }
-        
-        const postId = await UnifiedCoreSystem.savePost({
-          message: `作業終了: ${time}\n日時: ${date}　${time}\n作業時間: ${hours}時間${minutes}分`,
-          files: [],
-          tags: ["#出退勤時間", "#チェックアウト"],
-          groupId: groupId
-        });
+   } else {
+  // 🟠 チェックアウト処理開始
+  console.log('🟠 チェックアウト処理開始');
+  
+  if (!checkInPostId) {
+    alert('❌ チェックイン情報が見つかりません');
+    return;
+  }
+  
+  try {
+    // 既存のチェックイン投稿を取得
+    const dbUtil = DBUtil.getInstance();
+    await dbUtil.initDB();
+    const checkInPost = await dbUtil.get(STORES.POSTS, checkInPostId) as any;
+    
+    if (!checkInPost) {
+      alert('❌ チェックイン投稿が見つかりません');
+      return;
+    }
+    
+    // ✅ 先に変数を宣言（デバッグログの前に！）
+    let actualStartTime = checkInPost.checkInTime || checkInTime || 0;
+    const checkOutTime = new Date().getTime();
+    const workDuration = checkOutTime - actualStartTime;
+    const hours = Math.floor(workDuration / (1000 * 60 * 60));
+    const minutes = Math.floor((workDuration % (1000 * 60 * 60)) / (1000 * 60));
+    
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const date = `${now.getFullYear()} / ${now.getMonth() + 1} / ${now.getDate()}（${['日', '月', '火', '水', '木', '金', '土'][now.getDay()]}）`;
+    
+    // ===== ここからデバッグログ =====
+    console.log('🔍🔍🔍 [重要] チェックアウト開始時の状態:');
+    console.log('- isCheckedIn:', isCheckedIn);
+    console.log('- checkInPostId:', checkInPostId);
+    console.log('- checkInTime:', checkInTime);
+    console.log('- checkInTime（日付形式）:', checkInTime ? new Date(checkInTime).toLocaleString('ja-JP') : 'なし');
+    console.log('==========================================');
+    
+    console.log('🔍🔍🔍 [重要] 取得したcheckInPost全体:');
+    console.log(JSON.stringify(checkInPost, null, 2));
+    console.log('');
+    console.log('🔍 個別フィールドの確認:');
+    console.log('- checkInPost.id:', checkInPost?.id);
+    console.log('- checkInPost.checkInTime:', checkInPost?.checkInTime);
+    console.log('- checkInPost.timestamp:', checkInPost?.timestamp);
+    console.log('- checkInPost.createdAt:', checkInPost?.createdAt);
+    console.log('- checkInPost.message:', checkInPost?.message);
+    console.log('- checkInPost.isManuallyEdited:', checkInPost?.isManuallyEdited);
+    console.log('- checkInPost.isEdited:', checkInPost?.isEdited);
+    console.log('');
+    console.log('🔍 型の確認:');
+    console.log('- typeof checkInPost.checkInTime:', typeof checkInPost?.checkInTime);
+    console.log('- typeof checkInPost.timestamp:', typeof checkInPost?.timestamp);
+    console.log('- typeof checkInPost.createdAt:', typeof checkInPost?.createdAt);
+    console.log('==========================================');
+    
+    console.log('🔍🔍🔍 [重要] 作業時間計算前の値:');
+    console.log('- actualStartTime:', actualStartTime);
+    console.log('- actualStartTime（日付形式）:', new Date(actualStartTime).toLocaleString('ja-JP'));
+    console.log('- checkInTime（state）:', checkInTime);
+    console.log('- checkInTime（日付形式）:', checkInTime ? new Date(checkInTime).toLocaleString('ja-JP') : 'なし');
+    console.log('- checkOutTime:', checkOutTime);
+    console.log('- checkOutTime（日付形式）:', new Date(checkOutTime).toLocaleString('ja-JP'));
+    console.log('==========================================');
+    
+    
+    // 🆕 編集済みの場合、元のメッセージから時刻を抽出
+let startTimeStr = '';
+let startDateStr = '';
 
-        console.log('✅ チェックアウト投稿保存完了:', postId);
-
-// ⭐ ここから追加：HomePageとArchivePageに通知 ⭐
-const updateFlag = Date.now().toString();  // ← ✅ 数値のみ！
-localStorage.setItem('daily-report-posts-updated', updateFlag);
-localStorage.setItem('posts-need-refresh', 'true');  // ← ✅ 'true'に統一
-console.log('🔍 [デバッグ] チェックアウト通知:', updateFlag);
-
-// HomePageのキャッシュを強制無効化
-if (window.forceRefreshPosts) {
-  window.forceRefreshPosts();
+// 👇 まず時刻を抽出（新旧フォーマット両対応）
+if (checkInPost.message) {
+  // 新フォーマット: "開始: 23:31"
+  const newStartMatch = checkInPost.message.match(/開始:\s*(\d{2}:\d{2})/);
+  // 旧フォーマット: "作業開始: 23:31"
+  const oldStartMatch = checkInPost.message.match(/作業開始:\s*(\d{2}:\d{2})/);
+  
+  if (newStartMatch) {
+    startTimeStr = newStartMatch[1];
+  } else if (oldStartMatch) {
+    startTimeStr = oldStartMatch[1];
+  }
+  
+  // 日付も両フォーマット対応
+  const newDateMatch = checkInPost.message.match(/日付:\s*([^\n]+)/);
+  const oldDateMatch = checkInPost.message.match(/開始日:\s*([^\n]+)/);
+  
+  if (newDateMatch) {
+    startDateStr = newDateMatch[1];
+  } else if (oldDateMatch) {
+    startDateStr = oldDateMatch[1];
+  } else {
+  // 🆕 フォールバック: どちらのフォーマットもない場合は現在の日付を使う
+  startDateStr = date;
 }
-
-// イベント発火
-window.dispatchEvent(new Event('storage'));
-window.dispatchEvent(new CustomEvent('postsUpdated'));
-window.dispatchEvent(new CustomEvent('refreshPosts'));
-
-console.log('📢 [GroupTopPage] チェックアウト通知を送信');
+      
+      // 🔢 時刻を数値に変換
+      if (startTimeStr) {
+        console.log('🔄 時刻を数値に変換します:', startTimeStr);
         
-        // 状態をリセット
-        setIsCheckedIn(false);
-        setCheckInPostId(null);
-        setCheckInTime(null);
+        const [hourStr, minuteStr] = startTimeStr.split(':');
+        const startHour = parseInt(hourStr, 10);
+        const startMinute = parseInt(minuteStr, 10);
         
-        // 成功メッセージ
-        alert(`✅ 作業終了を記録しました (${time})\n作業時間: ${hours}時間${minutes}分`);
-        
-      } catch (error) {
-        console.error('❌ チェックアウト保存エラー:', error);
-        alert('チェックアウト記録の保存に失敗しました。もう一度お試しください。');
+        if (startDateStr) {
+          const dateMatch = startDateStr.match(/(\d{4})\s*\/\s*(\d{1,2})\s*\/\s*(\d{1,2})/);
+          if (dateMatch) {
+            const year = parseInt(dateMatch[1], 10);
+            const month = parseInt(dateMatch[2], 10) - 1;
+            const day = parseInt(dateMatch[3], 10);
+            
+            actualStartTime = new Date(year, month, day, startHour, startMinute).getTime();
+            console.log('✅ 開始時刻を変換:', new Date(actualStartTime).toLocaleString());
+          }
+        } else {
+          actualStartTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), startHour, startMinute).getTime();
+        }
       }
     }
+    
+    // 時刻が抽出できなかった場合は、チェックイン時刻を使用
+    if (!startTimeStr) {
+      const checkInDateTime = new Date(checkInTime || 0);
+      startTimeStr = `${String(checkInDateTime.getHours()).padStart(2, '0')}:${String(checkInDateTime.getMinutes()).padStart(2, '0')}`;
+      startDateStr = date;
+    }
+    
+    console.log('🔍 [チェックアウト] 使用する開始時刻:', startTimeStr);
+    console.log('🔍 [チェックアウト] 使用する開始日付:', startDateStr);
+    
+    console.log('🔍🔍🔍 [重要] 時刻抽出の結果:');
+    console.log('- startTimeStr:', startTimeStr);
+    console.log('- startDateStr:', startDateStr);
+    console.log('- checkInPost.message:', checkInPost.message);
+    console.log('- checkInPost.isManuallyEdited:', checkInPost.isManuallyEdited);
+    console.log('');
+    console.log('🔍 メッセージ内の時刻抽出テスト:');
+    if (checkInPost.message) {
+      const timeMatch = checkInPost.message.match(/作業開始:\s*(\d{2}:\d{2})/);
+      console.log('- 抽出した時刻:', timeMatch ? timeMatch[1] : 'マッチなし');
+      console.log('- 元のメッセージ:', checkInPost.message);
+    }
+    console.log('==========================================');
+    
+   // 👇 時刻が確定した後で作業時間を計算
+let workTimeStr = '0時間0分';
+if (startTimeStr) {
+  console.log('🔄 作業時間を計算します');
+  console.log('🔍 [作業時間計算] 使用する開始時刻:', startTimeStr);
+  console.log('🔍 [作業時間計算] 終了時刻:', time);
+  
+  const startTimeParts = startTimeStr.split(':');
+  const startHour = parseInt(startTimeParts[0], 10);
+  const startMinute = parseInt(startTimeParts[1], 10);
+  
+  // ✅ 日跨ぎ対応：開始日付を正しく設定
+  let startDateTime: Date;
+  if (startDateStr) {
+    // 開始日付が指定されている場合（編集済みの場合）
+    const dateMatch = startDateStr.match(/(\d{4})\s*\/\s*(\d{1,2})\s*\/\s*(\d{1,2})/);
+    if (dateMatch) {
+      const year = parseInt(dateMatch[1], 10);
+      const month = parseInt(dateMatch[2], 10) - 1;
+      const day = parseInt(dateMatch[3], 10);
+      startDateTime = new Date(year, month, day, startHour, startMinute);
+    } else {
+      startDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), startHour, startMinute);
+    }
+  } else {
+    // ✅ checkInTimeから正しい日付を取得
+    if (checkInTime) {
+      const checkInDate = new Date(checkInTime);
+      startDateTime = new Date(
+        checkInDate.getFullYear(),
+        checkInDate.getMonth(),
+        checkInDate.getDate(),
+        startHour,
+        startMinute
+      );
+    } else {
+      startDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), startHour, startMinute);
+    }
+  }
+  
+  const endDateTime = new Date();
+  
+  const durationMs = endDateTime.getTime() - startDateTime.getTime();
+  const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
+  const durationMinutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  // ✅ 負の値のチェック（念のため）
+  if (durationHours < 0) {
+    console.log('⚠️ 負の値を検出: 0時間0分に設定');
+    workTimeStr = '0時間0分';
+  } else {
+    workTimeStr = `${durationHours}時間${durationMinutes}分`;
+  }
+  
+  console.log('📊 作業時間計算結果:', {
+    開始時刻: startDateTime.toLocaleString('ja-JP'),
+    終了時刻: endDateTime.toLocaleString('ja-JP'),
+    経過ミリ秒: durationMs,
+    計算された時間: durationHours,
+    計算された分: durationMinutes,
+    作業時間: workTimeStr
+  });
+}
+    
+    // メッセージを作成（編集済みの時刻を保持）
+    // 🆕 新フォーマットに統一
+    const updatedMessage = `開始: ${startTimeStr} ー 終了: ${time}\n─────────────────\n■ 作業時間: ${workTimeStr}\n─────────────────\n日付: ${startDateStr}`;
+
+    // 🆕 デバッグログを追加
+console.log('🔍🔍🔍 [重要] updatedMessage の内容:');
+console.log(updatedMessage);
+console.log('🔍 updatedMessage.length:', updatedMessage.length);
+console.log('🔍 日付が含まれているか:', updatedMessage.includes('日付:'));
+
+    console.log('🔍 [チェックアウト] 使用する開始時刻:', startTimeStr);
+    console.log('🔍 [チェックアウト] 使用する開始日付:', startDateStr);
+    
+    // 🔧 修正: 削除して新規作成（投稿が最新位置に移動）
+    console.log('🗑️ 古いチェックイン投稿を削除:', checkInPostId);
+    
+    // 1. 古い投稿を削除
+    await UnifiedCoreSystem.deletePost(checkInPostId, userId);
+    console.log('✅ 古いチェックイン投稿を削除完了');
+    
+    // 2. 新しい統合投稿を作成（最新の時間で）
+    console.log('🔍🔍🔍 [savePost前] 渡す値:');
+    console.log('- message:', updatedMessage);
+    console.log('- message.length:', updatedMessage.length);
+    console.log('- 日付含む:', updatedMessage.includes('日付:'));
+
+    console.log('🔍 [チェックアウト] checkInPost.isManuallyEdited:', checkInPost.isManuallyEdited);
+    console.log('🔍 [チェックアウト] checkInPost.isEdited:', checkInPost.isEdited);
+    
+    const newPostId = await UnifiedCoreSystem.savePost({
+      message: updatedMessage,
+      files: [],
+      tags: checkInPost.tags || ["#出退勤時間"],
+      groupId: groupId
+    });
+    
+    console.log('✅ 新しい統合投稿を作成:', newPostId);
+    
+    // 編集済みフラグを引き継ぐ
+    if (checkInPost.isManuallyEdited) {
+      console.log('🔍 [チェックアウト] 編集済みフラグを引き継ぎます');
+      const dbUtil = DBUtil.getInstance();
+      await dbUtil.initDB();
+      const savedPost = await dbUtil.get(STORES.POSTS, newPostId) as any;
+      if (savedPost) {
+        console.log('🔍 [チェックアウト] 投稿取得成功');
+        savedPost.isManuallyEdited = true;
+        savedPost.isEdited = true;
+        await dbUtil.save(STORES.POSTS, savedPost);
+        console.log('✅ IndexedDBに編集済みフラグを保存');
+        
+        // 🆕 Firestoreにも保存
+        try {
+          await UnifiedCoreSystem.updatePost(newPostId, {
+            message: updatedMessage, 
+            isManuallyEdited: true
+          });
+          console.log('✅ Firestoreにも編集済みフラグを保存');
+        } catch (error) {
+          console.error('❌ Firestore保存エラー:', error);
+        }
+      } else {
+        console.error('❌ [チェックアウト] 投稿が見つかりません');
+      }
+    } else {
+      console.log('🔍 [チェックアウト] 編集済みフラグなし（引き継ぎスキップ）');
+    }
+    
+    // 3. 新しい投稿IDを保存
+    setCheckInPostId(newPostId);
+    localStorage.setItem(`checkInPostId_${groupId}`, newPostId);
+    
+    console.log('✅ チェックアウト完了:', checkInPostId);
+    
+    // 通知を送信
+    const updateFlag = Date.now().toString();
+    localStorage.setItem('daily-report-posts-updated', updateFlag);
+    localStorage.setItem('posts-need-refresh', 'true');
+    
+    // HomePageのキャッシュを強制無効化
+    if (window.forceRefreshPosts) {
+      window.forceRefreshPosts();
+    }
+    
+    // イベント発火
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('postsUpdated', {
+      detail: {
+        updatedPost: checkInPostId,
+        timestamp: Date.now(),
+        source: 'GroupTopPage',
+        action: 'checkout'
+      }
+    }));
+    window.dispatchEvent(new CustomEvent('refreshPosts'));
+    
+    console.log('📢 [GroupTopPage] チェックアウト通知を送信');
+
+    // 🆕 キャッシュをクリアして最新データを表示
+    if (groupId) {
+      invalidateArchiveCache(groupId);
+      console.log('🗑️ [CheckOut] ArchivePageのキャッシュをクリア');
+    }
+    
+    // 状態をリセット
+    setIsCheckedIn(false);
+    setCheckInPostId(null);
+    setCheckInTime(null);
+    
+    // 成功メッセージ
+    alert(`✅ 作業終了を記録しました (${time})\n作業時間: ${hours}時間${minutes}分`);
+    
+  } catch (error) {
+    console.error('❌ チェックアウト更新エラー:', error);
+    alert('チェックアウト記録の更新に失敗しました。もう一度お試しください。');
+  }
+}
   } catch (error) {
     console.error('作業時間記録エラー:', error);
     alert('作業時間の記録に失敗しました');
@@ -719,8 +1108,7 @@ const bottomBackgroundTop = '65vh';
       textOverflow: 'ellipsis',
     }}
   >
-    {isTestEnvironment && '🧪テスト '}
-    {group.name}
+   {group.name}{environmentSuffix}
   </h1>
   
   {/* チェックイン・チェックアウトボタン */}
@@ -735,9 +1123,18 @@ const bottomBackgroundTop = '65vh';
       状態確認中...
     </div>
   ) : (
-    <button
-      onClick={handleCheckInOut}
-      disabled={isLoadingCheckInState || isProcessing}
+   <button
+  onClick={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('🔴🔴🔴 ボタンがクリックされました！');
+    console.log('- isLoadingCheckInState:', isLoadingCheckInState);
+    console.log('- isProcessing:', isProcessing);
+    console.log('- isCheckedIn:', isCheckedIn);
+    console.log('- disabled属性:', isLoadingCheckInState || isProcessing);
+    handleCheckInOut();
+  }}
+  disabled={isLoadingCheckInState || isProcessing}
       style={{
         backgroundColor: isCheckedIn ? '#F6C8A6' : '#F0DB4F',
         color: '#055A68',
@@ -792,11 +1189,11 @@ const bottomBackgroundTop = '65vh';
   )}
 </div>
       
-      {/* GroupFooterNavコンポーネントを使用（常に表示） */}
-      <GroupFooterNav 
-        activeTab={activeTab} 
-        onTabChange={handleTabChange} 
-      />
+     {/* GroupFooterNavコンポーネントを使用（常に表示） */}
+<GroupFooterNav 
+  activeTab={null as any}
+  onTabChange={handleTabChange} 
+/>
     </div>
   );
 };

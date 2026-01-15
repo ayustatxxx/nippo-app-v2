@@ -73,6 +73,14 @@ export class UserGroupResolver {
           
           if (post) {
             console.log('✅ UserGroupResolver: 投稿発見', postId, 'in', group.name);
+
+             // ✅ 以下の4行を追加
+  console.log('🔍 [UserGroupResolver] 発見した投稿の生データ:', {
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+    hasCreatedAt: !!post.createdAt,
+    hasUpdatedAt: !!post.updatedAt
+  });
             
             // グループ情報を投稿に統合
             return { 

@@ -2,6 +2,9 @@
 import { getUser } from '../firebase/firestore';
 import { User } from '../types';
 
+// 表示名キャッシュ（メモリ内キャッシュ）
+const displayNameCache = new Map<string, string>();
+
 /**
  * 安全でデバッグ可能な表示名取得システム
  * Firebase + Firestore + ローカルストレージ対応
@@ -11,7 +14,15 @@ export const getDisplayNameSafe = async (userId: string): Promise<string> => {
   console.log('🔍 SafeUnifiedDataManager.getDisplayNameSafe 開始');
   console.log('📋 要求されたユーザーID:', userId);
   
+  // Step 0: キャッシュチェック
+  if (displayNameCache.has(userId)) {
+    const cachedName = displayNameCache.get(userId)!;
+    console.log('💾 キャッシュから取得:', cachedName);
+    return cachedName;
+  }
+  
   try {
+
     // Step 1: Firestoreから直接取得を試行
     console.log('⚡ Firestore直接取得を開始...');
     const firestoreUser = await getUser(userId);
@@ -27,8 +38,11 @@ export const getDisplayNameSafe = async (userId: string): Promise<string> => {
                          firestoreUser.username || 
                          (firestoreUser.email ? firestoreUser.email.split('@')[0] : null);
       
-      if (displayName) {
+     if (displayName) {
         console.log('🎉 Firestoreから表示名決定:', displayName);
+        // キャッシュに保存
+        displayNameCache.set(userId, displayName);
+        console.log('💾 キャッシュに保存完了');
         return displayName;
       }
     } else {
@@ -52,8 +66,11 @@ export const getDisplayNameSafe = async (userId: string): Promise<string> => {
       const localDisplayName = localUsername || 
                               (localEmail ? localEmail.split('@')[0] : null);
       
-      if (localDisplayName) {
+     if (localDisplayName) {
         console.log('🎉 ローカルストレージから表示名決定:', localDisplayName);
+        // キャッシュに保存
+        displayNameCache.set(userId, localDisplayName);
+        console.log('💾 キャッシュに保存完了');
         return localDisplayName;
       }
     }
@@ -73,6 +90,14 @@ export const getDisplayNameSafe = async (userId: string): Promise<string> => {
     // エラー時のフォールバック
     return 'ユーザー';
   }
+};
+
+/**
+ * 表示名キャッシュをクリア
+ */
+export const clearDisplayNameCache = () => {
+  displayNameCache.clear();
+  console.log('🗑️ 表示名キャッシュをクリアしました');
 };
 
 /**

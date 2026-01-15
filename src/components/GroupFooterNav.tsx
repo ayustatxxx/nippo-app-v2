@@ -202,7 +202,11 @@ const GroupFooterNav: React.FC<GroupFooterNavProps> = ({
                   // 新機能：順番にアニメーション
                   animationDelay: calculateStaggerDelay(index, 40)
                 }}
-                onClick={() => handleTabChange(item.tab)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleTabChange(item.tab);
+                }}
+
                 // 新機能：タップエフェクト
                 onTouchStart={(e) => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';

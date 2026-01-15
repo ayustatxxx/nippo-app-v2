@@ -7,6 +7,7 @@ import { DBUtil, STORES } from "../utils/dbUtil";
 import { Post } from '../types';
 import { FileValidator, useFileValidation } from '../utils/fileValidation'; // 新しく追加
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
+import { invalidateArchiveCache } from '../group/ArchivePage'; 
 
 
 const EditPostPage: React.FC = () => {
@@ -22,6 +23,11 @@ const EditPostPage: React.FC = () => {
   
   // 編集用の状態
   const [editedMessage, setEditedMessage] = useState('');
+  // 時刻編集用の状態
+const [startTime, setStartTime] = useState<string>('');
+const [endTime, setEndTime] = useState<string>('');
+const [hasCheckOut, setHasCheckOut] = useState(false);
+const [workDate, setWorkDate] = useState<string>('');
   const [editedTags, setEditedTags] = useState<string[]>([]);
   const [editedPhotos, setEditedPhotos] = useState<FileList | null>(null);
   const [newPhotoUrls, setNewPhotoUrls] = useState<string[]>([]);
@@ -70,11 +76,83 @@ const EditPostPage: React.FC = () => {
     } catch (groupError) {
       console.error('グループ情報の取得に失敗:', groupError);
     }
+
+    // 🔍 デバッグ
+  console.log('🔍 [EditPage 初期化] 投稿データ取得:');
+  console.log('  - 投稿ID:', postData.id);
+  console.log('  - photoUrls:', postData.photoUrls);
+  console.log('  - photoUrls枚数:', postData.photoUrls?.length || 0);
     
-    setPost(postData);
-    setEditedMessage(postData.message || '');
-    setEditedTags(postData.tags || []);
+ // ✅ Firestoreの値をそのまま保持（編集ページを開いただけでは変更しない）
+setPost(postData);
+
+// 🆕 メッセージから時刻を抽出
+const messageText = postData.message || '';
+
+// 新フォーマット: "開始: 23:31 ー 終了: 23:31"
+const newFormatMatch = messageText.match(/開始:\s*(\d{2}:\d{2})\s*ー\s*終了:\s*(\d{2}:\d{2})/);
+// 旧フォーマット: "作業開始: 23:31" "作業終了: 23:31"
+const oldStartMatch = messageText.match(/作業開始:\s*(\d{2}:\d{2})/);
+const oldEndMatch = messageText.match(/作業終了:\s*(\d{2}:\d{2})/);
+// チェックインのみ: "開始: 23:31"
+const startOnlyMatch = messageText.match(/^開始:\s*(\d{2}:\d{2})/m);
+
+if (newFormatMatch) {
+  setStartTime(newFormatMatch[1]);
+  setEndTime(newFormatMatch[2]);
+  setHasCheckOut(true);
+} else if (oldStartMatch) {
+  setStartTime(oldStartMatch[1]);
+  if (oldEndMatch) {
+    setEndTime(oldEndMatch[1]);
+    setHasCheckOut(true);
+  }
+} else if (startOnlyMatch) {
+  setStartTime(startOnlyMatch[1]);
+}
+
+// 🆕 日付を抽出（新フォーマット: "開始日:" または 旧フォーマット: "日付:"）
+const newDateMatch = messageText.match(/開始日:\s*(.+?)(?:\n|$)/);
+const oldDateMatch = messageText.match(/日付:\s*(.+?)(?:\n|$)/);
+const dateMatch = newDateMatch || oldDateMatch;
+
+if (dateMatch) {
+  // "2025 / 11 / 20 (木)" → "2025-11-20" に変換
+  const dateStr = dateMatch[1].replace(/ ?\(.+?\)/g, '').replace(/（.+?）/g, '').trim();
+  
+  // 🆕 NaN チェックを追加
+  if (dateStr.includes('NaN') || dateStr.includes('undefined')) {
+    // 日付がNaNの場合は今日の日付を設定
+    const today = new Date().toISOString().split('T')[0];
+    setWorkDate(today);
   } else {
+    const normalizedDate = dateStr.replace(/\s*\/\s*/g, '-');
+    setWorkDate(normalizedDate);
+
+  }
+} else {
+  // 日付がない場合は今日の日付を設定
+  const today = new Date().toISOString().split('T')[0];
+  setWorkDate(today);
+}
+
+// 🆕 メッセージから時刻部分を削除して表示
+const messageWithoutTime = messageText
+  .replace(/開始:\s*\d{2}:\d{2}\s*ー\s*終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/開始:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/日付:[^\n]+\n?/g, '')
+  .replace(/開始日:[^\n]+\n?/g, '')
+  .replace(/■\s*作業時間:[^\n]+\n?/g, '')
+  .replace(/─+/g, '')  // ← 追加：区切り線を削除
+  .replace(/^\s*作業\s*$/gm, '')  // ← 追加：単独の「作業」を削除
+  .trim();
+
+setEditedMessage(messageWithoutTime);
+setEditedTags(postData.tags || []);
+  } else {
+
     // 投稿が見つからない場合
     setError('指定された投稿が見つかりません');
   }
@@ -133,18 +211,27 @@ useEffect(() => {
   return () => {
     isMounted = false;
   };
-}, [editedPhotos]); // editedPhotosのみに依存
+}, [editedPhotos]);
   
   // 変更検知
   useEffect(() => {
-    if (!post) return;
-    
-    const messageChanged = editedMessage !== (post.message || '');
-    const tagsChanged = JSON.stringify(editedTags) !== JSON.stringify(post.tags || []);
-    const photosChanged = newPhotoUrls.length > 0 || deletedPhotoUrls.length > 0;
-    
-    setHasChanges(messageChanged || tagsChanged || photosChanged);
-  }, [editedMessage, editedTags, newPhotoUrls, deletedPhotoUrls, post]);
+  if (!post) return;
+  
+  const messageChanged = editedMessage !== (post.message || '');
+  const tagsChanged = JSON.stringify(editedTags) !== JSON.stringify(post.tags || []);
+  const photosChanged = newPhotoUrls.length > 0 || deletedPhotoUrls.length > 0;
+  
+  // 🆕 時刻の変更も検知
+  const messageText = post.message || '';
+// 新旧フォーマット両方に対応
+const newFormatMatch = messageText.match(/開始:\s*(\d{2}:\d{2})\s*ー\s*終了:\s*(\d{2}:\d{2})/);
+const originalStartTime = newFormatMatch?.[1] || messageText.match(/作業開始:\s*(\d{2}:\d{2})/)?.[1] || '';
+const originalEndTime = newFormatMatch?.[2] || messageText.match(/作業終了:\s*(\d{2}:\d{2})/)?.[1] || '';
+const originalDate = messageText.match(/開始日:\s*(.+?)(?:\n|$)/)?.[1] || messageText.match(/日付:\s*(.+?)(?:\n|$)/)?.[1] || '';
+const timeChanged = startTime !== originalStartTime || endTime !== originalEndTime || workDate !== originalDate;
+  
+  setHasChanges(messageChanged || tagsChanged || photosChanged || timeChanged);
+}, [editedMessage, editedTags, newPhotoUrls, deletedPhotoUrls, post, startTime, endTime, workDate]);
   
   // 🔒 セキュリティ強化: 入力値サニタイゼーション
   const sanitizeInput = (input: string): string => {
@@ -154,6 +241,57 @@ useEffect(() => {
       .replace(/on\\w+=/gi, '') // イベントハンドラを除去
       .trim();
   };
+
+  // 🆕 メッセージから時刻情報を削除する関数
+const removeTimeFromMessage = (message: string): string => {
+ return message
+  .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/日付:[^\n]+\n?/g, '') // ← この行を追加！
+  .trim();
+};
+
+// 🆕 作業時間を計算する関数
+const calculateWorkDuration = (startTime: string, endTime: string): { duration: string; isValid: boolean; errorMessage?: string } => {
+  const [startHour, startMin] = startTime.split(':').map(Number);
+  const [endHour, endMin] = endTime.split(':').map(Number);
+  
+  let totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
+  
+  // 🆕 終了時刻 < 開始時刻 → 日をまたいだと判断
+  if (totalMinutes < 0) {
+    totalMinutes += 24 * 60; // +24時間
+  }
+  
+  // 🆕 23時間59分（1439分）を超える場合はエラー
+  if (totalMinutes >= 24 * 60) { // 1440分以上
+    return {
+      duration: '',
+      isValid: false,
+      errorMessage: '⚠️ 作業時間は23時間59分以内で入力してください'
+    };
+  }
+  
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  
+  return {
+    duration: `${hours}時間${minutes}分`,
+    isValid: true
+  };
+};
+
+// 🆕 日付を日本語形式に変換する関数
+const formatDateToJapanese = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+  const weekday = weekdays[date.getDay()];
+  
+  return `${year} / ${month} / ${day} (${weekday})`;
+};
   
   // 🔒 セキュリティ強化: メッセージ入力処理
   const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -202,6 +340,22 @@ useEffect(() => {
   // 🔒 セキュリティ強化: 安全な保存処理
   const handleSave = async () => {
     if (!post) return;
+      
+  // 🔍 デバッグ
+  console.log('🔍 [EditPage handleSave開始] post state確認:');
+console.log('  - post:', post);
+console.log('  - post.photoUrls:', post.photoUrls);
+console.log('  - post.photoUrls枚数:', post.photoUrls?.length || 0);
+console.log('  - post.isEdited:', post.isEdited);  // ← 追加
+console.log('  - post.isManuallyEdited:', post.isManuallyEdited);  // ← 追加
+
+    console.log('💾 [EditPostPage] 保存開始:', {
+  postId: post.id,
+  tags: editedTags,
+  hasチェックイン: editedTags?.includes('#チェックイン'),
+  hasチェックアウト: editedTags?.includes('#チェックアウト'),
+  現在時刻: new Date().toISOString()
+});
     
   try {
   setSaving(true);
@@ -229,6 +383,16 @@ if (editedPhotos && editedPhotos.length > 0) {
       
       // ✨ 既存写真と新規写真を合わせた合計サイズチェック
       const remainingPhotos = post.photoUrls.filter(url => !deletedPhotoUrls.includes(url));
+
+      // 🔍 デバッグ
+console.log('🔍 [EditPage 保存直前] 画像状態確認:');
+console.log('  - post.photoUrls:', post.photoUrls);
+console.log('  - post.photoUrls枚数:', post.photoUrls?.length || 0);
+console.log('  - deletedPhotoUrls:', deletedPhotoUrls);
+console.log('  - remainingPhotos:', remainingPhotos);
+console.log('  - remainingPhotos枚数:', remainingPhotos.length);
+console.log('  - additionalPhotoUrls枚数:', additionalPhotoUrls.length);
+
       const allPhotos = [...remainingPhotos, ...additionalPhotoUrls];
       
       const sizeCheck = FileValidator.checkCompressedTotalSize(allPhotos, result.validFiles);
@@ -269,8 +433,73 @@ console.log('  - 残りの画像:', remainingPhotos.length, '枚');
 console.log('  - 新規画像(Base64):', additionalPhotoUrls.length, '枚');
 console.log('  - 新規画像(File):', editedPhotos ? editedPhotos.length : 0, '枚');
 
-// 🔒 セキュリティ強化: 入力値の最終検証
-const sanitizedMessage = sanitizeInput(editedMessage).substring(0, 5000);
+
+// 🆕 時刻入力欄の値でメッセージを再構築
+let timePrefix = '';
+
+// チェックイン・チェックアウト情報
+if (startTime && hasCheckOut && endTime) {
+  timePrefix += `開始: ${startTime} ー 終了: ${endTime}\n`;
+} else if (startTime) {
+  timePrefix += `開始: ${startTime}\n`;
+}
+
+// 🆕 作業時間を計算して追加（チェックアウト済みの場合のみ）
+if (hasCheckOut && startTime && endTime) {
+  const result = calculateWorkDuration(startTime, endTime);
+  
+  if (!result.isValid) {
+    // エラーがある場合は保存前にアラート表示
+    alert(result.errorMessage);
+    return; // ここでreturnして保存を中止
+  }
+  
+  timePrefix += `─────────────────\n■ 作業時間: ${result.duration}\n─────────────────\n`;
+}
+
+// 📆 開始日を追加
+// 🔧 FIX: useState は非同期なので、直接計算した値を使う
+let formattedDate: string;
+
+// メッセージから日付を再抽出
+const newDateMatch = editedMessage.match(/開始日:\s*(.+?)(?:\n|$)/);
+const oldDateMatch = editedMessage.match(/日付:\s*(.+?)(?:\n|$)/);
+const currentDateMatch = newDateMatch || oldDateMatch;
+
+if (currentDateMatch) {
+  // 日付文字列から曜日を削除して正規化
+  const dateStrClean = currentDateMatch[1].replace(/ ?\(.+?\)/g, '').replace(/（.+?）/g, '').trim();
+  const finalWorkDate = dateStrClean.replace(/\s*\/\s*/g, '-');
+  formattedDate = formatDateToJapanese(finalWorkDate);
+  
+} else {
+  // 日付がない場合は今日の日付を使用
+  const today = new Date().toISOString().split('T')[0];
+  formattedDate = formatDateToJapanese(today);
+}
+
+timePrefix += `日付: ${formattedDate}\n`;
+
+// メッセージから既存の時刻情報を削除
+const cleanMessage = editedMessage
+  .replace(/開始:\s*\d{2}:\d{2}\s*ー\s*終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/開始:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/作業開始:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/作業終了:\s*\d{2}:\d{2}\n?/g, '')
+  .replace(/日付:[^\n]+\n?/g, '')
+  .replace(/開始日:[^\n]+\n?/g, '')
+  .replace(/■\s*作業時間:[^\n]+\n?/g, '')
+  .replace(/─+/g, '')  // ← 追加：区切り線を削除
+  .replace(/^\s*作業\s*$/gm, '')  // ← 追加：単独の「作業」を削除
+  .trim();
+
+// 時刻 + 作業時間 + 開始日 + メッセージの順で結合
+const reconstructedMessage = timePrefix + (cleanMessage ? `\n${cleanMessage}` : '');
+console.log('🔍🔍🔍 [EditPost] reconstructedMessage:');
+console.log(reconstructedMessage);
+console.log('🔍 日付が含まれているか:', reconstructedMessage.includes('日付:'));
+
+const sanitizedMessage = sanitizeInput(reconstructedMessage).substring(0, 5000);
 const validTags = editedTags.filter(tag => tag.length <= 50);
 
 // 更新されたデータ
@@ -278,11 +507,16 @@ const updatedPost: Post = {
   ...post,
   message: sanitizedMessage,
   tags: validTags,
-  photoUrls: [...remainingPhotos],  // ✅ 修正済み
+  photoUrls: [...remainingPhotos, ...additionalPhotoUrls],  // ← 既存+新規
   updatedAt: Date.now(),
-  isEdited: true
+  isEdited: true,
+  isManuallyEdited: true
 };
 
+console.log('🔍 [EditPage] updatedPost作成完了:');
+console.log('  - isEdited:', updatedPost.isEdited);
+console.log('  - isManuallyEdited:', updatedPost.isManuallyEdited);
+console.log('  - photoUrls枚数:', updatedPost.photoUrls.length);
 console.log('📦 [EditPage] IndexedDB保存データ:');
 console.log('  - photoUrls枚数:', updatedPost.photoUrls.length);
 console.log('  - photoUrls:', updatedPost.photoUrls);
@@ -298,20 +532,29 @@ console.log('✅ [EditPage] IndexedDB保存完了');
 setSyncStatus('online');
 try {
   const updateData = {
-    message: sanitizedMessage,
-    tags: validTags,
-    photoUrls: [...remainingPhotos],  // ✅ 修正済み
-    files: editedPhotos ? Array.from(editedPhotos) : undefined
-  };
-  
+  message: sanitizedMessage,
+  tags: validTags,
+  photoUrls: [...remainingPhotos, ...additionalPhotoUrls],  
+  isManuallyEdited: true,
+  updatedAt: Date.now()  // ← この行を追加
+};
+
+  console.log('🔍 [EditPage] updateData作成完了:');
+  console.log('  - isManuallyEdited:', updateData.isManuallyEdited);
+  console.log('  - photoUrls枚数:', updateData.photoUrls.length);
   console.log('📡 [EditPage] UnifiedCoreSystem.updatePost呼び出し:');
   console.log('  - photoUrls枚数:', updateData.photoUrls.length);
-  console.log('  - files枚数:', updateData.files ? updateData.files.length : 0);
   
   await UnifiedCoreSystem.updatePost(post.id, updateData);
   
   console.log('✅ EditPage: 投稿更新完了');
   setSyncStatus('completed');
+
+  // キャッシュをクリアして最新データを表示
+  if (post.groupId) {  // ✅ post.groupIdを使う
+    invalidateArchiveCache(post.groupId);
+    console.log('🗑️ [EditPage] ArchivePageのキャッシュをクリア');
+  }
 
 const userId = localStorage.getItem("daily-report-user-id");
 if (userId) {
@@ -324,7 +567,11 @@ if (userId) {
       console.log(`  ${index + 1}. ${url.substring(0, 50)}...`);
     });
     
-    setPost(updatedPostData);
+    // ⭐ 修正：isManuallyEdited を保持
+setPost({
+  ...updatedPostData,
+  isManuallyEdited: true  // ← 「編集済み」スタンプを必ず付ける！
+});
     setEditedMessage(updatedPostData.message || '');
     setEditedTags(updatedPostData.tags || []);
     setDeletedPhotoUrls([]);
@@ -343,19 +590,21 @@ try {
   const updateFlag = Date.now().toString();
   localStorage.setItem('daily-report-posts-updated', updateFlag);
   window.dispatchEvent(new CustomEvent('postsUpdated', {
-    detail: {
-      updatedPost: updatedPost,
-      timestamp: Date.now(),
-      source: 'EditPostPage',
-      action: 'update'
-    }
-  }));
+  detail: {
+    updatedPost: updatedPost,
+    timestamp: Date.now(),
+    source: 'EditPostPage',
+    action: 'update',
+    isManuallyEdited: true  // ← この1行を追加!
+  }
+}));
   console.log('✅ EditPage: 統合システムに更新通知完了');
 } catch (error) {
   console.error('❌ EditPage: 更新通知エラー:', error);
 }
 
 alert('✅ 投稿を更新しました!');
+
 
 // 常に詳細ページに戻る
 const from = searchParams.get('from');
@@ -366,7 +615,31 @@ if (from) params.set('from', from);
 if (groupId) params.set('groupId', groupId);
 const paramString = params.toString() ? `?${params.toString()}` : '';
 
-navigate(`/post/${postId}${paramString}`);
+console.log('💾 [EditPostPage] 保存完了・ナビゲーション開始:', {
+  postId: post.id,
+  保存後のtags: updatedPost.tags,
+  hasチェックイン: updatedPost.tags?.includes('#チェックイン'),
+  hasチェックアウト: updatedPost.tags?.includes('#チェックアウト'),
+  戻り先: from || 'post詳細',
+  現在時刻: new Date().toISOString()
+});
+
+// メモリキャッシュをクリアして最新データを表示
+sessionStorage.removeItem('archive_posts_cache');
+sessionStorage.removeItem('archive_last_updated');
+console.log('🗑️ [EditPage] メモリキャッシュをクリア（最新データを表示するため）');
+
+// 保存完了後、元のページに戻りモーダルを開く
+if (from === 'archive' && groupId) {
+  navigate(`/group/${groupId}/archive${paramString}`, {
+    state: { openPostDetail: postId }
+  });
+} else {
+  // Homeから来た場合
+  navigate('/', {
+    state: { openPostDetail: postId }
+  });
+}
 
 
     } catch (error) {
@@ -433,7 +706,19 @@ try {
         if (groupId) params.set('groupId', groupId);
         const paramString = params.toString() ? `?${params.toString()}` : '';
         
-        navigate(`/post/${postId}${paramString}`, { replace: true });
+        // 保存完了後、元のページに戻りモーダルを開く
+if (from === 'archive' && groupId) {
+  navigate(`/group/${groupId}/archive${paramString}`, {
+    state: { openPostDetail: postId },
+    replace: true
+  });
+} else {
+  // Homeから来た場合
+  navigate('/', {
+    state: { openPostDetail: postId },
+    replace: true
+  });
+}
       }
     } else {
       const from = searchParams.get('from');
@@ -444,7 +729,19 @@ try {
       if (groupId) params.set('groupId', groupId);
       const paramString = params.toString() ? `?${params.toString()}` : '';
       
-      navigate(`/post/${postId}${paramString}`, { replace: true });
+      // 保存完了後、元のページに戻りモーダルを開く
+if (from === 'archive' && groupId) {
+  navigate(`/group/${groupId}/archive${paramString}`, {
+    state: { openPostDetail: postId },
+    replace: true
+  });
+} else {
+  // Homeから来た場合
+  navigate('/', {
+    state: { openPostDetail: postId },
+    replace: true
+  });
+}
     }
   };
   
@@ -605,7 +902,147 @@ try {
             </div>
           </div>
         </div>
-        
+
+
+
+         {/* 🆕 時刻編集 */}
+{editedTags.includes('#出退勤時間') && (
+  <div style={{
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    padding: '1.5rem',
+    marginBottom: '1rem',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+  }}>
+    <label style={{
+      display: 'block',
+      marginBottom: '0.5rem',
+      color: '#055A68',
+      fontWeight: '600',
+      fontSize: '0.95rem'
+    }}>
+      ■ 時刻の編集
+    </label>
+    
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem'
+    }}>
+      {/* 開始時刻 */}
+      <div>
+        <label style={{
+          display: 'block',
+          marginBottom: '0.25rem',
+          color: '#666',
+          fontSize: '0.9rem'
+        }}>
+          開始時刻
+        </label>
+        <input
+          type="time"
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '0.75rem',
+            border: '2px solid #E6EDED',
+            borderRadius: '8px',
+            fontSize: '1rem',
+            fontFamily: 'inherit',
+            boxSizing: 'border-box'
+          }}
+        />
+      </div>
+      
+      {/* 終了時刻（チェックアウト済みの場合のみ） */}
+      {hasCheckOut && (
+        <div>
+          <label style={{
+            display: 'block',
+            marginBottom: '0.25rem',
+            color: '#666',
+            fontSize: '0.9rem'
+          }}>
+            終了時刻
+          </label>
+          <input
+            type="time"
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '2px solid #E6EDED',
+              borderRadius: '8px',
+              fontSize: '1rem',
+              fontFamily: 'inherit',
+              boxSizing: 'border-box'
+            }}
+          />
+          
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+        {/* 🆕 日付編集 */}
+{editedTags.includes('#出退勤時間') && (
+  <div style={{
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    padding: '1.5rem',
+    marginBottom: '1rem',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+  }}>
+    <label style={{
+      display: 'block',
+      marginBottom: '0.5rem',
+      color: '#055A68',
+      fontWeight: '600',
+      fontSize: '0.95rem'
+    }}>
+      ■ 開始日（変更不可）
+    </label>
+    
+    <div>
+      <label style={{
+        display: 'block',
+        marginBottom: '0.25rem',
+        color: '#666',
+        fontSize: '0.9rem'
+      }}>
+        開始日
+      </label>
+      <input
+  type="date"
+  value={workDate}
+  disabled
+  style={{
+    width: '100%',
+    padding: '0.75rem',
+    border: '2px solid #E6EDED',
+    borderRadius: '8px',
+    fontSize: '1rem',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+    backgroundColor: '#f5f5f5',
+    color: '#666',
+    cursor: 'not-allowed'
+  }}
+/>
+      <div style={{
+          fontSize: '0.8rem',
+          color: '#999',
+          marginTop: '0.5rem',
+          lineHeight: '1.4'
+        }}>
+          ℹ️ 開始日はチェックイン時に自動記録され、変更できません。
+        </div>
+    </div>
+  </div>
+)}
         {/* メッセージ編集 */}
         <div style={{
           backgroundColor: 'white',
@@ -761,6 +1198,8 @@ try {
             </div>
           )}
         </div>
+
+       
         
         {/* 既存写真表示・削除 */}
         {post.photoUrls && post.photoUrls.length > 0 && (
@@ -871,7 +1310,7 @@ try {
             fontSize: '0.9rem',
             fontWeight: '600'
           }}>
-            新しい写真を追加 (最大10枚、各5MB以下)
+            新しい写真を追加 (最大10枚、各7MB以下)
           </label>
           
           <input
@@ -917,7 +1356,7 @@ try {
             fontSize: '0.8rem',
             color: '#666'
           }}>
-            対応形式: JPEG, PNG, GIF, WebP | 各ファイル最大5MB | 全体最大20MB
+            対応形式: JPEG, PNG, GIF, WebP 
           </div>
           
           {/* 新しい写真のプレビュー */}

@@ -138,26 +138,64 @@ export interface Group {
   updatedAt: number;
 }
 
-// ===== Post型定義（displayName対応版） =====
+
+// ===== Post型定義（2モード設計 + AI/RAG準備対応版） =====
 export interface Post {
   id: string;
   
   // 作成者情報（複数形式対応）
   userId?: string;
   authorId?: string;
-  userID?: string;          // 新しいuserID
-  username?: string;        // 後方互換性
-  displayName?: string;     // 投稿者の表示名
+  userID?: string;
+  username?: string;
+  displayName?: string;
   
   // グループ情報
   groupId: string;
   groupName?: string;
   
+  // 会社情報（ハイブリッド方式）
+  companyName?: string;      // 現在使用：会社名テキスト
+  companyId?: string;        // 将来用：会社ID参照
+  
   // 基本投稿内容
   message: string;
-  photoUrls?: string[];
-  images?: string[];
   tags?: string[];
+  
+  // ===== 画像データ（後方互換性維持） =====
+  photoUrls?: string[];      // 既存：全画像配列
+  images?: string[];         // 既存：全画像配列（別名）
+  
+  // ===== 2モード設計（新規） =====
+  thumbnails?: {
+    highQuality: string[];   // 高画質サムネイル（最大5枚）
+    standard: string[];      // 通常サムネイル（最大10枚）
+  };
+  highQualityCount?: number; // 高画質画像の枚数
+  standardCount?: number;    // 通常画像の枚数
+  totalImageCount?: number;  // 合計枚数
+  
+  // ===== アップロード状態管理（段階アップロード用） =====
+  uploadStatus?: 'completed' | 'uploading' | 'partial' | 'failed';
+  uploadProgress?: {
+    highQuality: { total: number; uploaded: number };
+    standard: { total: number; uploaded: number };
+  };
+  lastUploadAt?: number;
+  
+  // ===== AI活用準備（将来用） =====
+  scheduleId?: string;       // 紐づくスケジュールID
+  aiTags?: string[];         // AI生成タグ
+  aiSummary?: string;        // AI生成要約
+  extractedText?: string;    // OCR抽出テキスト
+  
+  // ===== RAG/ベクトル検索準備（将来用） =====
+  embedding?: number[];      // ベクトル埋め込み（意味検索用）
+  embeddingModel?: string;   // 使用した埋め込みモデル（例：text-embedding-3-small）
+  embeddingUpdatedAt?: number; // 埋め込み更新日時
+  keywords?: string[];       // 抽出キーワード（検索高速化）
+  categories?: string[];     // カテゴリ分類（工事種別等）
+  sentiment?: 'positive' | 'neutral' | 'negative' | 'concern'; // 感情分析
   
   // 時間情報
   time?: string;
@@ -173,15 +211,22 @@ export interface Post {
   
   // 編集履歴
   isEdited?: boolean;
+  isManuallyEdited?: boolean;
+  editedAt?: number;
   
   // ステータス管理
-  status: PostStatus;
+  status?: PostStatus;  // 🔄 後方互換性のため残す（オプショナルに変更）
+  statusByUser?: { [userId: string]: string };  // 🆕 ユーザーごとのステータス
   statusUpdatedAt?: number;
   statusUpdatedBy?: string;
   statusUpdatedByName?: string;
   
   // メモ機能
   memos?: Memo[];
+  
+  // 既読管理
+  readBy?: { [userId: string]: number };
+  readCount?: number;
   
   // 追加プロパティ（エラー回避用）
   name?: string;
@@ -190,10 +235,162 @@ export interface Post {
   location?: string;
   
   [key: string]: any;
+}
 
-  readBy?: { [userId: string]: number }; // userId: timestamp
-  readCount?: number; // 既読者数（パフォーマンス向上用）
+
+// ===== 2モード設計：サブコレクション用型定義 =====
+export interface DocumentImage {
+  id: string;
+  postId: string;
+  image: string;             // 1000px圧縮済み画像
+  order: number;
+  uploadedAt: number;
   
+  // AI準備フィールド（将来用）
+  ocrText?: string;          // OCR結果
+  documentType?: string;     // 書類タイプ（図面、契約書等）
+  aiAnalysis?: string;       // AI分析結果
+  embedding?: number[];      // 画像単位のベクトル埋め込み
+}
+
+export interface PhotoImage {
+  id: string;
+  postId: string;
+  image: string;             // 720px圧縮済み画像
+  order: number;
+  uploadedAt: number;
+  
+  // AI準備フィールド（将来用）
+  location?: string;         // GPS位置情報
+  aiAnalysis?: string;       // AI分析結果
+  embedding?: number[];      // 画像単位のベクトル埋め込み
+}
+
+// ===== アップロード設定型 =====
+export interface ImageUploadConfig {
+  maxHighQuality: number;    // 高画質最大枚数（5）
+  maxStandard: number;       // 通常最大枚数（10）
+  maxTotal: number;          // 合計最大枚数（15）
+  highQualitySettings: {
+    maxWidth: number;        // 1000px 
+    quality: number;         // 0.40 
+  };
+  standardSettings: {
+    maxWidth: number;        // 720px
+    quality: number;         // 0.27
+  };
+}
+
+// ===== デフォルト設定 =====
+export const DEFAULT_IMAGE_CONFIG: ImageUploadConfig = {
+  maxHighQuality: 5,
+  maxStandard: 10,
+  maxTotal: 15,
+  highQualitySettings: {
+    maxWidth: 1500,   // 図面・書類が読める解像度
+    quality: 0.55,    // 文字が潰れない品質
+  },
+  standardSettings: {
+    maxWidth: 720,    // 現場写真用
+    quality: 0.27,    // 通常圧縮
+  },
+};
+
+// ===== アンケート関連型定義（将来用） =====
+export type SurveyQuestionType = 'choice' | 'multiple' | 'text' | 'rating' | 'scale';
+export type SurveyStatus = 'draft' | 'active' | 'closed' | 'archived';
+export type SurveyCategory = 'health' | 'safety' | 'feedback' | 'operations' | 'client' | 'custom';
+
+export interface SurveyQuestion {
+  id: string;
+  questionText: string;
+  questionType: SurveyQuestionType;
+  choices?: string[];        // 選択肢（choice/multiple用）
+  required: boolean;
+  order: number;
+  
+  // AI分析用メタデータ
+  analysisHint?: string;     // AIへの分析ヒント（例：「メンタルヘルス指標」）
+  weightForScoring?: number; // スコアリング用重み付け
+}
+
+export interface Survey {
+  id: string;
+  groupId: string;
+  companyId?: string;
+  createdBy: string;
+  
+  // 基本情報
+  title: string;
+  description?: string;
+  category: SurveyCategory;
+  
+  // 質問
+  questions: SurveyQuestion[];
+  
+  // 期間・状態
+  status: SurveyStatus;
+  startDate?: number;
+  endDate?: number;
+  isAnonymous: boolean;      // 匿名回答かどうか
+  
+  // 設定
+  allowMultipleResponses: boolean;  // 複数回回答可能か
+  notifyOnResponse: boolean;        // 回答時に通知するか
+  
+  // タイムスタンプ
+  createdAt: number;
+  updatedAt: number;
+  
+  // AI/RAG準備
+  aiSummary?: string;        // AI生成の回答サマリー
+  embedding?: number[];      // アンケート全体のベクトル埋め込み
+}
+
+export interface SurveyResponse {
+  id: string;
+  surveyId: string;
+  groupId: string;
+  respondentId?: string;     // 匿名の場合はnull
+  
+  // 回答データ
+  answers: {
+    questionId: string;
+    answer: string | string[] | number;  // テキスト、選択肢、評価値
+  }[];
+  
+  // メタデータ
+  submittedAt: number;
+  deviceInfo?: string;
+  
+  // AI/RAG準備
+  sentiment?: 'positive' | 'neutral' | 'negative' | 'concern';
+  aiAnalysis?: string;       // AI分析結果
+  embedding?: number[];      // 回答のベクトル埋め込み
+  flaggedForReview?: boolean; // 要確認フラグ（異常値検出時）
+}
+
+// ===== AI分析結果型（グループ全体のサマリー用） =====
+export interface GroupAIInsights {
+  groupId: string;
+  generatedAt: number;
+  
+  // 日報分析
+  postsSummary?: string;           // 日報全体の要約
+  postsTopKeywords?: string[];     // 頻出キーワード
+  postsTrends?: string;            // トレンド分析
+  
+  // アンケート分析
+  surveySummary?: string;          // アンケート回答の要約
+  surveyAlerts?: string[];         // 注意が必要な回答
+  
+  // 総合分析
+  teamMorale?: 'high' | 'medium' | 'low';  // チーム士気
+  safetyScore?: number;            // 安全スコア（0-100）
+  productivityScore?: number;      // 生産性スコア（0-100）
+  
+  // 推奨アクション
+  recommendations?: string[];
 }
 
 // ===== Memo型定義 =====

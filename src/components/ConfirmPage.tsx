@@ -104,21 +104,19 @@ const ConfirmationPage: React.FC<ConfirmationProps> = ({
       }}>
         <button
           onClick={onCancel}
-          style={{ 
-            flex: "1 1 0",
-            padding: "0.75rem 0", 
-            backgroundColor: "#555", 
-            color: "#fff", 
-            border: "none", 
-            borderRadius: "12px", 
-            fontSize: "1rem", 
-            fontWeight: "bold", 
-            cursor: "pointer", 
-            transition: "0.3s",
-            minWidth: "0" 
-          }}
-          onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#666")}
-          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#555")}
+          style={{
+  flex: "1 1 0",
+  padding: "0.75rem 0",
+  backgroundColor: "transparent",
+  color: "#fff",
+  border: "2px solid #ffffff66",
+  borderRadius: "12px",
+  fontSize: "0.95rem",
+  cursor: "pointer",
+  transition: "0.3s",
+  minWidth: "0"
+}}
+        
         >
           編集に戻る
         </button>

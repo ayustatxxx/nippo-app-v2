@@ -645,7 +645,13 @@ export const MemoDisplay: React.FC<{ memo: Memo }> = ({ memo }) => {
                 color: '#666',
               }}
             >
-              {new Date(memo.createdAt).toLocaleString('ja-JP')}
+             {new Date(memo.createdAt).toLocaleString('ja-JP', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit'
+})}
             </div>
           </div>
         </div>

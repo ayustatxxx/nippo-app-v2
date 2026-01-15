@@ -693,20 +693,82 @@ export const createGroup = async (
 };
 
 
-// 投稿関連の関数を追加
+// 投稿関連の関数を追加（2モード設計対応）
 export const createPost = async (post: Omit<Post, 'id' | 'createdAt'>) => {
   try {
+    // メインドキュメント用のデータ（画像はサムネイルのみ保存）
+    // 画像データを除外（2重保存を防ぐ）
+    const { images, ...postWithoutImages } = post as any;
+    
+    // 画像を配列として保存（新形式）
+    const photoUrls = post.images || [];
+    
     const postData = {
-      ...post,
+      ...postWithoutImages,
       createdAt: new Date(),
+      images: [],  // 後方互換性のため空配列を保持
+      photoUrls: photoUrls,  // ✅ 新形式：配列で保存
     };
     
+    // メインドキュメントを作成
     const docRef = await addDoc(collection(db, 'posts'), postData);
-    console.log('投稿を作成しました:', docRef.id);
-    return docRef.id;
+    const postId = docRef.id;
+    console.log('✅ 投稿を作成しました:', postId);
+    console.log(`📸 画像 ${photoUrls.length}枚を配列で保存（新形式）`);
+
+    return postId;
   } catch (error) {
     console.error('投稿の作成に失敗しました:', error);
     throw error;
+  }
+};
+
+// ===== 2モード設計：サブコレクションから画像を取得 =====
+export const getPostImages = async (postId: string): Promise<{
+  documentImages: string[];
+  photoImages: string[];
+}> => {
+  try {
+    // まず投稿ドキュメント自体を取得して photoUrls をチェック
+    const postRef = doc(db, 'posts', postId);
+    const postSnap = await getDoc(postRef);
+    
+    if (!postSnap.exists()) {
+      console.warn(`投稿が見つかりません: ${postId}`);
+      return { documentImages: [], photoImages: [] };
+    }
+    
+    const postData = postSnap.data();
+    
+    // 🆕 新形式: photoUrls フィールドがあればそれを使用
+    if (postData.photoUrls && Array.isArray(postData.photoUrls) && postData.photoUrls.length > 0) {
+      console.log(`✅ [新形式] 投稿ID: ${postId} - photoUrls から ${postData.photoUrls.length}枚取得`);
+      
+      // photoUrls を返す
+      return {
+        documentImages: [], // 新形式では区別しない
+        photoImages: postData.photoUrls
+      };
+    }
+    
+    // 📦 旧形式: サブコレクションから取得（後方互換性）
+    console.log(`📦 [旧形式] 投稿ID: ${postId} - サブコレクションから取得中...`);
+    // 図面・書類画像を取得
+    const documentImagesRef = collection(db, 'posts', postId, 'documentImages');
+    const documentSnapshot = await getDocs(query(documentImagesRef, orderBy('order')));
+    const documentImages = documentSnapshot.docs.map(doc => doc.data().image as string);
+
+    // 現場写真を取得
+    const photoImagesRef = collection(db, 'posts', postId, 'photoImages');
+    const photoSnapshot = await getDocs(query(photoImagesRef, orderBy('order')));
+    const photoImages = photoSnapshot.docs.map(doc => doc.data().image as string);
+
+    console.log(`📸 画像取得完了: 図面${documentImages.length}枚, 写真${photoImages.length}枚`);
+
+    return { documentImages, photoImages };
+  } catch (error) {
+    console.error('画像の取得に失敗しました:', error);
+    return { documentImages: [], photoImages: [] };
   }
 };
 

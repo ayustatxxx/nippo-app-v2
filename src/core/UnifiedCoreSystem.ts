@@ -143,27 +143,40 @@ if (postData.files && postData.files.length > 0) {
   console.log('🔍 UnifiedCoreSystem: 統一投稿取得開始', postId);
   
   try {
-    const userGroups = await this.getUserGroups(userId);
+    // ✅ 改善：投稿IDで直接Firestoreから1件だけ取得（37秒 → 数秒に短縮）
+    const db = getFirestore();
+    const postRef = doc(db, 'posts', postId);
+    const postSnap = await getDoc(postRef);
     
-    for (const group of userGroups) {
-      const posts = await getGroupPosts(group.id);
-      const post = posts.find(p => p.id === postId);
-      
-      if (post) {
-        console.log('✅ 投稿発見完了:', postId);
-        console.log('🔍 [getPost] 取得した画像枚数:', post.photoUrls?.length || 0);
-        
-        const dbUtil = DBUtil.getInstance();
-        await dbUtil.initDB();
-        await dbUtil.save(STORES.POSTS, post);
-        console.log('✅ [getPost] IndexedDB同期完了');
-        
-        return post;
-      }
+    if (!postSnap.exists()) {
+      console.warn('⚠️ 投稿が見つかりません:', postId);
+      return null;
     }
     
-    console.warn('⚠️ 投稿が見つかりません:', postId);
-    return null;
+    const post = { id: postSnap.id, ...postSnap.data() } as Post;
+
+// 🔍 デバッグ：Firestoreから取得した生データを確認
+console.log('🔍 [getPost] Firestoreから取得した生データ:', postSnap.data());
+console.log('🔍 [getPost] 変換後のpostオブジェクト:', post);
+    
+    console.log('✅ 投稿発見完了:', postId);
+    console.log('🔍 [getPost] 取得した画像枚数:', post.photoUrls?.length || 0);
+    console.log('📝 [getPost編集情報-取得直後]');
+    console.log('  - post.isEdited:', post.isEdited);
+    console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
+    console.log('  - post.editedAt:', post.editedAt);
+    
+    // IndexedDBに保存
+    const dbUtil = DBUtil.getInstance();
+    await dbUtil.initDB();
+    await dbUtil.save(STORES.POSTS, post);
+    console.log('✅ [getPost] IndexedDB同期完了');
+    console.log('📝 [getPost編集情報-return直前]');
+    console.log('  - post.isEdited:', post.isEdited);
+    console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
+    console.log('  - post.editedAt:', post.editedAt);
+    
+    return post;
   } catch (error) {
     console.error('❌ 投稿取得エラー:', error);
     return null;
@@ -222,7 +235,177 @@ if (postData.files && postData.files.length > 0) {
       console.error('❌ グループ投稿取得エラー:', error);
       return []; // エラーの場合は空配列を返す（安全）
     }
+     }
+    /**
+   * グループの投稿を段階的に取得（ページネーション対応）
+   * Phase A4: Firestore段階的取得の実装
+   * ArchivePage専用の最適化された実装
+   * 
+   * @param groupId - グループID
+   * @param userId - ユーザーID
+   * @param limit - 取得件数（デフォルト10件）
+   * @param startAfterDoc - 前回取得の最終ドキュメント（次のページ取得時に使用）
+   * @returns 投稿配列、最終ドキュメント、追加データの有無
+   */
+  static async getGroupPostsPaginated(
+    groupId: string,
+    userId: string,
+    limit: number = 10,
+    startAfterDoc?: any
+  ): Promise<{ posts: Post[]; lastDoc: any; hasMore: boolean }> {
+    
+    try {
+
+      // ⏱️ パフォーマンス計測開始
+  const startTime = performance.now();
+  console.log('⏱️ [性能計測] 取得開始:', {
+    groupId,
+    limit,
+    hasCursor: !!startAfterDoc
+  });
+      
+      console.log(`📥 [UnifiedCore-Paginated] 段階的取得開始: groupId=${groupId}, limit=${limit}, startAfter=${startAfterDoc?.id || 'なし'}`);
+      
+      // Step 1: ユーザーのグループ参加権限を確認
+      const userGroups = await this.getUserGroups(userId);
+      const hasAccess = userGroups.some(g => g.id === groupId);
+      
+      if (!hasAccess) {
+        console.warn(`⚠️ [UnifiedCore-Paginated] ユーザー ${userId} はグループ ${groupId} へのアクセス権限がありません`);
+        return { posts: [], lastDoc: null, hasMore: false };
+      }
+
+      console.log('✅ [UnifiedCore-Paginated] 権限確認OK');
+
+      // Step 2: Firestoreクエリ作成
+      const db = getFirestore();
+      const postsRef = collection(db, 'posts');  // ← トップレベルコレクション
+      let q;
+
+      // 前回の最終ドキュメントがあれば、その後から取得
+      if (startAfterDoc) {
+        q = query(
+          postsRef,
+          where('groupId', '==', groupId),  // ← この行を追加！
+          orderBy('createdAt', 'desc'),     // ← timestamp → createdAt に変更
+          startAfter(startAfterDoc),
+          limitQuery(limit)
+        );
+        console.log('📄 [UnifiedCore-Paginated] 続きから取得モード');
+      } else {
+        // 初回取得
+        q = query(
+          postsRef,
+          where('groupId', '==', groupId),  // ← この行を追加！
+          orderBy('createdAt', 'desc'),     // ← timestamp → createdAt に変更
+          limitQuery(limit)
+        );
+        console.log('📄 [UnifiedCore-Paginated] 初回取得モード');
+      }
+
+      // Step 3: データ取得
+      const querySnapshot = await getDocs(q);
+      
+      // 最終ドキュメントを保存（次回のページネーション用）
+      const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1] || null;
+      
+      // まだデータがあるかチェック
+      const hasMore = querySnapshot.docs.length === limit;
+
+ 
+// Step 4: データ整形（画像サブコレクション取得を含む）
+const posts = await Promise.all(
+  querySnapshot.docs.map(async (doc) => {
+    const data = doc.data() as any;
+    
+// 🖼️ 画像取得の優先順位: photoUrls（新形式）→ サブコレクション（旧形式）
+let imageUrls: string[] = [];
+
+// ✅ 新形式: photoUrls フィールドがあればそれを使用
+if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
+  imageUrls = data.photoUrls;
+  console.log(`✅ [新形式] 投稿ID: ${doc.id} - photoUrls から ${imageUrls.length}枚取得`);
+  
+// ✅ 中間形式: images フィールドをチェック（旧データ対応）
+} else if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+  imageUrls = data.images;
+  console.log(`✅ [中間形式] 投稿ID: ${doc.id} - images から ${imageUrls.length}枚取得`);
+  
+} else {
+  // 📦 旧形式: サブコレクションから取得（後方互換性）
+  try {
+    // 図面・書類画像を取得
+    const documentImagesRef = collection(db, 'posts', doc.id, 'documentImages');
+    const documentSnapshot = await getDocs(query(documentImagesRef, orderBy('order')));
+    const documentImages = documentSnapshot.docs.map(imgDoc => imgDoc.data().image as string);
+    
+    // 現場写真を取得
+    const photoImagesRef = collection(db, 'posts', doc.id, 'photoImages');
+    const photoSnapshot = await getDocs(query(photoImagesRef, orderBy('order')));
+    const photoImages = photoSnapshot.docs.map(imgDoc => imgDoc.data().image as string);
+    
+    // 2つの配列を結合
+    imageUrls = [...documentImages, ...photoImages];
+    
+    if (imageUrls.length > 0) {
+      console.log(`📦 [旧形式] 投稿ID: ${doc.id} - サブコレクションから ${imageUrls.length}枚取得`);
+    }
+  } catch (error) {
+    console.warn('⚠️ [画像取得エラー]', doc.id, error);
   }
+}
+    
+    // timeフィールドを生成（存在しない場合）
+    let timeString = data.time;
+if (!timeString && (data.updatedAt || data.createdAt)) {
+  try {
+    // ✅ updatedAtを優先的に使用
+    const timestamp = data.createdAt || data.updatedAt;
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    const weekday = weekdays[date.getDay()];
+    const dateStr = `${date.getFullYear()} / ${date.getMonth() + 1} / ${date.getDate()}（${weekday}）`;
+    const timeStr = date.toLocaleTimeString('ja-JP', { hour: "2-digit", minute: "2-digit" });
+    timeString = `${dateStr}　${timeStr}`;
+      } catch (error) {
+        console.error('❌ [UnifiedCore] time生成エラー:', error);
+        timeString = '日付不明　00:00';
+      }
+    }
+    
+    return {
+      id: doc.id,
+      ...(data as any),
+      time: timeString || '日付不明　00:00',
+      timestamp: data.timestamp || data.createdAt || Date.now(),
+      username: data.username || data.userName || data.authorName || 'ユーザー',
+      photoUrls: imageUrls,  // ✅ サブコレクションから取得した画像
+      images: imageUrls,      // ✅ 同じデータを両方のフィールドに
+      userId: data.userId || data.authorId || data.createdBy || '',
+      authorId: data.authorId || data.userId || data.createdBy || ''
+    } as Post;
+  })
+);
+
+console.log(`✅ [UnifiedCore-Paginated] 取得完了: ${posts.length}件, hasMore: ${hasMore}`);
+
+// ⏱️ パフォーマンス計測終了
+const endTime = performance.now();
+const duration = endTime - startTime;
+console.log('⏱️ [性能計測] Firestore取得完了:', {
+  投稿数: posts.length,
+  画像取得時間含む: `${duration.toFixed(0)}ms`,
+  平均_1件あたり: `${(duration / posts.length).toFixed(0)}ms`
+});
+
+return { posts, lastDoc, hasMore };
+
+} catch (error) {
+  console.error('❌ [UnifiedCore-Paginated] 段階的投稿取得エラー:', error);
+  throw error;
+}
+
+}
 
 
   /**
@@ -272,14 +455,45 @@ if (postData.files && postData.files.length > 0) {
         );
         
         const snapshot = await getDocs(q);
-        const posts = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt,
-          } as Post;
-        });
+        const posts = await Promise.all(snapshot.docs.map(async (doc) => {
+  const data = doc.data();
+  const postId = doc.id;
+  
+  // 画像取得の優先順位: photoUrls（新形式） → サブコレクション（古い形式）
+  let fullImages: string[] = [];
+  
+  // ✅ 新形式: photoUrls フィールドがあればそれを使用
+if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
+  fullImages = data.photoUrls;
+  console.log(`✅ [新形式] 投稿ID: ${postId} - photoUrls から ${fullImages.length}枚取得`);
+  
+// ✅ 中間形式: images フィールドをチェック（旧データ対応）
+} else if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+  fullImages = data.images;
+  console.log(`✅ [中間形式] 投稿ID: ${postId} - images から ${fullImages.length}枚取得`);
+  
+} else {
+  
+    // 古い形式：サブコレクションから取得（移行前の投稿用）
+    try {
+      const { getPostImages } = await import('../firebase/firestore');
+      const { documentImages, photoImages } = await getPostImages(postId);
+      fullImages = [...documentImages, ...photoImages];
+      if (fullImages.length > 0) {
+       console.log(`📦 [旧形式] 投稿ID: ${postId} - サブコレクションから ${fullImages.length}枚取得`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ 投稿ID: ${postId} の画像取得エラー:`, error);
+    }
+  }
+  
+  return {
+    id: postId,
+    ...data,
+    createdAt: data.createdAt,
+    images: fullImages.length > 0 ? fullImages : (data.images || []),
+  } as Post;
+}));
         
         console.log(`✅ [UnifiedCore] バッチ${i + 1}: ${posts.length}件取得`);
         allPosts.push(...posts);
@@ -311,11 +525,13 @@ if (postData.files && postData.files.length > 0) {
   static async updatePost(
   postId: string,
   updates: {
-    message?: string;
-    files?: File[];
-    tags?: string[];
-    photoUrls?: string[];
-  }
+  message?: string;
+  files?: File[];
+  tags?: string[];
+  photoUrls?: string[];
+  isManuallyEdited?: boolean;  // ← 新規追加
+  updatedAt?: number;
+}
 ): Promise<void> {
   try {
     console.log('🔄 [UnifiedCore] 投稿更新開始:', postId);
@@ -328,9 +544,15 @@ if (postData.files && postData.files.length > 0) {
 
  // Step 2: 更新データ準備
 const updateData: any = {
-  updatedAt: Date.now(),
+  updatedAt: updates.updatedAt || Date.now(),
   isEdited: true
 };
+
+// isManuallyEditedがtrueの場合、必ず保存
+if (updates.isManuallyEdited === true) {
+  updateData.isEdited = true;
+  updateData.isManuallyEdited = true;
+}
 
 if (updates.message !== undefined) {
   updateData.message = this.sanitizeInput(updates.message);
@@ -393,7 +615,10 @@ const postRef = doc(db, 'posts', postId);
 console.log('📡 [UpdatePost] Firestore更新データ:', {
   photoUrlsLength: updateData.photoUrls?.length,
   message: updateData.message?.substring(0, 50),
-  tags: updateData.tags
+  tags: updateData.tags,
+  isEdited: updateData.isEdited,
+  isManuallyEdited: updateData.isManuallyEdited,  // ← この行を追加!
+  updatedAt: updateData.updatedAt
 });
 
 await updateDoc(postRef, updateData);
@@ -450,18 +675,6 @@ if (existingPost) {
   window.dispatchEvent(updateEvent);
   window.dispatchEvent(new CustomEvent('refreshPosts'));
 
-  // 段階的通知
-  [100, 300, 500, 1000].forEach((delay) => {
-    setTimeout(() => {
-      localStorage.setItem('daily-report-posts-updated', Date.now().toString());
-      window.dispatchEvent(new CustomEvent('postsUpdated', {
-        detail: { updatedPost, timestamp: Date.now(), delay }
-      }));
-
-      if (window.refreshArchivePage) window.refreshArchivePage();
-      if (window.refreshHomePage) window.refreshHomePage();
-    }, delay);
-  });
 
   console.log('✅ 投稿更新通知完了');
 } else {
@@ -474,7 +687,36 @@ if (existingPost) {
 }
 }
 
+/**
+   * 投稿を削除
+   * チェックアウト時に古い投稿を削除するために使用
+   */
+  static async deletePost(postId: string, userId: string): Promise<void> {
+  try {
+    console.log('🗑️ UnifiedCoreSystem: 投稿削除開始:', postId);
 
+    // Step 1: Firestoreから直接削除（getPostを使わない）
+    const { doc, deleteDoc, getFirestore } = await import('firebase/firestore');
+    const db = getFirestore();
+    const postRef = doc(db, 'posts', postId);
+    
+    // 権限確認なしで削除（チェックアウト時は自分の投稿なので安全）
+    await deleteDoc(postRef);
+
+    console.log('✅ Firestoreから削除完了');
+
+    // Step 2: IndexedDBからも削除
+    const dbUtil = DBUtil.getInstance();
+    await dbUtil.initDB();
+    await dbUtil.delete(STORES.POSTS, postId);
+
+    console.log('✅ IndexedDBから削除完了');
+    console.log('✅ 投稿削除完了:', postId);
+  } catch (error) {
+    console.error('❌ UnifiedCoreSystem: 投稿削除エラー', error);
+    throw error;
+  }
+}
 
   /**
    * システム健康状態確認
@@ -525,31 +767,7 @@ if (existingPost) {
         detail: { key: 'daily-report-posts-updated', newValue: updateFlag }
       }));
 
-      // Step 3: 段階的追加通知（PostPageパターン）
-      const notificationSchedule = [100, 300, 500, 1000];
-      notificationSchedule.forEach((delay, index) => {
-        setTimeout(() => {
-          const delayedFlag = Date.now().toString();
-          localStorage.setItem('daily-report-posts-updated', delayedFlag);
-          
-          window.dispatchEvent(new CustomEvent('postsUpdated', {
-            detail: {
-              newPost: postData,
-              timestamp: Date.now(),
-              source: 'UnifiedCoreSystem-delayed',
-              delay: delay
-            }
-          }));
-
-          // グローバル関数呼び出し
-          if (window.refreshArchivePage) {
-            window.refreshArchivePage();
-          }
-          if (window.refreshHomePage) {
-            window.refreshHomePage();
-          }
-        }, delay);
-      });
+      
 
       console.log('✅ 全システム更新通知完了');
 

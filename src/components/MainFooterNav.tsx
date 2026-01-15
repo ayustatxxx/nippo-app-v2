@@ -18,25 +18,13 @@ const MainFooterNav: React.FC = () => {
   // フッター表示制御
   const { showFooter, showFAB, animationTrigger, toggleFooter } = useFooterVisibility();
 
-  // ログアウト処理の関数
-  const handleLogout = () => {
-    localStorage.removeItem("daily-report-user-token");
-    localStorage.removeItem("daily-report-user-email");
-    localStorage.removeItem("daily-report-username");
-    sessionStorage.removeItem("daily-report-user-token");
-    sessionStorage.removeItem("daily-report-user-email");
-    sessionStorage.removeItem("daily-report-username");
-    
-    window.location.href = "/login";
-  };
-
   // メニューアイテムの設定
   const menuItems = [
     {
       to: "/",
       icon: (isActive: boolean) => (
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" 
-             stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" 
+       stroke={isActive ? '#F0DB4F' : '#fff'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
           <polyline points="9 22 9 12 15 12 15 22" />
         </svg>
@@ -44,25 +32,33 @@ const MainFooterNav: React.FC = () => {
       isActive: isHomePage,
       label: "ホーム"
     },
-    {
-      to: "/groups",
-      icon: (isActive: boolean) => (
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" 
-             stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="9" cy="7" r="4" />
-          <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-          <path d="M21 21v-2a4 4 0 0 0-3-3.85" />
-        </svg>
-      ),
-      isActive: isGroupsPage,
-      label: "グループ"
-    },
+
+{
+  to: "/groups",
+  icon: (isActive: boolean) => (
+    <svg width="29" height="29" viewBox="-2 0 27 24" fill="none" 
+         stroke={isActive ? '#F0DB4F' : '#fff'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {/* 中央の人物（上に移動） */}
+      <circle cx="12" cy="7" r="3" />
+      <path d="M 7.5 17 C 7.5 13 9.5 10 12 10 C 14.5 10 16.5 13 16.5 17" />
+      
+      {/* 左側の人物（さらに左に） */}
+      <circle cx="3" cy="11" r="3" />
+      <path d="M 0.5 21 C 0.5 18 1.5 16 3 16 C 4.5 16 6 18 6.5 19.5" />
+      
+      {/* 右側の人物（さらに右に） */}
+      <circle cx="21" cy="11" r="3" />
+      <path d="M 17.5 19.5 C 18 18 19.5 16 21 16 C 22.5 16 23.5 18 23.5 21" />
+    </svg>
+  ),
+  isActive: isGroupsPage,
+  label: "グループ"
+},
     {
       to: "/profile",
       icon: (isActive: boolean) => (
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" 
-             stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="22" height="22" viewBox="0 0 23 23" fill="none" 
+       stroke={isActive ? '#F0DB4F' : '#fff'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
           <circle cx="12" cy="7" r="4" />
         </svg>
@@ -85,7 +81,7 @@ const MainFooterNav: React.FC = () => {
 
       {/* メインフッター */}
       {showFooter && (
-        <div 
+       <div 
           style={{
             position: "fixed",
             bottom: 0,
@@ -97,104 +93,65 @@ const MainFooterNav: React.FC = () => {
             borderTopRightRadius: "16px",
             boxShadow: "0 -2px 10px rgba(0,0,0,0.2)",
             zIndex: 100,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
             transform: showFooter ? 'translateY(0)' : 'translateY(100%)',
             opacity: showFooter ? 1 : 0,
             transition: 'all 0.25s cubic-bezier(0.645, 0.045, 0.355, 1)'
           }}
         >
           {/* メインメニューエリア（4つのアイコンを均等配置） */}
-          <div style={{
-            position: "absolute",
-            left: "0",
-            top: "0",
-            height: "100%",
-            width: "calc(100% - 68px)",
+         <div style={{
+            width: "58%",
+            maxWidth: "240px",
             display: "flex",
-            justifyContent: "space-evenly",
-            alignItems: "center",
-            paddingLeft: "20px",
-            paddingRight: "10px"
+            justifyContent: "space-between",
+            alignItems: "center"
           }}>
             {/* メニューアイテム（ホーム、グループ、プロフィール） */}
             {menuItems.map((item, index) => (
-              <Link 
-                key={item.to}
-                to={item.to}
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  width: "48px",
-                  height: "48px",
-                  borderRadius: "50%",
-                  backgroundColor: item.isActive ? "#ffffff22" : "transparent",
-                  transition: transitions.smooth,
-                  animationDelay: calculateStaggerDelay(index, 30),
-                  flexShrink: 0
-                }}
-                onTouchStart={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';
-                  (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff33" : "#ffffff11";
-                }}
-                onTouchEnd={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff22" : "transparent";
-                }}
-                onMouseDown={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';
-                }}
-                onMouseUp={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff22" : "transparent";
-                }}
-              >
-                {item.icon(item.isActive)}
-              </Link>
-            ))}
-
-            {/* ログアウトボタン（4番目のアイコンとして配置） */}
-            <div
-              onClick={handleLogout}
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                width: "48px",
-                height: "48px",
-                borderRadius: "50%",
-                backgroundColor: "transparent",
-                transition: transitions.smooth,
-                cursor: "pointer",
-                animationDelay: calculateStaggerDelay(3, 30),
-                flexShrink: 0
-              }}
-              onTouchStart={(e) => {
-                (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-              }}
-              onTouchEnd={(e) => {
-                (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-              }}
-            >
-              <svg 
-                width="24" 
-                height="24" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="#fff"
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-              >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-            </div>
+  <Link 
+    key={item.to}
+    to={item.to}
+    onClick={(e) => {
+      // イベントの伝播を止める（親要素にクリックが伝わらない）
+      e.stopPropagation();
+    }}
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      width: "48px",
+      height: "48px",
+      borderRadius: "50%",
+      backgroundColor: item.isActive ? "#ffffff22" : "transparent",
+      transition: transitions.smooth,
+      animationDelay: calculateStaggerDelay(index, 30),
+      flexShrink: 0
+    }}
+    onTouchStart={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';
+      (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff33" : "#ffffff11";
+    }}
+    onTouchEnd={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+      (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff22" : "transparent";
+    }}
+    onMouseDown={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(0.9)';
+    }}
+    onMouseUp={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+    }}
+    onMouseLeave={(e) => {
+      (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+      (e.currentTarget as HTMLElement).style.backgroundColor = item.isActive ? "#ffffff22" : "transparent";
+    }}
+  >
+    {item.icon(item.isActive)}
+  </Link>
+))}
           </div>
 
           {/* ×ボタンのみ右端固定 */}

@@ -11,11 +11,13 @@ import {
   getFirestore, 
   increment,
   limit as limitFirestore,
+  deleteField, 
 } from 'firebase/firestore';
 
 // 既存のFirebase設定をimportで取得
 import { db } from '../firebase/firestore';
 import { Group, User, Post } from '../types';
+import { getPostImages } from '../firebase/firestore';
 
 
 
@@ -190,7 +192,7 @@ memosSnapshot.forEach(doc => {
 console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(memosByPostId).length, '投稿分');
 */
     
-    querySnapshot.forEach((doc) => {
+    for (const doc of querySnapshot.docs) {
       const data = doc.data();
 
       // 🔍 デバッグコード
@@ -202,6 +204,11 @@ console.log('📝 [FirestoreService] メモ情報取得完了:', Object.keys(mem
         authorIdフィールド: data.authorId,
         readByフィールド: data.readBy
       });
+
+      console.log('📝 [編集情報デバッグ] 投稿ID:', doc.id);
+console.log('  - data.isEdited:', data.isEdited);
+console.log('  - data.isManuallyEdited:', data.isManuallyEdited);
+console.log('  - data.editedAt:', data.editedAt);
       
       // Timestamp型の安全な変換
       let createdAtTimestamp;
@@ -244,13 +251,22 @@ console.log('  - images:', data.images);
 console.log('  - images枚数:', data.images?.length || 0);
 
       
+// 🖼️ サブコレクションから画像を取得
+      let allImages: string[] = [];
+      try {
+        const { documentImages, photoImages } = await getPostImages(doc.id);
+        allImages = [...documentImages, ...photoImages];
+        console.log(`🖼️ [getGroupPosts] 投稿ID ${doc.id} の画像取得: ${allImages.length}枚`);
+      } catch (error) {
+        console.error(`❌ [getGroupPosts] 投稿ID ${doc.id} の画像取得エラー:`, error);
+      }
+
+
       // Post型に変換（メモ情報を含む）
       const post = {
         id: doc.id,
         message: data.message || '',
-        photoUrls: (data.photoUrls && data.photoUrls.length > 0) 
-  ? data.photoUrls 
-  : (data.images || []),
+        photoUrls: allImages.length > 0 ? allImages : (data.photoUrls || data.images || []),
         tags: data.tags || [],
         userId: data.userId || data.createdBy || data.authorId || '',
         authorId: data.authorId || data.userId || data.createdBy || '',
@@ -258,15 +274,27 @@ console.log('  - images枚数:', data.images?.length || 0);
         username: displayName,
         groupId: data.groupId || groupId,
         status: data.status || '未確認',
-        isWorkTimePost: data.isWorkTimePost || false,
-        isEdited: data.isEdited || false,
-        time: timeString,
+statusByUser: data.statusByUser || {},  // 🆕 ユーザーごとのステータス
+isWorkTimePost: data.tags?.includes('#出退勤時間') &&
+                data.tags?.includes('#チェックイン') &&
+                data.tags?.includes('#チェックアウト'),
+        isEdited: data.isEdited === true,
+isManuallyEdited: data.isManuallyEdited === true,
+editedAt: data.editedAt || null,  // ⬇️ この行を追加
+time: timeString,
         timestamp: createdAtTimestamp,
-        memos: postMemos // ⭐ メモ情報を追加
+        memos: postMemos, // ⭐ メモ情報を追加
+        createdAt: data.createdAt,
+updatedAt: data.updatedAt
       };
+
+      console.log('📝 [変換後の投稿] 投稿ID:', post.id);
+      console.log('  - post.isEdited:', post.isEdited);
+      console.log('  - post.isManuallyEdited:', post.isManuallyEdited);
+      console.log('  - post.editedAt:', post.editedAt);
       
       posts.push(post);
-    });
+    }
     
     // JavaScript側でソート
     posts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -425,6 +453,33 @@ export const markPostAsRead = async (postId: string, userId: string): Promise<vo
   }
 };
 
+// 既読を削除する関数
+export const removePostAsRead = async (postId: string, userId: string): Promise<void> => {
+  try {
+    console.log('🗑️ 既読削除開始:', postId, userId);
+    
+    const postRef = doc(db, 'posts', postId);
+    
+    // 既読情報が存在するか確認
+    const postSnap = await getDoc(postRef);
+    if (!postSnap.exists() || !postSnap.data().readBy?.[userId]) {
+      console.log('ℹ️ 既読情報なし:', postId, userId);
+      return;
+    }
+    
+    // 既読情報を削除
+    await updateDoc(postRef, {
+      [`readBy.${userId}`]: deleteField(),
+      readCount: increment(-1)
+    });
+    
+    console.log('✅ 既読削除完了:', postId);
+  } catch (error) {
+    console.error('❌ 既読削除エラー:', error);
+    throw error;
+  }
+};
+
 /**
  * 投稿の既読状況を分析
  */
@@ -462,7 +517,7 @@ export const updatePostStatus = async (groupId: string, postId: string, status: 
         const docSnap = await getDoc(postRef);
         if (docSnap.exists()) {
           await updateDoc(postRef, {
-            status: status,
+            [`statusByUser.${userId}`]: status,  // 🔄 ユーザーごとに保存
             statusUpdatedAt: Date.now(),
             statusUpdatedBy: userId,
             statusUpdatedByName: userName
