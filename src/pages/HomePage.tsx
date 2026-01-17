@@ -316,6 +316,8 @@ useEffect(() => {
           style={{
             marginBottom: '0.8rem',
             whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+            overflowWrap: 'break-word',
             lineHeight: '1.5',
             fontSize: '0.95rem',
             color: '#055A68',
