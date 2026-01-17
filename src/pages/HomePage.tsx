@@ -1285,6 +1285,10 @@ const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);  // ⭐ 栞を�
 // ⭐ 新着チェック用のState ⭐
 const [hasNewPosts, setHasNewPosts] = useState(false);
 const [bannerType, setBannerType] = useState<'reload' | 'newPost'>('reload'); 
+const [isInitialLoad, setIsInitialLoad] = useState(() => {
+  // セッション中に一度でも読み込んでいればfalse
+  return sessionStorage.getItem('homepage-loaded') !== 'true';
+});
 const [justDeleted, setJustDeleted] = useState(false);
 const [latestPostTime, setLatestPostTime] = useState<number>(() => {
   // しおりを読む処理
@@ -1296,6 +1300,22 @@ const [latestPostTime, setLatestPostTime] = useState<number>(() => {
 });
 
 const latestPostTimeRef = useRef(latestPostTime);
+
+// コンポーネントマウント時に初回ロードフラグを制御
+  useEffect(() => {
+    console.log('🔄 [HomePage] コンポーネントマウント - 初回ロードフラグON');
+    
+    // 3秒後にフラグOFF（データ読み込み完了を待つ）
+    const timer = setTimeout(() => {
+  setIsInitialLoad(false);
+  sessionStorage.setItem('homepage-loaded', 'true');
+  console.log('✅ [HomePage] 初回ロード完了 - 新着チェック開始可能');
+}, 2000);  // 5000から2000に変更
+    
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []); // 空の依存配列 = マウント時のみ実行
 
 // latestPostTime が更新されたら ref も同期
 useEffect(() => {
@@ -2824,11 +2844,12 @@ useEffect(() => {
     return;
   }
   
-  // ⭐ 追加: latestPostTime が未設定の場合はスキップ
-  if (latestPostTime === 0) {
-    console.log('🔍 [HomePage] 初回ロード中（latestPostTime未設定）のため新着チェックをスキップ');
-    return;
-  }
+
+  // 初回ロード中もスキップ
+    if (isInitialLoad) {
+      console.log('🔍 [HomePage] セッション初回ロード中のため新着チェックをスキップ');
+      return;
+    }
   
   try {
     console.log('🔍 [HomePage] 新着チェック開始');
@@ -2918,6 +2939,12 @@ setHasNewPosts(true);
     }
   };
   
+  // 初回チェックを即座に実行（2.5秒後、isInitialLoadがfalseになってから）
+  setTimeout(() => {
+    console.log('🚀 [HomePage] 初回新着チェック実行');
+    checkForNewPosts();
+  }, 2500); // isInitialLoadがfalseになる2秒より少し後
+
   // 60秒ごとに新着チェックを実行
   const newPostCheckInterval = setInterval(checkForNewPosts, 60000);
   
