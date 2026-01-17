@@ -15,6 +15,7 @@ import MemoModal from '../components/MemoModal';
 import ReadByModal from '../components/ReadByModal';
 import { MemoService } from '../utils/memoService'; 
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
+import { linkifyText } from '../utils/urlUtils';
 
 // 🔸 新着バナー用：「最後に見た時刻」を保存・読み込みするためのキー
 const LAST_VIEWED_KEY_PREFIX = 'homepage-last-viewed-';
@@ -396,7 +397,7 @@ useEffect(() => {
           </>
         ) : cleanMessage ? (
           <>
-            {cleanMessage}
+            {linkifyText(cleanMessage)}
             {post.isEdited && (
               <span style={{
                 color: 'rgba(5, 90, 104, 0.8)',
@@ -414,7 +415,7 @@ useEffect(() => {
 ) : post.message.length > 120
             ? (
               <div>
-              {`${post.message.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '').substring(0, 120)}...`}
+             {linkifyText(`${post.message.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '').substring(0, 120)}...`)}
                 {post.isManuallyEdited && !(
   post.tags?.includes('#出退勤時間') && 
   post.tags?.includes('#チェックイン') && 
@@ -474,7 +475,7 @@ useEffect(() => {
             ) 
             : (
               <div>
-              {post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+             {linkifyText(post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '') || '')}
                {post.isManuallyEdited && !(
   post.tags?.includes('#出退勤時間') && 
   post.tags?.includes('#チェックイン') && 
@@ -1504,6 +1505,8 @@ const PostDetailModal: React.FC<{
             {displayPost.message && (
               <div style={{
                 whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+                overflowWrap: 'break-word',
                 lineHeight: '1.6',
                 color: '#333',
                 fontSize: '1rem',
@@ -1554,7 +1557,7 @@ const PostDetailModal: React.FC<{
         
         {cleanMessage && (
           <div style={{ marginTop: '0.8rem' }}>
-            {cleanMessage}
+            {linkifyText(cleanMessage)}
             {displayPost.isManuallyEdited && !(
               displayPost.tags?.includes('#出退勤時間') && 
               displayPost.tags?.includes('#チェックイン') && 
@@ -1575,7 +1578,7 @@ const PostDetailModal: React.FC<{
   })()
 ) : (
  <div>
-  {displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+  {linkifyText(displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '') || '')}
   {displayPost.isManuallyEdited && !(
     displayPost.tags?.includes('#出退勤時間') && 
     displayPost.tags?.includes('#チェックイン') && 
@@ -1767,9 +1770,11 @@ if (memos.length === 0) {
                           fontSize: '0.9rem',
                           marginBottom: '0.5rem',
                           whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-all',
+                          overflowWrap: 'break-word',
                           lineHeight: '1.5'
                         }}>
-                          {memo.content}
+                          {linkifyText(memo.content)}
                         </div>
                         
                         {/* メモ画像 */}

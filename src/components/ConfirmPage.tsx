@@ -34,7 +34,7 @@ const ConfirmationPage: React.FC<ConfirmationProps> = ({
         boxSizing: "border-box"
       }}>
         {message && message.trim().length > 0 && (
-          <div style={{ marginBottom: "0.5rem", whiteSpace: "pre-wrap" }}>{message}</div>
+          <div style={{ marginBottom: "0.5rem", whiteSpace: "pre-wrap", wordBreak: "break-all", overflowWrap: "break-word" }}>{message}</div>
         )}
         
         {/* タグ表示を追加 */}

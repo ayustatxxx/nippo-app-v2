@@ -3396,6 +3396,8 @@ useEffect(() => {
                 {displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '') && (
                   <div style={{
                     whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',      
+                    overflowWrap: 'break-word', 
                     lineHeight: '1.6',
                     color: '#333',
                     fontSize: '1rem',
