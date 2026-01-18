@@ -133,6 +133,14 @@ useEffect(() => {
   };
 }, []); // 空の依存配列 = コンポーネントマウント時に1回だけ実行
 
+// 🔝 ページ読み込み時にスクロール位置を最上部にリセット
+useEffect(() => {
+  console.log('🔝 GroupTopPage: スクロール位置をリセット');
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}, []);
+
 // groupId が変わった時にも閉じる
 useEffect(() => {
   if (groupId) {
