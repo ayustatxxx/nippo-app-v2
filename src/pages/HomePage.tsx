@@ -2870,17 +2870,27 @@ useEffect(() => {
     const userId = localStorage.getItem('daily-report-user-id');
     if (!userId) return;
       
-      // Firestoreから最新の投稿1件を取得（全グループ対象）
-      const { collection, query, orderBy, limit, getDocs } = await import('firebase/firestore');
-      const { getFirestore } = await import('firebase/firestore');
-      const db = getFirestore();
-      
-      const postsRef = collection(db, 'posts');
-      const q = query(
-        postsRef,
-        orderBy('createdAt', 'desc'),
-        limit(1)
-      );
+      // Firestoreから最新の投稿1件を取得（参加グループのみ）✅
+const { collection, query, orderBy, limit, getDocs, where } = await import('firebase/firestore');
+const { getFirestore } = await import('firebase/firestore');
+const db = getFirestore();
+
+// 🔧 参加グループのIDリストを取得
+const myGroupIds = groups.map(group => group.id);
+
+// 参加グループが0件の場合は新着チェックをスキップ
+if (myGroupIds.length === 0) {
+  console.log('⏭️ [HomePage] 参加グループなし、新着チェックをスキップ');
+  return;
+}
+
+const postsRef = collection(db, 'posts');
+const q = query(
+  postsRef,
+  where('groupId', 'in', myGroupIds), // ✅ 参加グループのみフィルター
+  orderBy('createdAt', 'desc'),
+  limit(1)
+);
       
       const snapshot = await getDocs(q);
       
