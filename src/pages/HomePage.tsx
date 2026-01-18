@@ -2842,21 +2842,20 @@ useEffect(() => {
 
 // ⭐ 新着チェックタイマー（60秒ごと）⭐
 useEffect(() => {
+  // 初回ロードが完了していない場合はスキップ
+  if (posts.length === 0) {
+    console.log('⏭️ [HomePage] 投稿データなし、新着チェックタイマーをスキップ');
+    return;
+  }
   console.log('⏰ [HomePage] 新着チェックタイマー開始');
   
   // 新着チェック関数
-  const checkForNewPosts = async () => {
+  const checkForNewPosts = async (currentPosts: Post[] = posts) => {
   if (justDeleted) {
     console.log('⏭️ [新着チェック] 削除直後のためスキップ');
     return;
   }
   
-
-  // 初回ロード中もスキップ
-    if (isInitialLoad) {
-      console.log('🔍 [HomePage] セッション初回ロード中のため新着チェックをスキップ');
-      return;
-    }
   
   try {
     console.log('🔍 [HomePage] 新着チェック開始');
@@ -2875,12 +2874,24 @@ const { collection, query, orderBy, limit, getDocs, where } = await import('fire
 const { getFirestore } = await import('firebase/firestore');
 const db = getFirestore();
 
-// 🔧 参加グループのIDリストを取得
-const myGroupIds = groups.map(group => group.id);
 
-// 参加グループが0件の場合は新着チェックをスキップ
+
+// 🔍 デバッグ：currentPostsの中身を確認
+console.log('🔍 [DEBUG] currentPosts:', currentPosts);
+console.log('🔍 [DEBUG] currentPosts.length:', currentPosts.length);
+if (currentPosts.length > 0) {
+  console.log('🔍 [DEBUG] 最初の投稿:', currentPosts[0]);
+  console.log('🔍 [DEBUG] 最初の投稿のgroupId:', currentPosts[0].groupId);
+}
+
+// 🔧 参加グループのIDリストを取得（currentPostsから判定）
+const myGroupIds = Array.from(new Set(currentPosts.map(post => post.groupId))).filter(Boolean);
+
+console.log('🔍 [HomePage] 取得したグループID:', myGroupIds);
+
+// グループIDが0件の場合は新着チェックをスキップ
 if (myGroupIds.length === 0) {
-  console.log('⏭️ [HomePage] 参加グループなし、新着チェックをスキップ');
+  console.log('⏭️ [HomePage] 参加グループIDなし、新着チェックをスキップ');
   return;
 }
 
@@ -2957,30 +2968,16 @@ setHasNewPosts(true);
   };
   
  
-  // 初回チェックを即座に実行 (2.5秒後、isInitialLoadがfalseになってから)
-setTimeout(() => {
-  // 🔧 復帰モードの判定を追加
-  const forceRefreshFlag = localStorage.getItem('force-refresh-home');
-  const isReturningFromOtherPage = forceRefreshFlag !== null;
   
-  if (!isReturningFromOtherPage) {
-    // 本当の初回ロード（新規アクセス）の場合のみ新着チェック
-    console.log('🚀 [HomePage] 初回新着チェック実行（新規アクセス）');
-    checkForNewPosts();
-  } else {
-    // 他のページから戻ってきた場合は新着チェックをスキップ
-    console.log('⏭️ [HomePage] 新着チェックをスキップ（ページ復帰）');
-  }
-}, 2500); // isInitialLoadがfalseになる2秒より少し後
 
   // 60秒ごとに新着チェックを実行
-  const newPostCheckInterval = setInterval(checkForNewPosts, 60000);
+  const newPostCheckInterval = setInterval(() => checkForNewPosts(posts), 60000);
   
   return () => {
     console.log('🛑 [HomePage] 新着チェックタイマー停止');
     clearInterval(newPostCheckInterval);
   };
-}, [justDeleted]);
+}, [justDeleted, posts.length]);
 
 
 useEffect(() => {
