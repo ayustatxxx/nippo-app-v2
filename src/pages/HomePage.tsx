@@ -2946,11 +2946,22 @@ setHasNewPosts(true);
     }
   };
   
-  // 初回チェックを即座に実行（2.5秒後、isInitialLoadがfalseになってから）
-  setTimeout(() => {
-    console.log('🚀 [HomePage] 初回新着チェック実行');
+ 
+  // 初回チェックを即座に実行 (2.5秒後、isInitialLoadがfalseになってから)
+setTimeout(() => {
+  // 🔧 復帰モードの判定を追加
+  const forceRefreshFlag = localStorage.getItem('force-refresh-home');
+  const isReturningFromOtherPage = forceRefreshFlag !== null;
+  
+  if (!isReturningFromOtherPage) {
+    // 本当の初回ロード（新規アクセス）の場合のみ新着チェック
+    console.log('🚀 [HomePage] 初回新着チェック実行（新規アクセス）');
     checkForNewPosts();
-  }, 2500); // isInitialLoadがfalseになる2秒より少し後
+  } else {
+    // 他のページから戻ってきた場合は新着チェックをスキップ
+    console.log('⏭️ [HomePage] 新着チェックをスキップ（ページ復帰）');
+  }
+}, 2500); // isInitialLoadがfalseになる2秒より少し後
 
   // 60秒ごとに新着チェックを実行
   const newPostCheckInterval = setInterval(checkForNewPosts, 60000);
