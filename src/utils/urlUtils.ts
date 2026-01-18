@@ -5,7 +5,7 @@ import React from 'react';
  * @param text - 変換元のテキスト
  * @returns URLがリンク化されたReact要素の配列
  */
-export const linkifyText = (text: string): React.ReactNode[] => {
+export const linkifyText = (text: string, color: string = '#0088aa'): React.ReactNode[] => {
   // URLを検出する正規表現（http, https, wwwで始まるものを検出）
   const urlRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/g;
   
@@ -34,7 +34,7 @@ export const linkifyText = (text: string): React.ReactNode[] => {
           target: '_blank',
           rel: 'noopener noreferrer',
           style: {
-            color: '#0066cc',
+            color: color,
             textDecoration: 'underline',
             wordBreak: 'break-all' as const,
             overflowWrap: 'break-word' as const

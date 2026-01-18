@@ -14,6 +14,7 @@ import { MemoService } from '../utils/memoService';
 import Header from '../components/Header';
 import { deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { linkifyText } from '../utils/urlUtils';
 
 // 🔸 新着バナー用：「最後に見た時刻」を保存・読み込みするためのキー
 const LAST_VIEWED_KEY_PREFIX = 'archive-last-viewed-';
@@ -226,7 +227,7 @@ const WorkTimePostCard: React.FC<{
         >
          {post.message.length > MAX_MESSAGE_LENGTH ? (
             <div>
-              {`${post.message.substring(0, MAX_MESSAGE_LENGTH)}...`}
+              {linkifyText(`${post.message.substring(0, MAX_MESSAGE_LENGTH)}...`, '#A8C256')}
               {post.isManuallyEdited && (
   <div style={{ marginTop: '0.5rem' }}>
     <span
@@ -340,7 +341,7 @@ post.tags?.includes('#チェックイン') ? (() => {
 {/* クリーンなメッセージ + 編集済み */}
 {cleanMessage && (
   <div style={{ marginTop: '0.5rem' }}>
-    <span style={{ color: '#FFFFFF' }}>{cleanMessage}</span>
+    <span style={{ color: '#FFFFFF' }}>{linkifyText(cleanMessage, '#A8C256')}</span>
 {post.isManuallyEdited && (
   <div style={{ marginTop: '0.5rem' }}>
     <span style={{
@@ -371,7 +372,7 @@ post.tags?.includes('#チェックイン') ? (() => {
   // 通常投稿の場合はそのまま表示
   <div>
     {console.log('🔍 [post.message] post.id:', post.id, 'message:', post.message, 'isManuallyEdited:', post.isManuallyEdited)}
-    {post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+    {linkifyText(post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '') || '', '#A8C256')}
     {(() => {
       const shouldHideEdited = post.tags?.includes('#出退勤時間') && 
                               post.tags?.includes('#チェックイン') && 
@@ -3443,7 +3444,7 @@ useEffect(() => {
         
         {cleanMessage && (
           <div style={{ marginTop: '0.8rem' }}>
-            {cleanMessage}
+            {linkifyText(cleanMessage, '#0088aa')}
           </div>
         )}
       </div>
@@ -3451,7 +3452,7 @@ useEffect(() => {
   })()
 ) : (
   <div>
-    {displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+   {linkifyText(displayPost.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '') || '', '#0088aa')}
   </div>
 )}
 {displayPost.isManuallyEdited && (
@@ -4626,10 +4627,10 @@ if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'objec
                 >
                  {post.message.length > MAX_MESSAGE_LENGTH ? (
                     <div>
-                      {`${post.message.substring(
+                      {linkifyText(`${post.message.substring(
                         0,
                         MAX_MESSAGE_LENGTH
-                      )}...`}
+                        )}...`, '#A8C256')}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -4739,7 +4740,7 @@ post.tags?.includes('#チェックイン') ? (() => {
       {/* クリーンなメッセージ */}
       {cleanMessage && (
         <div style={{ marginTop: '0.5rem', color: '#FFFFFF' }}>
-          {cleanMessage}
+          {linkifyText(cleanMessage, '#A8C256')}
         </div>
       )}
       
@@ -4757,7 +4758,7 @@ post.tags?.includes('#チェックイン') ? (() => {
 })() : (
   // 通常投稿の場合はそのまま表示
 <div>
-  {post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '')}
+  {linkifyText(post.message?.replace(/^日付:\s*\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\s*\([月火水木金土日]\)\s*/, '') || '', '#A8C256')}
   
   {post.isManuallyEdited && (
     <span style={{
