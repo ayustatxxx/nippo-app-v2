@@ -103,35 +103,42 @@ const environmentSuffix = getEnvironmentSuffix();
   const [isLoadingCheckInState, setIsLoadingCheckInState] = useState(true); 
 
 
-// GroupTopPage読み込み時にフッターを必ず閉じる
+// GroupTopPage読み込み時のフッター制御（グループリストから来た時は開く）
 useEffect(() => {
-  console.log('🚪 GroupTopPage: フッターを閉じる処理実行', { groupId });
+  console.log('🚪 GroupTopPage: フッター制御処理実行', { groupId });
   
-  const closeFooter = () => {
+  // URLパラメータからfromを取得
+  const from = searchParams.get('from');
+  console.log('📍 遷移元:', from);
+  
+  const controlFooter = () => {
+    // グループリストから来た場合はフッターを開く
+    const shouldOpenFooter = from === 'group-list';
+    
     const footerState = {
-      showFooter: false,
-      showFAB: true,
+      showFooter: shouldOpenFooter, // グループリストから来た時はtrue、それ以外はfalse
+      showFAB: !shouldOpenFooter,   // フッター開く時はFABを非表示
       animationTrigger: 'initial'
     };
     localStorage.setItem('footer-visibility-state', JSON.stringify(footerState));
     window.dispatchEvent(new Event('storage'));
-    console.log('✅ フッター閉じる処理完了');
+    console.log(`✅ フッター${shouldOpenFooter ? '開く' : '閉じる'}処理完了`);
   };
   
-  // 即座に閉じる
-  closeFooter();
+  // 即座に実行
+  controlFooter();
   
-  // 念のため、複数回実行して確実に閉じる
-  const timerId1 = setTimeout(closeFooter, 50);
-  const timerId2 = setTimeout(closeFooter, 100);
-  const timerId3 = setTimeout(closeFooter, 200);
+  // 念のため、複数回実行して確実に反映
+  const timerId1 = setTimeout(controlFooter, 50);
+  const timerId2 = setTimeout(controlFooter, 100);
+  const timerId3 = setTimeout(controlFooter, 200);
   
   return () => {
     clearTimeout(timerId1);
     clearTimeout(timerId2);
     clearTimeout(timerId3);
   };
-}, []); // 空の依存配列 = コンポーネントマウント時に1回だけ実行
+}, [searchParams]); // searchParamsを依存配列に追加
 
 // 🔝 ページ読み込み時にスクロール位置を最上部にリセット
 useEffect(() => {
@@ -139,7 +146,7 @@ useEffect(() => {
   window.scrollTo(0, 0);
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
-}, []);
+}, [groupId]);
 
 // groupId が変わった時にも閉じる
 useEffect(() => {
@@ -972,7 +979,7 @@ console.log('🔍 日付が含まれているか:', updatedMessage.includes('日
 
 
 // 上部の背景高さを調整（可変）
-const backgroundHeight = '65vh'; // ビューポートの65%（画面サイズに応じて自動調整）
+const backgroundHeight = '62vh';// ビューポートの65%（画面サイズに応じて自動調整）
 const bottomBackgroundTop = '65vh';
   
   return (
@@ -980,7 +987,7 @@ const bottomBackgroundTop = '65vh';
       style={{
         minHeight: '100vh',
         width: '100%',
-        background: '#f5f5f5',
+        background: '#ffffff',
         position: 'relative',
         overflow: 'hidden',
         display: 'flex',
@@ -1201,7 +1208,7 @@ const bottomBackgroundTop = '65vh';
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        marginBottom: '50px',
+        marginBottom: '110px',
         opacity: isLoadingCheckInState || isProcessing ? 0.5 : 1,
       }}
       onMouseOver={(e) => {
