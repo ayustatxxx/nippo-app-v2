@@ -3842,8 +3842,8 @@ const resetFilters = () => {
 };
 
   const hasFilterConditions = selectedDate || selectedGroup || searchQuery || startDate || endDate;
-  const filterBackgroundHeight = hasFilterConditions ? '470px' : '400px';
-  const contentPaddingTop = hasFilterConditions ? '470px' : '400px';
+  const filterBackgroundHeight = hasFilterConditions ? '520px' : '450px';
+  const contentPaddingTop = hasFilterConditions ? '520px' : '450px';
 
   if (!loading && !isAuthenticated) {
     return <div style={{ padding: '2rem', textAlign: 'center' }}>認証確認中...</div>;
@@ -4003,11 +4003,41 @@ const resetFilters = () => {
               }}
               onClick={() => setShowFilter(false)}
             />
+            
+            {/* ✕ 閉じるボタン - グリーン領域の右上 */}
+            <button
+              onClick={() => setShowFilter(false)}
+              style={{
+                position: 'fixed',
+                top: '75px',
+                right: '1.5rem',
+                zIndex: 100,
+                width: '40px',
+                height: '40px',
+                padding: '0',
+                borderRadius: '0',
+                aspectRatio: '1',
+                backgroundColor: 'transparent',
+border: 'none',
+                color: '#FFFFFF',
+                fontSize: '24px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backdropFilter: 'blur(4px)',
+                transition: 'all 0.2s ease',
+                animation: 'fadeIn 0.3s ease',
+              }}
+            >
+              ✕
+            </button>
 
             <div
               style={{
                 position: 'fixed',
-                top: '90px',
+                top: '130px',
                 left: 0,
                 width: '100%',
                 zIndex: 90,
@@ -4021,11 +4051,13 @@ const resetFilters = () => {
                   backgroundColor: '#E6EDED',
                   borderRadius: '12px',
                   padding: '1rem',
-                  marginBottom: '1.5rem',
                   boxShadow: '0 4px 10px rgba(0, 102, 114, 0.2)',
                   border: '1px solid rgba(0, 102, 114, 0.1)',
                   maxWidth: '480px',
-                  margin: '0 auto',
+                  marginTop: '0',
+marginLeft: 'auto',
+marginRight: 'auto',
+marginBottom: '-20px',
                   position: 'relative',
                 }}
                 onClick={(e) => e.stopPropagation()}
