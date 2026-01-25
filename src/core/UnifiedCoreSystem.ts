@@ -455,48 +455,70 @@ return { posts, lastDoc, hasMore };
         );
         
         const snapshot = await getDocs(q);
-        const posts = await Promise.all(snapshot.docs.map(async (doc) => {
-  const data = doc.data();
-  const postId = doc.id;
-  
-  // 画像取得の優先順位: photoUrls（新形式） → サブコレクション（古い形式）
-  let fullImages: string[] = [];
-  
-  // ✅ 新形式: photoUrls フィールドがあればそれを使用
-if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
-  fullImages = data.photoUrls;
-  console.log(`✅ [新形式] 投稿ID: ${postId} - photoUrls から ${fullImages.length}枚取得`);
-  
-// ✅ 中間形式: images フィールドをチェック（旧データ対応）
-} else if (data.images && Array.isArray(data.images) && data.images.length > 0) {
-  fullImages = data.images;
-  console.log(`✅ [中間形式] 投稿ID: ${postId} - images から ${fullImages.length}枚取得`);
-  
-} else {
-  
-    // 古い形式：サブコレクションから取得（移行前の投稿用）
-    try {
-      const { getPostImages } = await import('../firebase/firestore');
-      const { documentImages, photoImages } = await getPostImages(postId);
-      fullImages = [...documentImages, ...photoImages];
-      if (fullImages.length > 0) {
-       console.log(`📦 [旧形式] 投稿ID: ${postId} - サブコレクションから ${fullImages.length}枚取得`);
-      }
-    } catch (error) {
-      console.warn(`⚠️ 投稿ID: ${postId} の画像取得エラー:`, error);
-    }
-  }
-  
-  return {
-    id: postId,
-    ...data,
-    createdAt: data.createdAt,
-    images: fullImages.length > 0 ? fullImages : (data.images || []),
-  } as Post;
-}));
+        const posts = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          const postId = doc.id;
+          
+          return {
+            id: postId,
+            data,
+            needsOldFormatImages: (!data.photoUrls || data.photoUrls.length === 0) && (!data.images || data.images.length === 0)
+          };
+        });
         
-        console.log(`✅ [UnifiedCore] バッチ${i + 1}: ${posts.length}件取得`);
-        allPosts.push(...posts);
+        // 🚀 旧形式投稿を抽出してバッチで画像取得
+        const oldFormatPosts = posts.filter(p => p.needsOldFormatImages);
+        let imagesMap = new Map<string, { documentImages: string[]; photoImages: string[] }>();
+        
+        if (oldFormatPosts.length > 0) {
+          console.log(`🚀 [バッチ] 旧形式画像取得開始: ${oldFormatPosts.length} 件`);
+          try {
+            const { getOldFormatImagesBatch } = await import('../firebase/firestore');
+            const oldFormatIds = oldFormatPosts.map(p => p.id);
+            imagesMap = await getOldFormatImagesBatch(oldFormatIds);
+            console.log(`✅ [バッチ] 旧形式画像取得完了: ${imagesMap.size} 件`);
+          } catch (error) {
+            console.error(`❌ [バッチ] 旧形式画像取得エラー:`, error);
+          }
+        }
+        
+        // 各投稿に画像を割り当て
+        const enrichedPosts = posts.map((post) => {
+          const data = post.data;
+          let fullImages: string[] = [];
+          
+          // ✅ 新形式: photoUrls フィールド
+          if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
+            fullImages = data.photoUrls;
+            console.log(`✅ [新形式] 投稿ID: ${post.id} - photoUrls から ${fullImages.length}枚取得`);
+            
+          // ✅ 中間形式: images フィールド
+          } else if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+            fullImages = data.images;
+            console.log(`✅ [中間形式] 投稿ID: ${post.id} - images から ${fullImages.length}枚取得`);
+            
+          // 📦 旧形式: バッチ取得した画像を使用
+          } else if (post.needsOldFormatImages) {
+            const batchImages = imagesMap.get(post.id);
+            if (batchImages) {
+              fullImages = [...batchImages.documentImages, ...batchImages.photoImages];
+              if (fullImages.length > 0) {
+                console.log(`📦 [旧形式] 投稿ID: ${post.id} - バッチから ${fullImages.length}枚取得`);
+              }
+            }
+          }
+          
+          return {
+            id: post.id,
+            ...data,
+            createdAt: data.createdAt,
+            images: fullImages.length > 0 ? fullImages : (data.images || []),
+          } as Post;
+        });
+        
+        console.log(`✅ [UnifiedCore] バッチ${i + 1}: ${enrichedPosts.length}件取得`);
+        allPosts.push(...enrichedPosts);
+        
       }
       
       // 全バッチの投稿を最新順にソート
