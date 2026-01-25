@@ -2779,9 +2779,8 @@ if (enrichedPosts.length > 0) {
   window.addEventListener('postsUpdated', handlePostsUpdate);
   window.addEventListener('refreshPosts', handlePostsUpdate);
   
-  // ⭐ 初回データ取得を実行
-  console.log('🚀 [HomePage] 初回データ取得を開始');
-  window.refreshHomePage();
+ // ⭐ 初回データ取得はloadDataFastで実行済み
+  // window.refreshHomePage()は手動リフレッシュ用のみ使用
   
   
   // クリーンアップ
