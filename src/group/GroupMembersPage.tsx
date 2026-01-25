@@ -511,7 +511,7 @@ const deleteSelectedMembers = async () => {
 </svg>
 
 <img 
-  src="/src/assets/EXIT.png" 
+  src="/exit.png"
   alt="Exit" 
   style={{ 
     height: '41px',
