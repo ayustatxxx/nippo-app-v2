@@ -3969,6 +3969,36 @@ setGalleryOpen(true);
               }}
             />
 
+            {/* ✕ 閉じるボタン - グリーン領域の右上 */}
+            <button
+              onClick={() => setShowFilter(false)}
+              style={{
+                position: 'fixed',
+                top: '75px',
+                right: '1.5rem',
+                zIndex: 100,
+                width: '40px',
+                height: '40px',
+                padding: '0',
+                borderRadius: '0',
+                aspectRatio: '1',
+                backgroundColor: 'transparent',
+                border: 'none',
+                color: '#FFFFFF',
+                fontSize: '24px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backdropFilter: 'blur(4px)',
+                transition: 'all 0.2s ease',
+                animation: 'fadeIn 0.3s ease',
+              }}
+            >
+              ✕
+            </button>
+
             {/* フィルターコンテナ - 固定表示 */}
             <div
               style={{
