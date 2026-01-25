@@ -1,3 +1,5 @@
+// Quest Log Page (formerly Archive
+
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import GroupFooterNav from '../components/GroupFooterNav';
 import React, { useEffect, useState, useRef } from 'react';
@@ -4442,7 +4444,7 @@ if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'objec
               color: '#F0DB4F', 
               margin: 0 
             }}>
-              Archive
+              History
             </h2>
           </div>
         )}
