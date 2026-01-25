@@ -509,6 +509,18 @@ const deleteSelectedMembers = async () => {
 >
   <path d="M15 18l-6-6 6-6" />
 </svg>
+
+<img 
+  src="/src/assets/EXIT.png" 
+  alt="Exit" 
+  style={{ 
+    height: '41px',
+    width: 'auto',
+    marginLeft: '-1px',
+    marginTop: '2px',
+    objectFit: 'contain'
+  }} 
+/>
             </div>
 
             {/* 管理者の場合のみ表示するメンバー招待ボタン */}
