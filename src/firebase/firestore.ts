@@ -750,6 +750,8 @@ export const getPostImages = async (postId: string): Promise<{
         photoImages: postData.photoUrls
       };
     }
+
+    
     
     // 📦 旧形式: サブコレクションから取得（後方互換性）
     console.log(`📦 [旧形式] 投稿ID: ${postId} - サブコレクションから取得中...`);
@@ -794,6 +796,51 @@ export const deletePost = async (postId: string) => {
   } catch (error) {
     console.error('投稿の削除に失敗しました:', error);
     throw error;
+  }
+};
+
+/**
+ * 複数投稿の旧形式画像を一括取得（バッチ版）
+ */
+export const getOldFormatImagesBatch = async (
+  postIds: string[]
+): Promise<Map<string, { documentImages: string[]; photoImages: string[] }>> => {
+  const results = new Map<string, { documentImages: string[]; photoImages: string[] }>();
+  
+  if (postIds.length === 0) {
+    return results;
+  }
+
+  console.log(`🚀 [バッチ] 旧形式画像取得開始: ${postIds.length} 件`);
+
+  try {
+    // Promise.allで並列取得
+    await Promise.all(
+      postIds.map(async (postId) => {
+        try {
+          // 図面・書類画像を取得
+          const documentImagesRef = collection(db, 'posts', postId, 'documentImages');
+          const documentSnapshot = await getDocs(query(documentImagesRef, orderBy('order')));
+          const documentImages = documentSnapshot.docs.map(doc => doc.data().image as string);
+
+          // 現場写真を取得
+          const photoImagesRef = collection(db, 'posts', postId, 'photoImages');
+          const photoSnapshot = await getDocs(query(photoImagesRef, orderBy('order')));
+          const photoImages = photoSnapshot.docs.map(doc => doc.data().image as string);
+
+          results.set(postId, { documentImages, photoImages });
+        } catch (error) {
+          console.error(`❌ [バッチ] 投稿ID ${postId} の画像取得失敗:`, error);
+          results.set(postId, { documentImages: [], photoImages: [] });
+        }
+      })
+    );
+
+    console.log(`✅ [バッチ] 旧形式画像取得完了: ${results.size} 件`);
+    return results;
+  } catch (error) {
+    console.error('❌ [バッチ] 画像一括取得エラー:', error);
+    return results;
   }
 };
 
