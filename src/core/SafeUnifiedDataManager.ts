@@ -121,3 +121,52 @@ export const getUserDataSafe = async (userId: string): Promise<User | null> => {
     return null;
   }
 };
+
+/**
+ * 複数ユーザーの表示名を一括取得（高速化版）
+ * @param userIds ユーザーIDの配列
+ * @returns ユーザーIDと表示名のMapオブジェクト
+ */
+export const getDisplayNamesBatch = async (userIds: string[]): Promise<Map<string, string>> => {
+  console.log('🚀 バッチ取得開始:', userIds.length, '人');
+  
+  const result = new Map<string, string>();
+  
+  // キャッシュから取得できるものは取得
+  const uncachedIds: string[] = [];
+  userIds.forEach(userId => {
+    if (displayNameCache.has(userId)) {
+      result.set(userId, displayNameCache.get(userId)!);
+    } else {
+      uncachedIds.push(userId);
+    }
+  });
+  
+  console.log('💾 キャッシュヒット:', result.size, '件');
+  console.log('🔍 Firestore取得必要:', uncachedIds.length, '件');
+  
+  // キャッシュにないものだけFirestoreから取得
+  if (uncachedIds.length > 0) {
+    const promises = uncachedIds.map(async (userId) => {
+      try {
+        const firestoreUser = await getUser(userId);
+        const displayName = firestoreUser?.displayName || 
+                           firestoreUser?.username || 
+                           firestoreUser?.email?.split('@')[0] || 
+                           'ユーザー';
+        
+        // キャッシュに保存
+        displayNameCache.set(userId, displayName);
+        result.set(userId, displayName);
+      } catch (error) {
+        console.error('❌ ユーザー取得エラー:', userId, error);
+        result.set(userId, 'ユーザー');
+      }
+    });
+    
+    await Promise.all(promises);
+  }
+  
+  console.log('✅ バッチ取得完了:', result.size, '件');
+  return result;
+};
