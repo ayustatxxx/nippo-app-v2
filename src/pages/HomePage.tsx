@@ -2459,7 +2459,27 @@ let postsWithTimestamp = enrichedPosts.map(post => {
   
   // createdAtがFirestore Timestampオブジェクトの場合
   if (typeof createdAt === 'object' && createdAt !== null) {
-    // toMillisメソッドを試す
+    // ⭐ 最適化: secondsを最初に試す（高速パス）
+    if ('seconds' in createdAt) {
+      const seconds = (createdAt as any).seconds;
+      if (typeof seconds === 'number') {
+        convertedTimestamp = seconds * 1000;
+        console.log('✅ [timestamp変換] secondsから変換:', post.id?.substring(0, 8), convertedTimestamp);
+        return { ...post, timestamp: convertedTimestamp };
+      }
+    }
+    
+    // _secondsプロパティも試す
+    if ('_seconds' in createdAt) {
+      const seconds = (createdAt as any)._seconds;
+      if (typeof seconds === 'number') {
+        convertedTimestamp = seconds * 1000;
+        console.log('✅ [timestamp変換] _secondsから変換:', post.id?.substring(0, 8), convertedTimestamp);
+        return { ...post, timestamp: convertedTimestamp };
+      }
+    }
+    
+    // toMillisメソッドを試す（フォールバック）
     if ('toMillis' in createdAt) {
       try {
         const toMillisFn = (createdAt as any).toMillis;
@@ -2470,26 +2490,6 @@ let postsWithTimestamp = enrichedPosts.map(post => {
         }
       } catch (error) {
         console.error('❌ [timestamp変換] toMillis実行エラー:', error);
-      }
-    }
-    
-    // secondsプロパティを試す
-    if ('seconds' in createdAt) {
-      const seconds = (createdAt as any).seconds;
-      if (typeof seconds === 'number') {
-        convertedTimestamp = seconds * 1000;
-        console.log('✅ [timestamp変換] secondsから変換:', post.id?.substring(0, 8), convertedTimestamp);
-        return { ...post, timestamp: convertedTimestamp };
-      }
-    }
-    
-    // _secondsプロパティも試す（念のため）
-    if ('_seconds' in createdAt) {
-      const seconds = (createdAt as any)._seconds;
-      if (typeof seconds === 'number') {
-        convertedTimestamp = seconds * 1000;
-        console.log('✅ [timestamp変換] _secondsから変換:', post.id?.substring(0, 8), convertedTimestamp);
-        return { ...post, timestamp: convertedTimestamp };
       }
     }
   }
