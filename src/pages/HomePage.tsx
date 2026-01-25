@@ -2666,48 +2666,36 @@ console.log(`✅ [Home] リフレッシュ完了: ${allPosts.length}件の投稿
 
     
         
-       // ⭐ ここが新規追加部分：ユーザー名と写真を補完する処理 ⭐
-const enrichedPosts = await Promise.all(
-  allPosts.map(async (post) => {
-    try {
-      // ユーザー名を取得
-      let username = post.username || 'ユーザー';
-      if (post.authorId || post.userId || post.userID) {
-        const userId = post.authorId || post.userId || post.userID;
-        const displayName = await getDisplayNameSafe(userId);
-        if (displayName && displayName !== 'ユーザー') {
-          username = displayName;
-        }
-      }
-      
-      // 画像取得
-      const photos = post.photoUrls || [];
+     // 全投稿からユーザーIDを抽出
+const userIds = allPosts
+  .map(post => post.authorId || post.userId || post.userID)
+  .filter((id): id is string => !!id);
 
-      return {
-        ...post,
-        username,
-        photoUrls: photos,
-        images: photos
-      };
-    } catch (error) {
-      console.error('投稿データ補完エラー:', error);
-      return {
-        ...post,
-        username: post.username || 'ユーザー',
-        photoUrls: (post.photoUrls?.length > 0) ? post.photoUrls :
-               (post.images?.length > 0) ? post.images :
-               ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
-               ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
-               [],
-        images: (post.photoUrls?.length > 0) ? post.photoUrls :
-                (post.images?.length > 0) ? post.images :
-                ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
-                ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
-                []
-      };
-    }
-  })
-);
+console.log('🚀 [refreshHomePage] バッチでユーザー名取得開始:', userIds.length, '人');
+
+// バッチで一括取得
+const userNamesMap = await getDisplayNamesBatch(userIds);
+
+console.log('✅ [refreshHomePage] バッチ取得完了:', userNamesMap.size, '件');
+
+// ユーザー名と画像を追加
+const enrichedPosts = allPosts.map(post => {
+  const userId = post.authorId || post.userId || post.userID;
+  const username = userId && userNamesMap.has(userId) 
+    ? userNamesMap.get(userId)! 
+    : post.username || 'ユーザー';
+  
+  // 画像取得
+  const photos = post.photoUrls || [];
+  
+  return {
+    ...post,
+    username,
+    photoUrls: photos,
+    images: photos
+  };
+});
+   
 
 console.log('✅ [Home] ユーザー名・写真マージ完了（リフレッシュ）:', enrichedPosts.length, '件');
 
