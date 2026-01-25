@@ -986,9 +986,48 @@ const bottomBackgroundTop = '65vh';
         display: 'flex',
         flexDirection: 'column',
         boxSizing: 'border-box',
+        paddingBottom: '80px',
       }}
     >
       {/* 背景画像 - 上部のみ表示（常に表示） */}
+      {/* ヘッダー: 緑色背景で×ボタンのみ */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '60px',
+          backgroundColor: '#007B8A', 
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'flex-end',
+          padding: '0 20px',
+          paddingBottom: '10px', 
+        }}
+      >
+        {/* 戻るボタン（×） */}
+        <div
+          style={{
+            cursor: 'pointer',
+          }}
+          onClick={handleBack}
+        >
+          <svg
+            width="45"
+            height="45"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </div>
+      </div>
       <div
         style={{
           position: 'absolute',
@@ -996,7 +1035,7 @@ const bottomBackgroundTop = '65vh';
           left: 0,
           width: '100%',
           height: backgroundHeight,
-          background: 'linear-gradient(to top, rgb(7, 112, 144), rgb(7, 107, 127), rgb(0, 102, 114))',
+          backgroundColor: '#007B8A', 
           zIndex: 0,
           transition: 'height 0.5s ease',
         }}
@@ -1201,6 +1240,19 @@ const bottomBackgroundTop = '65vh';
     </button>
   )}
 </div>
+
+{/* 固定の白いフッター: GroupFooterNavの下に配置 */}
+<div
+  style={{
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '80px',
+    backgroundColor: '#ffffff',
+    zIndex: 1, // ← 50から1に変更！
+  }}
+/>
       
      {/* GroupFooterNavコンポーネントを使用（常に表示） */}
 <GroupFooterNav 
