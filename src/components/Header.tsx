@@ -30,7 +30,7 @@ const Header: React.FC<HeaderProps> = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 100,
+        zIndex: 1000,
         boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
       }}
     >

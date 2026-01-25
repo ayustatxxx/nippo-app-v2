@@ -223,6 +223,11 @@ const [uploadStatus, setUploadStatus] = useState('');
     };
   }, [groupId, dbInitialized]);
   
+  // ページ表示時にスクロールをトップにリセット
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+  
   // 写真の検証とプレビュー生成
   useEffect(() => {
     let isMounted = true;
