@@ -9,7 +9,7 @@ import ImageGalleryModal from '../components/ImageGalleryModal';
 import { getCurrentUser, isAdmin, getUserRole, getUserDisplayName } from '../utils/authUtil';
 import { DisplayNameResolver } from '../utils/displayNameResolver';
 import { UnifiedDataManager } from '../utils/unifiedDataManager';
-import { getDisplayNameSafe } from '../core/SafeUnifiedDataManager';
+import { getDisplayNameSafe, getDisplayNamesBatch } from '../core/SafeUnifiedDataManager';
 import { getUser, getPostImages } from '../firebase/firestore';
 import MemoModal from '../components/MemoModal';
 import ReadByModal from '../components/ReadByModal';
@@ -2401,49 +2401,36 @@ postsWithGroupNames.slice(0, 1).forEach(post => {
 console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
 });
 
-  // ⭐ Step 2: ユーザー名と写真を追加マージ
-  const enrichedPosts = await Promise.all(
-    postsWithGroupNames.map(async (post) => {
-      try {
+ // ⭐ Step 2: ユーザー名と写真を追加マージ（バッチ版で高速化）
   
-  // ユーザー名を取得
-  let username = post.username || 'ユーザー';
-        if (post.authorId || post.userId || post.userID) {
-          const userId = post.authorId || post.userId || post.userID;
-          const displayName = await getDisplayNameSafe(userId);
-          if (displayName && displayName !== 'ユーザー') {
-            username = displayName;
-          }
-        }  
-       
-// ✅ シンプルな画像取得（Archiveと同じ）
-        const photos = post.photoUrls || [];
-
-return {
-          ...post,
-          username,
-          photoUrls: photos,  // ⭐ photoUrls に統一
-          images: photos      // ⭐ images も設定（互換性のため）
-        };
-      } catch (error) {
-  console.error('投稿データ補完エラー:', error);
-  return {
-    ...post,
-    username: post.username || 'ユーザー',
-    photoUrls: (post.photoUrls?.length > 0) ? post.photoUrls :
-           (post.images?.length > 0) ? post.images :
-           ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
-           ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
-           [],
-images: (post.photoUrls?.length > 0) ? post.photoUrls :
-        (post.images?.length > 0) ? post.images :
-        ((post as any).thumbnails?.documents?.length > 0) ? (post as any).thumbnails.documents :
-        ((post as any).thumbnails?.photos?.length > 0) ? (post as any).thumbnails.photos :
-        []
-  };
-}
-    })
-  );
+  // 全投稿からユーザーIDを抽出
+  const userIds = postsWithGroupNames
+    .map(post => post.authorId || post.userId || post.userID)
+    .filter((id): id is string => !!id);
+  
+  console.log('🚀 バッチでユーザー名取得開始:', userIds.length, '人');
+  
+  // バッチで一括取得
+  const userNamesMap = await getDisplayNamesBatch(userIds);
+  
+  console.log('✅ バッチ取得完了:', userNamesMap.size, '件');
+  
+  // ユーザー名と画像を追加
+  const enrichedPosts = postsWithGroupNames.map(post => {
+    const userId = post.authorId || post.userId || post.userID;
+    const username = userId && userNamesMap.has(userId) 
+      ? userNamesMap.get(userId)! 
+      : post.username || 'ユーザー';
+    
+    const photos = post.photoUrls || [];
+    
+    return {
+      ...post,
+      username,
+      photoUrls: photos,
+      images: photos
+    };
+  });
   
   console.log('✅ [Home] ユーザー名・写真マージ完了:', enrichedPosts.length, '件');
 
