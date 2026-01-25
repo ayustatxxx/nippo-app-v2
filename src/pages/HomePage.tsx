@@ -2215,18 +2215,18 @@ console.log('🔍 [フラグ状態] daily-report-posts-updated:', lastUpdate);
 
 // 🌟 Step 2: 強制リフレッシュが必要かチェック
 if (forceRefresh || forceRefreshHome) {
-  console.log('🔄 [HomePage] 強制リフレッシュフラグ検出：キャッシュクリア');
+  console.log('🔄 [HomePage] 強制リフレッシュフラグ検出：投稿キャッシュをクリア');
   
-  // 全てのフラグをクリア
   localStorage.removeItem('posts-need-refresh');
   localStorage.removeItem('force-refresh-home');
   localStorage.removeItem('daily-report-posts-updated');
   
-  postsCache = null;
+  postsCache = null;  // 投稿キャッシュのみクリア
   postsCacheTime = 0;
   
-  console.log('✅ [HomePage] キャッシュクリア完了（フラグベース）');
+  console.log('✅ [HomePage] 投稿キャッシュクリア完了（ユーザー名キャッシュは保持）');
 }
+
 // 🌟 Step 3: 5秒ルールチェック
 else if (lastUpdate) {
   const lastUpdateTime = parseInt(lastUpdate);
@@ -2342,11 +2342,13 @@ try {
 // ⭐ 新しい効率的な取得方法 ⭐
 const groupIds = userGroups.map(g => g.id);
 console.log(`📊 [効率的ロード] ${groupIds.length}グループから最新20件を一括取得`);
-
+const postFetchStart = performance.now();
 allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
   groupIds,
   20  // 表示する10件 + 予備10件
 );
+const postFetchEnd = performance.now();
+console.log(`⏱️ [計測] 投稿取得: ${Math.round(postFetchEnd - postFetchStart)}ms`);
 
 // ⭐ デバッグ1: Firestoreから取得した投稿の最初の3件を確認
 console.log('🔍 [DEBUG-loadDataFast] Firestoreから取得した投稿数:', allPosts.length);
@@ -2409,10 +2411,11 @@ console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
     .filter((id): id is string => !!id);
   
   console.log('🚀 バッチでユーザー名取得開始:', userIds.length, '人');
-  
+  const userFetchStart = performance.now();
   // バッチで一括取得
   const userNamesMap = await getDisplayNamesBatch(userIds);
-  
+  const userFetchEnd = performance.now();
+console.log(`⏱️ [計測] ユーザー名取得: ${Math.round(userFetchEnd - userFetchStart)}ms`);
   console.log('✅ バッチ取得完了:', userNamesMap.size, '件');
   
   // ユーザー名と画像を追加
