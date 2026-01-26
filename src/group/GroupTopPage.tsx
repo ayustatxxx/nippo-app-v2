@@ -112,8 +112,8 @@ useEffect(() => {
   console.log('📍 遷移元:', from);
   
   const controlFooter = () => {
-    // グループリストから来た場合はフッターを開く
-    const shouldOpenFooter = from === 'group-list';
+    // Home、Home詳細、グループリストから来た場合はフッターを開く
+    const shouldOpenFooter = from === 'group-list' || from === 'home' || from === 'home-detail';
     
     const footerState = {
       showFooter: shouldOpenFooter, // グループリストから来た時はtrue、それ以外はfalse
