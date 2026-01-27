@@ -643,14 +643,24 @@ setTimeout(() => {
           originalSizeMB = (totalBytes / (1024 * 1024)).toFixed(2);
         }
         
+      // パーセンテージ計算
+        const percentage = Math.round((parseFloat(actualMB) / parseFloat(maxMB)) * 100);
+        const overPercentage = percentage - 100;
+        
+       
+        // プログレスバー生成（オーバー分のみ表示、最大5文字）
+        const overBar = overPercentage > 0 
+          ? '█'.repeat(Math.min(Math.round(overPercentage / 20), 5))
+          : '';
+        
         errorMessage = 
-          `⚠️ 画像が多すぎます\n\n` +
-          `選択した画像: ${totalFiles}枚\n` +
-          `（高画質: ${highQualityCount}枚、通常: ${normalCount}枚）\n\n` +
+          `⚠️ データサイズの上限をオーバーしています\n\n` +
+          `容量使用状況:\n` +
+          `[${overBar}] +${overPercentage}% オーバー\n\n` +
           `💡 解決方法:\n` +
-          `• 高画質を${Math.max(0, highQualityCount - 3)}枚減らす\n` +
-          `• または` +
-          `• 画像を${Math.ceil(totalFiles / 2)}枚ずつ、2回に分けて投稿`;
+          `• 高画質を1〜2枚に減らす\n` +
+          `• または通常画質に変更する\n` +
+          `• または2回に分けて投稿する`;
       }
     } else if (error?.code === 'permission-denied') {
       errorMessage = "⚠️ 権限エラー\n\n投稿する権限がありません。";
