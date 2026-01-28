@@ -2482,7 +2482,7 @@ let postsWithTimestamp = enrichedPosts.map(post => {
           return { ...post, timestamp: convertedTimestamp };
         }
       } catch (error) {
-        console.error('❌ [timestamp変換] toMillis実行エラー:', error);
+        // toMillis実行エラー（無視して次の処理へ）
       }
     }
     
