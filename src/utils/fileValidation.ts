@@ -264,7 +264,7 @@ public static async convertToBase64(file: File): Promise<string> {
    */
   public static async compressDocumentImage(file: File): Promise<string> {
     console.log(`📄 図面・書類用圧縮開始: ${file.name}`);
-    return this.compressToTargetSize(file, 250, 1500);
+    return this.compressToTargetSize(file, 150, 1500);
   }
 
   /**
@@ -282,7 +282,7 @@ public static async convertToBase64(file: File): Promise<string> {
    */
   public static async generateThumbnail(file: File): Promise<string> {
     console.log(`🖼️ サムネイル生成開始: ${file.name}`);
-    return this.compressImage(file, 150, 0.30);
+    return this.compressImage(file, 100, 0.20);
   }
 
   /**
@@ -298,8 +298,8 @@ public static async convertToBase64(file: File): Promise<string> {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           
-          // 150pxにリサイズ
-          const maxSize = 150;
+          // 100pxにリサイズ
+          const maxSize = 100;
           const ratio = Math.min(maxSize / img.width, maxSize / img.height);
           const newWidth = Math.floor(img.width * ratio);
           const newHeight = Math.floor(img.height * ratio);
@@ -313,8 +313,11 @@ public static async convertToBase64(file: File): Promise<string> {
           ctx!.fillRect(0, 0, newWidth, newHeight);
           ctx!.drawImage(img, 0, 0, newWidth, newHeight);
           
-          const thumbnail = canvas.toDataURL('image/jpeg', 0.30);
-          resolve(thumbnail);
+          const thumbnail = canvas.toDataURL('image/jpeg', 0.20);
+// サイズ測定
+const sizeKB = Math.round((thumbnail.length * 3) / 4 / 1024);
+console.log(`🖼️ サムネイル生成完了: ${newWidth}x${newHeight}px, ${sizeKB}KB`);
+resolve(thumbnail);
         } catch (error) {
           reject(new Error('サムネイル生成に失敗しました'));
         }
