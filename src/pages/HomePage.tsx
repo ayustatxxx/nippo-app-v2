@@ -1281,6 +1281,10 @@ const [isCountingResults, setIsCountingResults] = useState(false);  // ← 追�
 const [selectedPostForDetail, setSelectedPostForDetail] = useState<Post | null>(null);
 const [displayLimit, setDisplayLimit] = useState(10);
 const [hasMore, setHasMore] = useState(true);         // まだデータがあるか
+let scrollTimeout: NodeJS.Timeout | null = null;
+const [displayedPostsCount, setDisplayedPostsCount] = useState(10);
+const POSTS_PER_LOAD = 10;
+const displayedPostsCountRef = useRef(10);
 const [isLoadingMore, setIsLoadingMore] = useState(false);  // 追加読み込み中か
 const [currentPage, setCurrentPage] = useState(1);         // 現在のページ番号  
 const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);  // ⭐ 栞を保存
@@ -2095,10 +2099,11 @@ console.log('📥 現在のフィルター条件:', { startDate, endDate, search
       
       // displayLimitも増やす
       setDisplayLimit(prev => prev + result.posts.length);
+
+      // Phase A4: displayedPostsCountも増やす
+      setDisplayedPostsCount(prev => prev + result.posts.length);
       
      
-  
-  
       
       console.log(`📊 [無限スクロール] 合計 ${posts.length + result.posts.length} 件表示中`);
       console.log(`📊 [表示制限] displayLimitを更新しました`);
@@ -2341,11 +2346,11 @@ try {
 
 // ⭐ 新しい効率的な取得方法 ⭐
 const groupIds = userGroups.map(g => g.id);
-console.log(`📊 [効率的ロード] ${groupIds.length}グループから最新20件を一括取得`);
+console.log(`📊 [効率的ロード] ${groupIds.length}グループから最新10件を一括取得`);
 const postFetchStart = performance.now();
 allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
   groupIds,
-  20  // 表示する10件 + 予備10件
+  30  // 初回表示する30件
 );
 const postFetchEnd = performance.now();
 console.log(`⏱️ [計測] 投稿取得: ${Math.round(postFetchEnd - postFetchStart)}ms`);
@@ -2625,11 +2630,11 @@ const refreshData = async () => {
 
       // ⭐ リフレッシュも効率的な取得方法を使用 ⭐
 const groupIds = userGroups.map(g => g.id);
-console.log(`📊 [リフレッシュロード] ${groupIds.length}グループから最新20件を一括取得`);
+console.log(`📊 [リフレッシュロード] ${groupIds.length}グループから最新10件を一括取得`);
 
 allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
   groupIds,
-  20
+  30  // 初回表示する30件
 );
 
 // ⭐ デバッグ2: refreshHomePage - Firestore取得直後
@@ -2960,7 +2965,7 @@ setHasNewPosts(true);
 useEffect(() => {
   const handleScroll = () => {
     const scrollPosition = window.innerHeight + window.scrollY;
-    const bottomThreshold = document.body.offsetHeight - 500;
+    const bottomThreshold = document.body.offsetHeight - 800;
     
     // 🌟 デバッグログ追加
     console.log('📏 スクロール位置:', scrollPosition, 'しきい値:', bottomThreshold);
@@ -2969,10 +2974,29 @@ useEffect(() => {
       // 検索中かどうかをチェック
       const isSearching = searchQuery.trim() !== '' || startDate !== '' || endDate !== '';
       
-      if (!isLoadingMore && hasMore && !loading && !isSearching) {
-        console.log('🔄 スクロール検知: 次のデータを自動読み込み');
-        loadMorePosts();
-      } else {
+     if (!isLoadingMore && hasMore && !loading && !isSearching) {
+  console.log('🔄 スクロール検知: 次のデータを自動読み込み');
+  
+  // Phase A3: まずメモリ内のデータを表示（超高速！）
+  console.log('🔍 [Phase判定] displayedPostsCount:', displayedPostsCountRef.current, 'filteredItems.length:', filteredItems.length);
+  if (displayedPostsCountRef.current < filteredItems.length && filteredItems.length > 0) {
+    console.log('📦 [Phase A3] メモリから追加表示:', displayedPostsCountRef.current, '→', displayedPostsCountRef.current + POSTS_PER_LOAD);
+    setDisplayedPostsCount(prev => prev + POSTS_PER_LOAD);
+    displayedPostsCountRef.current += POSTS_PER_LOAD;
+    return; // Firestoreアクセスなし！即座に表示！
+  }
+  
+  // Phase A4: メモリ内を全部表示したら、Firestoreから追加取得
+  console.log('🔄 [Phase A4] Firestoreから追加取得開始');
+  
+  // デバウンス処理
+  if (scrollTimeout) {
+    clearTimeout(scrollTimeout);
+  }
+  scrollTimeout = setTimeout(() => {
+    loadMorePosts();
+  }, 200);
+} else {
         console.log('⏸️ 読み込みスキップ:', { isLoadingMore, hasMore, loading });
       }
     }
@@ -4337,7 +4361,7 @@ placeholder="キーワード・#タグで検索"
           
         {/* 🌟 追加読み込み中の表示 */}
         {/* ⭐ 改善版：追加読み込み中の表示 ⭐ */}
-{isLoadingMore && (
+{/* {isLoadingMore && (
   <div style={{
     textAlign: 'center',
     padding: '2rem',
@@ -4373,7 +4397,7 @@ placeholder="キーワード・#タグで検索"
       現在 {posts.length} 件を表示中
     </p>
   </div>
-)}
+)} */}
 
         {/* ⭐ 改善版：全て読み込み完了の表示 ⭐ */}
 {!hasMore && filteredItems.length > 0 && !isLoadingMore && (
@@ -4545,8 +4569,8 @@ placeholder="キーワード・#タグで検索"
   // タイムラインアイテムを日付ごとにグループ化して表示するヘルパー関数
 function groupItemsByDate() {
   // 🌟 ここで全体の表示件数を制限（重要！）
-  const limitedItems = filteredItems.slice(0, displayLimit);
-  console.log(`📊 表示制限適用: ${displayLimit}件 / 全${filteredItems.length}件`);
+  const limitedItems = filteredItems.slice(0, displayedPostsCount);
+  console.log(`📊 表示制限適用: ${displayedPostsCount}件 / 全${filteredItems.length}件`);
   console.log(`🔍 [デバッグ] displayLimitの値: ${displayLimit}`);  // ← この行を追加
   // 日付ごとにグループ化
   const groupedByDate: Record<string, TimelineItem[]> = {};

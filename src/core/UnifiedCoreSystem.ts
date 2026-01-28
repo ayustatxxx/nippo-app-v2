@@ -416,7 +416,7 @@ return { posts, lastDoc, hasMore };
    */
   static async getLatestPostsFromMultipleGroups(
     groupIds: string[],
-    limit: number = 20
+    limit: number = 10
   ): Promise<Post[]> {
     console.log(`🔍 [UnifiedCore] ${groupIds.length}グループから最新${limit}件を取得開始`);
     
@@ -870,7 +870,7 @@ if (existingPost) {
  */
 static async getLatestPostsFromMultipleGroupsPaginated(
   groupIds: string[],
-  limit: number = 20,
+  limit: number = 10,
   lastVisible: any = null  // ← 前回の最後の位置を覚えておく
 ): Promise<{
   posts: Post[];
