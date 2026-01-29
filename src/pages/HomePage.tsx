@@ -1282,9 +1282,9 @@ const [selectedPostForDetail, setSelectedPostForDetail] = useState<Post | null>(
 const [displayLimit, setDisplayLimit] = useState(10);
 const [hasMore, setHasMore] = useState(true);         // まだデータがあるか
 let scrollTimeout: NodeJS.Timeout | null = null;
-const [displayedPostsCount, setDisplayedPostsCount] = useState(10);
-const POSTS_PER_LOAD = 10;
-const displayedPostsCountRef = useRef(10);
+const [displayedPostsCount, setDisplayedPostsCount] = useState(5);
+const POSTS_PER_LOAD = 5;
+const displayedPostsCountRef = useRef(5);
 const [isLoadingMore, setIsLoadingMore] = useState(false);  // 追加読み込み中か
 const isLoadingMoreRef = useRef(false);
 const [currentPage, setCurrentPage] = useState(1);         // 現在のページ番号  
@@ -2353,7 +2353,7 @@ console.log(`📊 [効率的ロード] ${groupIds.length}グループから最�
 const postFetchStart = performance.now();
 allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
   groupIds,
-  30  // 初回表示する30件
+  10  // 初回10件取得（5件ずつ段階表示）
 );
 const postFetchEnd = performance.now();
 console.log(`⏱️ [計測] 投稿取得: ${Math.round(postFetchEnd - postFetchStart)}ms`);
@@ -4410,45 +4410,47 @@ placeholder="キーワード・#タグで検索"
   </div>
 )}
           
-        {/* 🌟 追加読み込み中の表示 */}
-        {/* ⭐ 改善版：追加読み込み中の表示 ⭐ */}
-{/* {isLoadingMore && (
+       {/* 控えめなスピナー */}
+{isLoadingMore && (
   <div style={{
-    textAlign: 'center',
-    padding: '2rem',
-    color: '#055A68',
-    backgroundColor: '#E6EDED',
-    borderRadius: '12px',
-    margin: '1rem 0',
-    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)'
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '1rem 0'
   }}>
     <div style={{
-      width: '40px',
-      height: '40px',
-      border: '4px solid rgba(5, 90, 104, 0.2)',
-      borderTop: '4px solid #055A68',
+      width: '8px',
+      height: '8px',
+      backgroundColor: '#9CA3AF',
       borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite',
-      margin: '0 auto'
+      animation: 'bounce 1.4s infinite ease-in-out both',
+      animationDelay: '0s'
     }}></div>
-    <p style={{ 
-      marginTop: '1rem',
-      fontSize: '0.95rem',
-      fontWeight: '500',
-      color: '#055A68'
-    }}>
-      📥 続きを読み込んでいます...
-    </p>
-    <p style={{
-      marginTop: '0.5rem',
-      fontSize: '0.8rem',
-      color: '#066878',
-      opacity: 0.8
-    }}>
-      現在 {posts.length} 件を表示中
-    </p>
+    <div style={{
+      width: '8px',
+      height: '8px',
+      backgroundColor: '#9CA3AF',
+      borderRadius: '50%',
+      animation: 'bounce 1.4s infinite ease-in-out both',
+      animationDelay: '0.16s'
+    }}></div>
+    <div style={{
+      width: '8px',
+      height: '8px',
+      backgroundColor: '#9CA3AF',
+      borderRadius: '50%',
+      animation: 'bounce 1.4s infinite ease-in-out both',
+      animationDelay: '0.32s'
+    }}></div>
   </div>
-)} */}
+)}
+
+<style>{`
+  @keyframes bounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+  }
+`}</style>
 
       </div>
     )}
@@ -4711,5 +4713,19 @@ export const forceRefreshPosts = () => {
 
 
 <MainFooterNav />
+
+{/* bounce アニメーション */}
+<style>{`
+  @keyframes bounce {
+    0%, 80%, 100% { 
+      transform: scale(0);
+      opacity: 0.5;
+    }
+    40% { 
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+`}</style>
 
 export default HomePage;
