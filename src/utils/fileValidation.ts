@@ -264,7 +264,7 @@ public static async convertToBase64(file: File): Promise<string> {
    */
   public static async compressDocumentImage(file: File): Promise<string> {
     console.log(`📄 図面・書類用圧縮開始: ${file.name}`);
-    return this.compressImage(file, 1500, 0.55);
+    return this.compressToTargetSize(file, 200, 1500);
   }
 
   /**
@@ -273,7 +273,7 @@ public static async convertToBase64(file: File): Promise<string> {
    */
   public static async compressPhotoImage(file: File): Promise<string> {
     console.log(`📷 現場写真用圧縮開始: ${file.name}`);
-    return this.compressImage(file, 720, 0.27);
+    return this.compressToTargetSize(file, 50, 720);
   }
 
   /**
@@ -282,7 +282,7 @@ public static async convertToBase64(file: File): Promise<string> {
    */
   public static async generateThumbnail(file: File): Promise<string> {
     console.log(`🖼️ サムネイル生成開始: ${file.name}`);
-    return this.compressImage(file, 150, 0.30);
+    return this.compressImage(file, 100, 0.20);
   }
 
   /**
@@ -298,8 +298,8 @@ public static async convertToBase64(file: File): Promise<string> {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           
-          // 150pxにリサイズ
-          const maxSize = 150;
+          // 100pxにリサイズ
+          const maxSize = 100;
           const ratio = Math.min(maxSize / img.width, maxSize / img.height);
           const newWidth = Math.floor(img.width * ratio);
           const newHeight = Math.floor(img.height * ratio);
@@ -313,8 +313,11 @@ public static async convertToBase64(file: File): Promise<string> {
           ctx!.fillRect(0, 0, newWidth, newHeight);
           ctx!.drawImage(img, 0, 0, newWidth, newHeight);
           
-          const thumbnail = canvas.toDataURL('image/jpeg', 0.30);
-          resolve(thumbnail);
+          const thumbnail = canvas.toDataURL('image/jpeg', 0.20);
+// サイズ測定
+const sizeKB = Math.round((thumbnail.length * 3) / 4 / 1024);
+console.log(`🖼️ サムネイル生成完了: ${newWidth}x${newHeight}px, ${sizeKB}KB`);
+resolve(thumbnail);
         } catch (error) {
           reject(new Error('サムネイル生成に失敗しました'));
         }
@@ -491,6 +494,55 @@ public static async convertToBase64(file: File): Promise<string> {
       // 画像データを読み込み
       img.src = URL.createObjectURL(file);
     });
+  }
+
+  /**
+   * 目標ファイルサイズに到達するまで品質を調整して圧縮
+   * @param file 元のファイル
+   * @param targetSizeKB 目標サイズ（KB単位）例: 300 = 0.3MB
+   * @param maxWidth 最大幅（ピクセル）
+   * @returns 圧縮後のBase64データ
+   */
+  public static async compressToTargetSize(
+    file: File,
+    targetSizeKB: number,
+    maxWidth: number = 1500
+  ): Promise<string> {
+    console.log(`🎯 目標サイズ圧縮開始: ${file.name} → ${targetSizeKB}KB以内`);
+    
+    // 圧縮品質の候補値（高品質から低品質へ試していく）
+    const qualitySteps = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.25, 0.2];
+    
+    let bestResult: string | null = null;
+    let bestSize = Infinity;
+    
+    // 各品質値で試す
+    for (const quality of qualitySteps) {
+      const compressed = await this.compressImage(file, maxWidth, quality);
+      
+      // Base64データのサイズを計算（KB単位）
+      const base64Data = compressed.split(',')[1] || compressed;
+      const sizeBytes = (base64Data.length * 3) / 4; // Base64をバイトに変換
+      const sizeKB = sizeBytes / 1024;
+      
+      console.log(`  試行 quality=${quality}: ${Math.round(sizeKB)}KB`);
+      
+      // 目標サイズ以内に収まった場合
+      if (sizeKB <= targetSizeKB) {
+        console.log(`✅ 目標達成！ quality=${quality}, サイズ=${Math.round(sizeKB)}KB`);
+        return compressed;
+      }
+      
+      // 目標を超えたが、これまでで最も近い結果として保存
+      if (sizeKB < bestSize) {
+        bestResult = compressed;
+        bestSize = sizeKB;
+      }
+    }
+    
+    // すべての品質で試しても目標に達しなかった場合は最良の結果を返す
+    console.log(`⚠️ 目標未達成。最良結果: ${Math.round(bestSize)}KB（目標: ${targetSizeKB}KB）`);
+    return bestResult!;
   }
 
   // バッチ処理機能（PostPageから移植）

@@ -296,6 +296,14 @@ export const DEFAULT_IMAGE_CONFIG: ImageUploadConfig = {
   },
 };
 
+// ===== 画像容量管理（動的枚数制限用） =====
+export const IMAGE_CAPACITY = {
+  maxCapacityKB: 750,      // Firestore保存時の上限容量（Base64前）
+  highQualityKB: 200,      // 高画質1枚の目標サイズ
+  standardKB: 50,          // 通常画質1枚の目標サイズ（実際の設定）
+  diffKB: 150,             // 通常→高画質の差分（200 - 50）
+};
+
 // ===== アンケート関連型定義（将来用） =====
 export type SurveyQuestionType = 'choice' | 'multiple' | 'text' | 'rating' | 'scale';
 export type SurveyStatus = 'draft' | 'active' | 'closed' | 'archived';

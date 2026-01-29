@@ -9,7 +9,7 @@ import { createPost } from '../firebase/firestore';
 import { getCurrentUser, isAdmin } from '../utils/authUtil';
 import { forceRefreshPosts } from '../pages/HomePage';
 import { FileValidator } from '../utils/fileValidation';
-import { DEFAULT_IMAGE_CONFIG } from '../types';
+import { DEFAULT_IMAGE_CONFIG, IMAGE_CAPACITY } from '../types';
 
 
 // ✅ ArchivePageとHomePageへの直接リフレッシュ関数を定義
@@ -91,6 +91,46 @@ const [uploadStatus, setUploadStatus] = useState('');
 
   // タグプレビューをメモ化
   const tagPreview = useMemo(() => parseTags(tagInput), [tagInput, parseTags]);
+  
+  // 高画質に変更可能な最大枚数を動的に計算
+  const maxHighQuality = useMemo(() => {
+    const totalFiles = selectedFiles.length;
+    const currentHQ = highQualityIndices.length;
+    const currentStandard = totalFiles - currentHQ;
+    
+    // 現在の使用容量（KB）
+    const currentUsage = (currentHQ * IMAGE_CAPACITY.highQualityKB) + 
+                         (currentStandard * IMAGE_CAPACITY.standardKB);
+    
+    // 残り容量（KB）
+    const remaining = IMAGE_CAPACITY.maxCapacityKB - currentUsage;
+    
+    // あと何枚を高画質に変更できるか
+    const additionalHQ = Math.floor(remaining / IMAGE_CAPACITY.diffKB);
+    
+    // 合計で何枚まで高画質にできるか
+    const totalMaxHQ = currentHQ + additionalHQ;
+    
+    // 高画質のみの場合の上限もチェック（750KB ÷ 200KB = 3.75枚 → 3枚）
+    const maxHQOnly = Math.floor(IMAGE_CAPACITY.maxCapacityKB / IMAGE_CAPACITY.highQualityKB);
+    
+    console.log('🔢 動的枚数計算:', {
+      totalFiles,
+      currentHQ,
+      currentStandard,
+      currentUsage,
+      remaining,
+      additionalHQ,
+      totalMaxHQ,
+      maxHQOnly,
+      result: Math.max(0, Math.min(totalMaxHQ, maxHQOnly))
+    });
+
+
+    return Math.max(0, Math.min(totalMaxHQ, maxHQOnly));
+  }, [selectedFiles.length, highQualityIndices.length]);
+  
+ 
   
   // IndexedDBを初期化
   useEffect(() => {
@@ -643,14 +683,14 @@ setTimeout(() => {
           originalSizeMB = (totalBytes / (1024 * 1024)).toFixed(2);
         }
         
-        errorMessage = 
-          `⚠️ 画像が多すぎます\n\n` +
-          `選択した画像: ${totalFiles}枚\n` +
-          `（高画質: ${highQualityCount}枚、通常: ${normalCount}枚）\n\n` +
-          `💡 解決方法:\n` +
-          `• 高画質を${Math.max(0, highQualityCount - 3)}枚減らす\n` +
-          `• または` +
-          `• 画像を${Math.ceil(totalFiles / 2)}枚ずつ、2回に分けて投稿`;
+      // パーセンテージ計算
+        const percentage = Math.round((parseFloat(actualMB) / parseFloat(maxMB)) * 100);
+        errorMessage =
+  `⚠️ データサイズの上限をオーバーしています\n\n` +
+  `💡 解決方法:\n` +
+  `• 高画質を1〜2枚に減らす\n` +
+  `• または通常画質に変更する\n` +
+  `• または2回に分けて投稿する`;
       }
     } else if (error?.code === 'permission-denied') {
       errorMessage = "⚠️ 権限エラー\n\n投稿する権限がありません。";
@@ -1106,7 +1146,7 @@ setTimeout(() => {
   if (e.target.files && e.target.files.length > 0) {
     const filesArray = Array.from(e.target.files);
     if (filesArray.length > DEFAULT_IMAGE_CONFIG.maxTotal) {
-      alert(`最大${DEFAULT_IMAGE_CONFIG.maxTotal}枚まで選択できます`);
+      alert(`⚠️ ${DEFAULT_IMAGE_CONFIG.maxTotal}枚以上は選択できません`);
       return;
     }
     setSelectedFiles(filesArray);
@@ -1196,7 +1236,14 @@ setTimeout(() => {
             高画質を選択
           </div>
           <div style={{ color: "#ffff", fontSize: "0.85rem" }}>
-            図面・書類など細かい文字が読めるよう高画質をキープしたい場合は、最大{DEFAULT_IMAGE_CONFIG.maxHighQuality}枚まで選べます。
+          図面・書類など細かい文字が読めるよう高画質をキープしたい場合は、
+            {maxHighQuality > 0 ? (
+              <>最大<strong>{maxHighQuality}枚</strong>まで選べます。</>
+            ) : (
+              <span style={{ color: "#F0DB4F" }}>
+  ⚠️ 容量上限のため、これ以上高画質に変更できません
+</span>
+            )}
           </div>
         </div>
 
@@ -1207,7 +1254,7 @@ setTimeout(() => {
         }}>
           {photoPreviewUrls.map((url, index) => {
             const isSelected = highQualityIndices.includes(index);
-            const canSelect = highQualityIndices.length < DEFAULT_IMAGE_CONFIG.maxHighQuality || isSelected;
+            const canSelect = highQualityIndices.length < maxHighQuality || isSelected;
             
             return (
               <div
