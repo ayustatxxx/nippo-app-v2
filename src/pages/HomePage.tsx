@@ -3455,11 +3455,6 @@ setFilteredItems(filtered);
 
 console.log('✅ [applyFilters] 完了！ - ID:', executionId);
 console.log('✅ [applyFilters] 設定した件数:', filtered.length);
-
-// ⭐ 次のレンダリングで確認用
-setTimeout(() => {
-  console.log('⏰ [applyFilters] 1秒後の確認 - filteredItems.length:', filteredItems.length);
-}, 1000);
 }, [searchQuery, startDate, endDate, selectedDate, selectedGroup]);
 
 // 🔍 検索・フィルタリング処理
