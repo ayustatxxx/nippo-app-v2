@@ -1286,6 +1286,7 @@ const [displayedPostsCount, setDisplayedPostsCount] = useState(5);
 const POSTS_PER_LOAD = 5;
 const displayedPostsCountRef = useRef(5);
 const [isLoadingMore, setIsLoadingMore] = useState(false);  // 追加読み込み中か
+const isLoadingMoreRef = useRef(false);
 const [currentPage, setCurrentPage] = useState(1);         // 現在のページ番号  
 const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);  // ⭐ 栞を保存
 
@@ -2025,6 +2026,7 @@ const loadMorePosts = useCallback(async () => {
   }
   
   setIsLoadingMore(true);
+isLoadingMoreRef.current = true;
 
   try {
     const userId = localStorage.getItem('daily-report-user-id');
@@ -2137,6 +2139,7 @@ console.log('📥 現在のフィルター条件:', { startDate, endDate, search
   console.log('🔄 [リトライ] 再度スクロールすると再試行できます');
 } finally {
   setIsLoadingMore(false);
+isLoadingMoreRef.current = false;
 }
 
 }, [currentPage, posts.length, isLoadingMore, hasMore, displayLimit, lastVisibleDoc, setPosts, setTimelineItems, setFilteredItems, setHasMore, setIsLoadingMore, setCurrentPage, setDisplayLimit, setLastVisibleDoc]);
@@ -2978,7 +2981,15 @@ useEffect(() => {
   console.log('🔄 スクロール検知: 次のデータを自動読み込み');
   
   // Phase A3: まずメモリ内のデータを表示（超高速！）
-  console.log('🔍 [Phase判定] displayedPostsCount:', displayedPostsCountRef.current, 'filteredItems.length:', filteredItems.length);
+ console.log('🔍 [Phase判定] displayedPostsCount:', displayedPostsCountRef.current, 'filteredItems.length:', filteredItems.length);
+  
+  // displayedPostsCountが filteredItems.length を超えている場合は修正
+  if (displayedPostsCountRef.current > filteredItems.length) {
+    console.log('⚠️ displayedPostsCountを修正:', displayedPostsCountRef.current, '→', filteredItems.length);
+    displayedPostsCountRef.current = filteredItems.length;
+    setDisplayedPostsCount(filteredItems.length);
+  }
+  
   if (displayedPostsCountRef.current < filteredItems.length && filteredItems.length > 0) {
     console.log('📦 [Phase A3] メモリから追加表示:', displayedPostsCountRef.current, '→', displayedPostsCountRef.current + POSTS_PER_LOAD);
     setDisplayedPostsCount(prev => prev + POSTS_PER_LOAD);
@@ -2989,13 +3000,20 @@ useEffect(() => {
   // Phase A4: メモリ内を全部表示したら、Firestoreから追加取得
   console.log('🔄 [Phase A4] Firestoreから追加取得開始');
   
-  // デバウンス処理
+  // デバウンス処理 - 既に pending のタイマーがあればキャンセル
   if (scrollTimeout) {
     clearTimeout(scrollTimeout);
   }
+  
+  // 既にローディング中なら何もしない
+  if (isLoadingMoreRef.current) {
+    console.log('⏸️ 既にローディング中のためスキップ');
+    return;
+  }
+  
   scrollTimeout = setTimeout(() => {
     loadMorePosts();
-  }, 200);
+  }, 500);  // 200ms → 500ms に変更
 } else {
         console.log('⏸️ 読み込みスキップ:', { isLoadingMore, hasMore, loading });
       }
@@ -4358,6 +4376,39 @@ placeholder="キーワード・#タグで検索"
             ) : (
               groupItemsByDate()
             )}
+
+            {/* 全ての投稿を表示しました */}
+{!hasMore && filteredItems.length > 0 && !isLoadingMore && (
+  <div style={{
+    textAlign: 'center',
+    padding: '1.5rem',
+    margin: '1rem 0',
+    backgroundColor: '#E6EDED',
+    borderRadius: '12px',
+    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)'
+  }}>
+    <div style={{
+      fontSize: '2rem',
+      marginBottom: '0.5rem'
+    }}>
+      🦊
+    </div>
+    <div style={{
+      color: '#055A68',
+      fontSize: '1rem',
+      fontWeight: '600',
+      marginBottom: '0.5rem'
+    }}>
+      全ての投稿を表示しました
+    </div>
+    <div style={{
+      color: '#066878',
+      fontSize: '0.85rem'
+    }}>
+      合計 {posts.length} 件の投稿
+    </div>
+  </div>
+)}
           
        {/* 控えめなスピナー */}
 {isLoadingMore && (
@@ -4401,38 +4452,6 @@ placeholder="キーワード・#タグで検索"
   }
 `}</style>
 
-        {/* ⭐ 改善版：全て読み込み完了の表示 ⭐ */}
-{!hasMore && filteredItems.length > 0 && !isLoadingMore && (
-  <div style={{
-    textAlign: 'center',
-    padding: '1.5rem',
-    margin: '1rem 0',
-    backgroundColor: '#E6EDED',
-    borderRadius: '12px',
-    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)'
-  }}>
-    <div style={{
-      fontSize: '2rem',
-      marginBottom: '0.5rem'
-    }}>
-      🦊
-    </div>
-    <div style={{
-      color: '#055A68',
-      fontSize: '1rem',
-      fontWeight: '600',
-      marginBottom: '0.5rem'
-    }}>
-      全ての投稿を表示しました
-    </div>
-    <div style={{
-      color: '#066878',
-      fontSize: '0.85rem'
-    }}>
-      合計 {posts.length} 件の投稿
-    </div>
-  </div>
-)}
       </div>
     )}
   </div>
