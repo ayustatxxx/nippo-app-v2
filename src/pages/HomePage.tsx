@@ -2060,6 +2060,17 @@ isLoadingMoreRef.current = true;
       setHasMore(false);
     } else {
       console.log(`➕ [無限スクロール] ${result.posts.length}件を追加表示`);
+
+       // ⭐ グループ名マッピングを追加 ⭐
+      const postsWithGroupName = result.posts.map(post => {
+        const group = userGroups.find(g => g.id === post.groupId);
+        return {
+          ...post,
+          groupName: group?.name || 'グループ名なし',
+          memos: post.memos || []
+        };
+      });
+      console.log('✅ [無限スクロール] グループ名マッピング完了');
       
 
    // ⭐ 重複チェック付きで既存データに追加 ⭐
@@ -2068,7 +2079,7 @@ setPosts(prevPosts => {
   const existingIds = new Set(prevPosts.map(p => p.id));
   
   // 新しい投稿のみをフィルター
-  const newPosts = result.posts.filter(post => !existingIds.has(post.id));
+  const newPosts = postsWithGroupName.filter(post => !existingIds.has(post.id));
   console.log(`🔍 [重複チェック] 既存: ${prevPosts.length}件, 新規: ${newPosts.length}件, 重複除外: ${result.posts.length - newPosts.length}件`);
   return [...prevPosts, ...newPosts];
 });
@@ -2077,7 +2088,7 @@ setPosts(prevPosts => {
 
 setTimelineItems(prevItems => {
   const existingIds = new Set(prevItems.map(item => 'id' in item ? item.id : ''));
-  const newItems = result.posts.filter(post => !existingIds.has(post.id));
+  const newItems = postsWithGroupName.filter(post => !existingIds.has(post.id));
   const updated = [...prevItems, ...newItems];
   
   setTimeout(() => {
@@ -2389,34 +2400,24 @@ console.log(`✅ [Home] 効率的ロード完了: ${allPosts.length}件の投稿
 
 // 投稿データをセット
 if (isMounted) {
-  // ⭐ Step 1: グループ名をマージ
-  const postsWithGroupNames = allPosts.map(post => {
-    const group = allGroups.find(g => g.id === post.groupId);
-    return {
-      ...post,
-      groupName: group?.name || '不明なグループ'
-    };
-  });
-  
-  console.log('✅ [Home] グループ名マージ完了:', postsWithGroupNames.length, '件');
-
-  console.log('🔍 [Home] 取得した投稿の画像データ構造確認:');
-postsWithGroupNames.slice(0, 1).forEach(post => {
+ 
+console.log('🔍 [Home] 取得した投稿の画像データ構造確認:');
+allPosts.slice(0, 1).forEach(post => {
   console.log('投稿ID:', post.id);
   console.log('  post.photoUrls:', post.photoUrls);
   console.log('  post.images:', post.images);
   console.log('  post.thumbnails:', (post as any).thumbnails);
   console.log('  post全体:', post);
   console.log('  post.thumbnails.documents:', (post as any).thumbnails?.documents);
-console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
+  console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
 });
 
  // ⭐ Step 2: ユーザー名と写真を追加マージ（バッチ版で高速化）
   
   // 全投稿からユーザーIDを抽出
-  const userIds = postsWithGroupNames
-    .map(post => post.authorId || post.userId || post.userID)
-    .filter((id): id is string => !!id);
+const userIds = allPosts
+  .map(post => post.authorId || post.userId || post.userID)
+  .filter((id): id is string => !!id);
   
   console.log('🚀 バッチでユーザー名取得開始:', userIds.length, '人');
   const userFetchStart = performance.now();
@@ -2427,7 +2428,7 @@ console.log(`⏱️ [計測] ユーザー名取得: ${Math.round(userFetchEnd - 
   console.log('✅ バッチ取得完了:', userNamesMap.size, '件');
   
   // ユーザー名と画像を追加
-  const enrichedPosts = postsWithGroupNames.map(post => {
+  const enrichedPosts = allPosts.map(post => {
     const userId = post.authorId || post.userId || post.userID;
     const username = userId && userNamesMap.has(userId) 
       ? userNamesMap.get(userId)! 
