@@ -17,6 +17,28 @@ import { MemoService } from '../utils/memoService';
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 import { linkifyText } from '../utils/urlUtils';
 
+// ⭐ バナーフェードインアニメーション定義 ⭐
+if (typeof document !== 'undefined') {
+  const styleId = 'banner-fade-in-animation';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
 // 🔸 新着バナー用：「最後に見た時刻」を保存・読み込みするためのキー
 const LAST_VIEWED_KEY_PREFIX = 'homepage-last-viewed-';
 
@@ -2080,6 +2102,7 @@ setPosts(prevPosts => {
   
   // 新しい投稿のみをフィルター
   const newPosts = postsWithGroupName.filter(post => !existingIds.has(post.id));
+  actualNewPostsCount = newPosts.length;
   console.log(`🔍 [重複チェック] 既存: ${prevPosts.length}件, 新規: ${newPosts.length}件, 重複除外: ${result.posts.length - newPosts.length}件`);
   return [...prevPosts, ...newPosts];
 });
@@ -2100,12 +2123,14 @@ setTimelineItems(prevItems => {
 
 console.log('📥 現在のフィルター条件:', { startDate, endDate, searchQuery });
 
+let actualNewPostsCount = 0;
       
       // ⭐ 栞を更新（次回のために）⭐
       setLastVisibleDoc(result.lastVisible);
       
-      // まだデータがあるかを更新
-      setHasMore(result.hasMore);
+      // ⭐ 新規データがなければ終了 ⭐
+const hasNewData = actualNewPostsCount > 0;
+setHasMore(result.hasMore && hasNewData);
       
       // ページ番号を更新
       setCurrentPage(nextPage);
@@ -4373,16 +4398,20 @@ placeholder="キーワード・#タグで検索"
               groupItemsByDate()
             )}
 
+
             全ての投稿を表示しました
-{!hasMore && filteredItems.length > 0 && !isLoadingMore && (
+{!hasMore && !isLoadingMore && filteredItems.length > 0 && posts.length >= 20 && (
   <div style={{
     textAlign: 'center',
     padding: '1.5rem',
     margin: '1rem 0',
     backgroundColor: '#E6EDED',
     borderRadius: '12px',
-    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)'
+    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)',
+    opacity: 0,
+    animation: 'fadeIn 0.5s ease-in 0.5s forwards'
   }}>
+
     <div style={{
       fontSize: '2rem',
       marginBottom: '0.5rem'
