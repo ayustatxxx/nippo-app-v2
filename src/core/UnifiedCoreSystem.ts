@@ -416,7 +416,7 @@ return { posts, lastDoc, hasMore };
    */
   static async getLatestPostsFromMultipleGroups(
     groupIds: string[],
-    limit: number = 20
+    limit: number = 10
   ): Promise<Post[]> {
     console.log(`🔍 [UnifiedCore] ${groupIds.length}グループから最新${limit}件を取得開始`);
     
@@ -426,6 +426,7 @@ return { posts, lastDoc, hasMore };
     }
 
     try {
+      const totalStart = performance.now();
       const allPosts: Post[] = [];
       
       // Firebaseの制限：where('groupId', 'in', ...) は最大10個まで
@@ -435,91 +436,139 @@ return { posts, lastDoc, hasMore };
       
       console.log(`📦 [UnifiedCore] ${batches}バッチに分割して取得`);
       
-      for (let i = 0; i < batches; i++) {
-        const start = i * batchSize;
-        const end = Math.min(start + batchSize, groupIds.length);
-        const batchGroupIds = groupIds.slice(start, end);
+
+
+  // バッチ処理を関数化
+  const processBatch = async (batchIndex: number) => {
+    const batchStart = performance.now();
+    const start = batchIndex * batchSize;
+    const end = Math.min(start + batchSize, groupIds.length);
+    const batchGroupIds = groupIds.slice(start, end);
+    
+    console.log(`📦 [UnifiedCore] バッチ${batchIndex + 1}/${batches}: ${batchGroupIds.length}グループ`);
+    
+    // firestoreServiceから直接取得
+    const { collection, query, where, orderBy, limit: limitQuery, getDocs, getFirestore } = await import('firebase/firestore');
+    const db = getFirestore();
+    
+    const postsRef = collection(db, 'posts');
+    const q = query(
+      postsRef,
+      where('groupId', 'in', batchGroupIds),
+      orderBy('createdAt', 'desc'),
+      limitQuery(limit)
+    );
+    
+    const snapshot = await getDocs(q);
+    const posts = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      const postId = doc.id;
+      
+      return {
+        id: postId,
+        data,
+        needsOldFormatImages: (!data.photoUrls || data.photoUrls.length === 0) && (!data.images || data.images.length === 0)
+      };
+    });
+    
+    // 🚀 旧形式投稿を抽出してバッチで画像取得
+    const oldFormatPosts = posts.filter(p => p.needsOldFormatImages);
+    let imagesMap = new Map<string, { documentImages: string[]; photoImages: string[] }>();
+    
+    if (oldFormatPosts.length > 0) {
+      console.log(`🚀 [バッチ] 旧形式画像取得開始: ${oldFormatPosts.length} 件`);
+      try {
+        const { getOldFormatImagesBatch } = await import('../firebase/firestore');
+        const oldFormatIds = oldFormatPosts.map(p => p.id);
+        imagesMap = await getOldFormatImagesBatch(oldFormatIds);
+        console.log(`✅ [バッチ] 旧形式画像取得完了: ${imagesMap.size} 件`);
+      } catch (error) {
+        console.error(`❌ [バッチ] 旧形式画像取得エラー:`, error);
+      }
+    }
+    
+    // 各投稿に画像を割り当て
+    const enrichedPosts = posts.map((post) => {
+      const data = post.data;
+      let fullImages: string[] = [];
+      
+      // ✅ 新形式: photoUrls フィールド
+      if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
+        fullImages = data.photoUrls;
+        console.log(`✅ [新形式] 投稿ID: ${post.id} - photoUrls から ${fullImages.length}枚取得`);
         
-        console.log(`📦 [UnifiedCore] バッチ${i + 1}/${batches}: ${batchGroupIds.length}グループ`);
+      // ✅ 中間形式: images フィールド
+      } else if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+        fullImages = data.images;
+        console.log(`✅ [中間形式] 投稿ID: ${post.id} - images から ${fullImages.length}枚取得`);
         
-        // firestoreServiceから直接取得
-        const { collection, query, where, orderBy, limit: limitQuery, getDocs, getFirestore } = await import('firebase/firestore');
-        const db = getFirestore();
-        
-        const postsRef = collection(db, 'posts');
-        const q = query(
-          postsRef,
-          where('groupId', 'in', batchGroupIds),
-          orderBy('createdAt', 'desc'),
-          limitQuery(limit)
-        );
-        
-        const snapshot = await getDocs(q);
-        const posts = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          const postId = doc.id;
-          
-          return {
-            id: postId,
-            data,
-            needsOldFormatImages: (!data.photoUrls || data.photoUrls.length === 0) && (!data.images || data.images.length === 0)
-          };
-        });
-        
-        // 🚀 旧形式投稿を抽出してバッチで画像取得
-        const oldFormatPosts = posts.filter(p => p.needsOldFormatImages);
-        let imagesMap = new Map<string, { documentImages: string[]; photoImages: string[] }>();
-        
-        if (oldFormatPosts.length > 0) {
-          console.log(`🚀 [バッチ] 旧形式画像取得開始: ${oldFormatPosts.length} 件`);
-          try {
-            const { getOldFormatImagesBatch } = await import('../firebase/firestore');
-            const oldFormatIds = oldFormatPosts.map(p => p.id);
-            imagesMap = await getOldFormatImagesBatch(oldFormatIds);
-            console.log(`✅ [バッチ] 旧形式画像取得完了: ${imagesMap.size} 件`);
-          } catch (error) {
-            console.error(`❌ [バッチ] 旧形式画像取得エラー:`, error);
+      // 📦 旧形式: バッチ取得した画像を使用
+      } else if (post.needsOldFormatImages) {
+        const batchImages = imagesMap.get(post.id);
+        if (batchImages) {
+          fullImages = [...batchImages.documentImages, ...batchImages.photoImages];
+          if (fullImages.length > 0) {
+            console.log(`📦 [旧形式] 投稿ID: ${post.id} - バッチから ${fullImages.length}枚取得`);
           }
         }
-        
-        // 各投稿に画像を割り当て
-        const enrichedPosts = posts.map((post) => {
-          const data = post.data;
-          let fullImages: string[] = [];
-          
-          // ✅ 新形式: photoUrls フィールド
-          if (data.photoUrls && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
-            fullImages = data.photoUrls;
-            console.log(`✅ [新形式] 投稿ID: ${post.id} - photoUrls から ${fullImages.length}枚取得`);
-            
-          // ✅ 中間形式: images フィールド
-          } else if (data.images && Array.isArray(data.images) && data.images.length > 0) {
-            fullImages = data.images;
-            console.log(`✅ [中間形式] 投稿ID: ${post.id} - images から ${fullImages.length}枚取得`);
-            
-          // 📦 旧形式: バッチ取得した画像を使用
-          } else if (post.needsOldFormatImages) {
-            const batchImages = imagesMap.get(post.id);
-            if (batchImages) {
-              fullImages = [...batchImages.documentImages, ...batchImages.photoImages];
-              if (fullImages.length > 0) {
-                console.log(`📦 [旧形式] 投稿ID: ${post.id} - バッチから ${fullImages.length}枚取得`);
-              }
-            }
-          }
-          
-          return {
-            id: post.id,
-            ...data,
-            createdAt: data.createdAt,
-            images: fullImages.length > 0 ? fullImages : (data.images || []),
-          } as Post;
-        });
-        
-        console.log(`✅ [UnifiedCore] バッチ${i + 1}: ${enrichedPosts.length}件取得`);
-        allPosts.push(...enrichedPosts);
-        
       }
+      
+      return {
+  id: post.id,
+  ...data,
+  createdAt: data.createdAt,
+  images: fullImages.length > 0 ? fullImages : (data.images || []),
+} as Post;
+    });
+    
+    const batchEnd = performance.now();
+    console.log(`⏱️ [計測] バッチ${batchIndex + 1}処理時間: ${Math.round(batchEnd - batchStart)}ms`);
+    console.log(`✅ [UnifiedCore] バッチ${batchIndex + 1}: ${enrichedPosts.length}件取得`);
+    
+    return enrichedPosts;
+  };
+
+
+// 🚀 並列化処理
+if (batches >= 3) {
+  console.log('🚀 [並列化] バッチ1, 2, 3を並列実行開始');
+  
+  const parallel1Start = performance.now();
+  const [batch1Posts, batch2Posts, batch3Posts] = await Promise.all([
+    processBatch(0),
+    processBatch(1),
+    processBatch(2)
+  ]);
+  const parallel1End = performance.now();
+  const parallelTime = Math.round(parallel1End - parallel1Start);
+  
+  console.log(`⏱️ [並列計測] バッチ1+2+3並列処理時間: ${parallelTime}ms`);
+  
+  if (parallelTime > 3000) {
+    console.warn(`⚠️ [パフォーマンス警告] 並列処理が遅延: ${parallelTime}ms（閾値: 3000ms）`);
+  }
+  
+  allPosts.push(...batch1Posts, ...batch2Posts, ...batch3Posts);
+  
+} else if (batches >= 2) {
+  console.log('🚀 [並列化] バッチ1とバッチ2を並列実行開始');
+  
+  const parallel1Start = performance.now();
+  const [batch1Posts, batch2Posts] = await Promise.all([
+    processBatch(0),
+    processBatch(1)
+  ]);
+  const parallel1End = performance.now();
+  console.log(`⏱️ [並列計測] バッチ1+2並列処理時間: ${Math.round(parallel1End - parallel1Start)}ms`);
+  
+  allPosts.push(...batch1Posts, ...batch2Posts);
+  
+} else {
+
+  // バッチが1つだけの場合
+  const batch1Posts = await processBatch(0);
+  allPosts.push(...batch1Posts);
+ }
       
       // 全バッチの投稿を最新順にソート
       allPosts.sort((a, b) => {
@@ -533,6 +582,8 @@ return { posts, lastDoc, hasMore };
       const result = allPosts.slice(0, limit);
       
       console.log(`✅ [UnifiedCore] 最新${result.length}件を取得完了（全${allPosts.length}件から抽出）`);
+      const totalEnd = performance.now();
+      console.log(`⏱️ [計測] 全体処理時間: ${Math.round(totalEnd - totalStart)}ms`);
       return result;
       
     } catch (error) {
@@ -870,7 +921,7 @@ if (existingPost) {
  */
 static async getLatestPostsFromMultipleGroupsPaginated(
   groupIds: string[],
-  limit: number = 20,
+  limit: number = 10,
   lastVisible: any = null  // ← 前回の最後の位置を覚えておく
 ): Promise<{
   posts: Post[];

@@ -17,6 +17,28 @@ import { MemoService } from '../utils/memoService';
 import UnifiedCoreSystem from "../core/UnifiedCoreSystem";
 import { linkifyText } from '../utils/urlUtils';
 
+// ⭐ バナーフェードインアニメーション定義 ⭐
+if (typeof document !== 'undefined') {
+  const styleId = 'banner-fade-in-animation';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
 // 🔸 新着バナー用：「最後に見た時刻」を保存・読み込みするためのキー
 const LAST_VIEWED_KEY_PREFIX = 'homepage-last-viewed-';
 
@@ -1281,7 +1303,12 @@ const [isCountingResults, setIsCountingResults] = useState(false);  // ← 追�
 const [selectedPostForDetail, setSelectedPostForDetail] = useState<Post | null>(null);
 const [displayLimit, setDisplayLimit] = useState(10);
 const [hasMore, setHasMore] = useState(true);         // まだデータがあるか
+let scrollTimeout: NodeJS.Timeout | null = null;
+const [displayedPostsCount, setDisplayedPostsCount] = useState(5);
+const POSTS_PER_LOAD = 5;
+const displayedPostsCountRef = useRef(5);
 const [isLoadingMore, setIsLoadingMore] = useState(false);  // 追加読み込み中か
+const isLoadingMoreRef = useRef(false);
 const [currentPage, setCurrentPage] = useState(1);         // 現在のページ番号  
 const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);  // ⭐ 栞を保存
 
@@ -2021,6 +2048,7 @@ const loadMorePosts = useCallback(async () => {
   }
   
   setIsLoadingMore(true);
+isLoadingMoreRef.current = true;
 
   try {
     const userId = localStorage.getItem('daily-report-user-id');
@@ -2054,6 +2082,17 @@ const loadMorePosts = useCallback(async () => {
       setHasMore(false);
     } else {
       console.log(`➕ [無限スクロール] ${result.posts.length}件を追加表示`);
+
+       // ⭐ グループ名マッピングを追加 ⭐
+      const postsWithGroupName = result.posts.map(post => {
+        const group = userGroups.find(g => g.id === post.groupId);
+        return {
+          ...post,
+          groupName: group?.name || 'グループ名なし',
+          memos: post.memos || []
+        };
+      });
+      console.log('✅ [無限スクロール] グループ名マッピング完了');
       
 
    // ⭐ 重複チェック付きで既存データに追加 ⭐
@@ -2062,7 +2101,8 @@ setPosts(prevPosts => {
   const existingIds = new Set(prevPosts.map(p => p.id));
   
   // 新しい投稿のみをフィルター
-  const newPosts = result.posts.filter(post => !existingIds.has(post.id));
+  const newPosts = postsWithGroupName.filter(post => !existingIds.has(post.id));
+  actualNewPostsCount = newPosts.length;
   console.log(`🔍 [重複チェック] 既存: ${prevPosts.length}件, 新規: ${newPosts.length}件, 重複除外: ${result.posts.length - newPosts.length}件`);
   return [...prevPosts, ...newPosts];
 });
@@ -2071,7 +2111,7 @@ setPosts(prevPosts => {
 
 setTimelineItems(prevItems => {
   const existingIds = new Set(prevItems.map(item => 'id' in item ? item.id : ''));
-  const newItems = result.posts.filter(post => !existingIds.has(post.id));
+  const newItems = postsWithGroupName.filter(post => !existingIds.has(post.id));
   const updated = [...prevItems, ...newItems];
   
   setTimeout(() => {
@@ -2083,22 +2123,25 @@ setTimelineItems(prevItems => {
 
 console.log('📥 現在のフィルター条件:', { startDate, endDate, searchQuery });
 
+let actualNewPostsCount = 0;
       
       // ⭐ 栞を更新（次回のために）⭐
       setLastVisibleDoc(result.lastVisible);
       
-      // まだデータがあるかを更新
-      setHasMore(result.hasMore);
+      // ⭐ 新規データがなければ終了 ⭐
+const hasNewData = actualNewPostsCount > 0;
+setHasMore(result.hasMore && hasNewData);
       
       // ページ番号を更新
       setCurrentPage(nextPage);
       
       // displayLimitも増やす
       setDisplayLimit(prev => prev + result.posts.length);
+
+      // Phase A4: displayedPostsCountも増やす
+      setDisplayedPostsCount(prev => prev + result.posts.length);
       
      
-  
-  
       
       console.log(`📊 [無限スクロール] 合計 ${posts.length + result.posts.length} 件表示中`);
       console.log(`📊 [表示制限] displayLimitを更新しました`);
@@ -2132,6 +2175,7 @@ console.log('📥 現在のフィルター条件:', { startDate, endDate, search
   console.log('🔄 [リトライ] 再度スクロールすると再試行できます');
 } finally {
   setIsLoadingMore(false);
+isLoadingMoreRef.current = false;
 }
 
 }, [currentPage, posts.length, isLoadingMore, hasMore, displayLimit, lastVisibleDoc, setPosts, setTimelineItems, setFilteredItems, setHasMore, setIsLoadingMore, setCurrentPage, setDisplayLimit, setLastVisibleDoc]);
@@ -2341,11 +2385,11 @@ try {
 
 // ⭐ 新しい効率的な取得方法 ⭐
 const groupIds = userGroups.map(g => g.id);
-console.log(`📊 [効率的ロード] ${groupIds.length}グループから最新20件を一括取得`);
+console.log(`📊 [効率的ロード] ${groupIds.length}グループから最新10件を一括取得`);
 const postFetchStart = performance.now();
 allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
   groupIds,
-  20  // 表示する10件 + 予備10件
+  10  // 初回10件取得（5件ずつ段階表示）
 );
 const postFetchEnd = performance.now();
 console.log(`⏱️ [計測] 投稿取得: ${Math.round(postFetchEnd - postFetchStart)}ms`);
@@ -2381,34 +2425,24 @@ console.log(`✅ [Home] 効率的ロード完了: ${allPosts.length}件の投稿
 
 // 投稿データをセット
 if (isMounted) {
-  // ⭐ Step 1: グループ名をマージ
-  const postsWithGroupNames = allPosts.map(post => {
-    const group = allGroups.find(g => g.id === post.groupId);
-    return {
-      ...post,
-      groupName: group?.name || '不明なグループ'
-    };
-  });
-  
-  console.log('✅ [Home] グループ名マージ完了:', postsWithGroupNames.length, '件');
-
-  console.log('🔍 [Home] 取得した投稿の画像データ構造確認:');
-postsWithGroupNames.slice(0, 1).forEach(post => {
+ 
+console.log('🔍 [Home] 取得した投稿の画像データ構造確認:');
+allPosts.slice(0, 1).forEach(post => {
   console.log('投稿ID:', post.id);
   console.log('  post.photoUrls:', post.photoUrls);
   console.log('  post.images:', post.images);
   console.log('  post.thumbnails:', (post as any).thumbnails);
   console.log('  post全体:', post);
   console.log('  post.thumbnails.documents:', (post as any).thumbnails?.documents);
-console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
+  console.log('  post.thumbnails.photos:', (post as any).thumbnails?.photos);
 });
 
  // ⭐ Step 2: ユーザー名と写真を追加マージ（バッチ版で高速化）
   
   // 全投稿からユーザーIDを抽出
-  const userIds = postsWithGroupNames
-    .map(post => post.authorId || post.userId || post.userID)
-    .filter((id): id is string => !!id);
+const userIds = allPosts
+  .map(post => post.authorId || post.userId || post.userID)
+  .filter((id): id is string => !!id);
   
   console.log('🚀 バッチでユーザー名取得開始:', userIds.length, '人');
   const userFetchStart = performance.now();
@@ -2419,7 +2453,7 @@ console.log(`⏱️ [計測] ユーザー名取得: ${Math.round(userFetchEnd - 
   console.log('✅ バッチ取得完了:', userNamesMap.size, '件');
   
   // ユーザー名と画像を追加
-  const enrichedPosts = postsWithGroupNames.map(post => {
+  const enrichedPosts = allPosts.map(post => {
     const userId = post.authorId || post.userId || post.userID;
     const username = userId && userNamesMap.has(userId) 
       ? userNamesMap.get(userId)! 
@@ -2492,7 +2526,7 @@ let postsWithTimestamp = enrichedPosts.map(post => {
           return { ...post, timestamp: convertedTimestamp };
         }
       } catch (error) {
-        console.error('❌ [timestamp変換] toMillis実行エラー:', error);
+        // toMillis実行エラー（無視して次の処理へ）
       }
     }
   }
@@ -2625,11 +2659,11 @@ const refreshData = async () => {
 
       // ⭐ リフレッシュも効率的な取得方法を使用 ⭐
 const groupIds = userGroups.map(g => g.id);
-console.log(`📊 [リフレッシュロード] ${groupIds.length}グループから最新20件を一括取得`);
+console.log(`📊 [リフレッシュロード] ${groupIds.length}グループから最新10件を一括取得`);
 
 allPosts = await UnifiedCoreSystem.getLatestPostsFromMultipleGroups(
   groupIds,
-  20
+  30  // 初回表示する30件
 );
 
 // ⭐ デバッグ2: refreshHomePage - Firestore取得直後
@@ -2960,7 +2994,7 @@ setHasNewPosts(true);
 useEffect(() => {
   const handleScroll = () => {
     const scrollPosition = window.innerHeight + window.scrollY;
-    const bottomThreshold = document.body.offsetHeight - 500;
+    const bottomThreshold = document.body.offsetHeight - 800;
     
     // 🌟 デバッグログ追加
     console.log('📏 スクロール位置:', scrollPosition, 'しきい値:', bottomThreshold);
@@ -2969,10 +3003,44 @@ useEffect(() => {
       // 検索中かどうかをチェック
       const isSearching = searchQuery.trim() !== '' || startDate !== '' || endDate !== '';
       
-      if (!isLoadingMore && hasMore && !loading && !isSearching) {
-        console.log('🔄 スクロール検知: 次のデータを自動読み込み');
-        loadMorePosts();
-      } else {
+     if (!isLoadingMore && hasMore && !loading && !isSearching) {
+  console.log('🔄 スクロール検知: 次のデータを自動読み込み');
+  
+  // Phase A3: まずメモリ内のデータを表示（超高速！）
+ console.log('🔍 [Phase判定] displayedPostsCount:', displayedPostsCountRef.current, 'filteredItems.length:', filteredItems.length);
+  
+  // displayedPostsCountが filteredItems.length を超えている場合は修正
+  if (displayedPostsCountRef.current > filteredItems.length) {
+    console.log('⚠️ displayedPostsCountを修正:', displayedPostsCountRef.current, '→', filteredItems.length);
+    displayedPostsCountRef.current = filteredItems.length;
+    setDisplayedPostsCount(filteredItems.length);
+  }
+  
+  if (displayedPostsCountRef.current < filteredItems.length && filteredItems.length > 0) {
+    console.log('📦 [Phase A3] メモリから追加表示:', displayedPostsCountRef.current, '→', displayedPostsCountRef.current + POSTS_PER_LOAD);
+    setDisplayedPostsCount(prev => prev + POSTS_PER_LOAD);
+    displayedPostsCountRef.current += POSTS_PER_LOAD;
+    return; // Firestoreアクセスなし！即座に表示！
+  }
+  
+  // Phase A4: メモリ内を全部表示したら、Firestoreから追加取得
+  console.log('🔄 [Phase A4] Firestoreから追加取得開始');
+  
+  // デバウンス処理 - 既に pending のタイマーがあればキャンセル
+  if (scrollTimeout) {
+    clearTimeout(scrollTimeout);
+  }
+  
+  // 既にローディング中なら何もしない
+  if (isLoadingMoreRef.current) {
+    console.log('⏸️ 既にローディング中のためスキップ');
+    return;
+  }
+  
+  scrollTimeout = setTimeout(() => {
+    loadMorePosts();
+  }, 500);  // 200ms → 500ms に変更
+} else {
         console.log('⏸️ 読み込みスキップ:', { isLoadingMore, hasMore, loading });
       }
     }
@@ -3413,11 +3481,6 @@ setFilteredItems(filtered);
 
 console.log('✅ [applyFilters] 完了！ - ID:', executionId);
 console.log('✅ [applyFilters] 設定した件数:', filtered.length);
-
-// ⭐ 次のレンダリングで確認用
-setTimeout(() => {
-  console.log('⏰ [applyFilters] 1秒後の確認 - filteredItems.length:', filteredItems.length);
-}, 1000);
 }, [searchQuery, startDate, endDate, selectedDate, selectedGroup]);
 
 // 🔍 検索・フィルタリング処理
@@ -4334,57 +4397,21 @@ placeholder="キーワード・#タグで検索"
             ) : (
               groupItemsByDate()
             )}
-          
-        {/* 🌟 追加読み込み中の表示 */}
-        {/* ⭐ 改善版：追加読み込み中の表示 ⭐ */}
-{isLoadingMore && (
-  <div style={{
-    textAlign: 'center',
-    padding: '2rem',
-    color: '#055A68',
-    backgroundColor: '#E6EDED',
-    borderRadius: '12px',
-    margin: '1rem 0',
-    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)'
-  }}>
-    <div style={{
-      width: '40px',
-      height: '40px',
-      border: '4px solid rgba(5, 90, 104, 0.2)',
-      borderTop: '4px solid #055A68',
-      borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite',
-      margin: '0 auto'
-    }}></div>
-    <p style={{ 
-      marginTop: '1rem',
-      fontSize: '0.95rem',
-      fontWeight: '500',
-      color: '#055A68'
-    }}>
-      📥 続きを読み込んでいます...
-    </p>
-    <p style={{
-      marginTop: '0.5rem',
-      fontSize: '0.8rem',
-      color: '#066878',
-      opacity: 0.8
-    }}>
-      現在 {posts.length} 件を表示中
-    </p>
-  </div>
-)}
 
-        {/* ⭐ 改善版：全て読み込み完了の表示 ⭐ */}
-{!hasMore && filteredItems.length > 0 && !isLoadingMore && (
+
+            全ての投稿を表示しました
+{!hasMore && !isLoadingMore && filteredItems.length > 0 && posts.length >= 20 && (
   <div style={{
     textAlign: 'center',
     padding: '1.5rem',
     margin: '1rem 0',
     backgroundColor: '#E6EDED',
     borderRadius: '12px',
-    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)'
+    boxShadow: '0 2px 8px rgba(0, 102, 114, 0.1)',
+    opacity: 0,
+    animation: 'fadeIn 0.5s ease-in 0.5s forwards'
   }}>
+
     <div style={{
       fontSize: '2rem',
       marginBottom: '0.5rem'
@@ -4403,10 +4430,52 @@ placeholder="キーワード・#タグで検索"
       color: '#066878',
       fontSize: '0.85rem'
     }}>
-      合計 {posts.length} 件の投稿
     </div>
   </div>
 )}
+          
+       {/* 控えめなスピナー */}
+{isLoadingMore && (
+  <div style={{
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '1rem 0'
+  }}>
+    <div style={{
+      width: '8px',
+      height: '8px',
+      backgroundColor: '#9CA3AF',
+      borderRadius: '50%',
+      animation: 'bounce 1.4s infinite ease-in-out both',
+      animationDelay: '0s'
+    }}></div>
+    <div style={{
+      width: '8px',
+      height: '8px',
+      backgroundColor: '#9CA3AF',
+      borderRadius: '50%',
+      animation: 'bounce 1.4s infinite ease-in-out both',
+      animationDelay: '0.16s'
+    }}></div>
+    <div style={{
+      width: '8px',
+      height: '8px',
+      backgroundColor: '#9CA3AF',
+      borderRadius: '50%',
+      animation: 'bounce 1.4s infinite ease-in-out both',
+      animationDelay: '0.32s'
+    }}></div>
+  </div>
+)}
+
+<style>{`
+  @keyframes bounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+  }
+`}</style>
+
       </div>
     )}
   </div>
@@ -4545,8 +4614,8 @@ placeholder="キーワード・#タグで検索"
   // タイムラインアイテムを日付ごとにグループ化して表示するヘルパー関数
 function groupItemsByDate() {
   // 🌟 ここで全体の表示件数を制限（重要！）
-  const limitedItems = filteredItems.slice(0, displayLimit);
-  console.log(`📊 表示制限適用: ${displayLimit}件 / 全${filteredItems.length}件`);
+  const limitedItems = filteredItems.slice(0, displayedPostsCount);
+  console.log(`📊 表示制限適用: ${displayedPostsCount}件 / 全${filteredItems.length}件`);
   console.log(`🔍 [デバッグ] displayLimitの値: ${displayLimit}`);  // ← この行を追加
   // 日付ごとにグループ化
   const groupedByDate: Record<string, TimelineItem[]> = {};
@@ -4668,5 +4737,19 @@ export const forceRefreshPosts = () => {
 
 
 <MainFooterNav />
+
+{/* bounce アニメーション */}
+<style>{`
+  @keyframes bounce {
+    0%, 80%, 100% { 
+      transform: scale(0);
+      opacity: 0.5;
+    }
+    40% { 
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+`}</style>
 
 export default HomePage;
