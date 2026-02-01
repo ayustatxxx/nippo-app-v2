@@ -92,16 +92,27 @@ const sanitizeInput = (input: string): string => {
   setTagInput(sanitized);
 };
 
-  // タグの処理
+  // タグの処理（カンマ区切り、スペース区切り、#付きスペース区切りに対応）
   const parseTags = (input: string): string[] => {
     const sanitized = sanitizeInput(input);
-    return sanitized
-      .split(',')
+    
+    // まず#で始まる単語（スペース区切り）を抽出
+    const hashtagPattern = /#[^\s,]+/g;
+    const hashtagMatches = sanitized.match(hashtagPattern) || [];
+    
+    // #がない部分をカンマまたはスペースで分割
+    const withoutHashtags = sanitized.replace(hashtagPattern, '').trim();
+    const commaSplit = withoutHashtags
+      .split(/[,\s]+/) // カンマまたはスペースで分割
       .map(tag => tag.trim())
       .filter(tag => tag !== '')
-      .filter(tag => tag.length <= 50) // 🔒 タグ長制限
-      .slice(0, 10) // 🔒 最大10個まで
       .map(tag => tag.startsWith('#') ? tag : `#${tag}`);
+    
+    // #付きタグと通常タグを結合
+    return [...hashtagMatches, ...commaSplit]
+      .filter(tag => tag !== '#') // #のみは除外
+      .filter(tag => tag.length <= 51) // 🔒 タグ長制限（#を含めて51文字）
+      .slice(0, 10); // 🔒 最大10個まで
   };
 
   const handleSave = async () => {
@@ -514,7 +525,7 @@ const sanitizeInput = (input: string): string => {
               value={tagInput}
               onChange={handleTagInputChange} // 🔒 セキュリティ強化済み
               maxLength={200} // 🔒 入力長制限
-              placeholder="タグをカンマ区切りで入力"
+              placeholder="スペースやカンマ区切りで入力 "
               style={{
                 width: '100%',
                 padding: '0.8rem',
@@ -523,6 +534,7 @@ const sanitizeInput = (input: string): string => {
                 fontSize: '0.9rem',
                 boxSizing: 'border-box',
                 backgroundColor: '#fafafa',
+                color: '#333',
                 transition: 'border-color 0.2s',
               }}
               onFocus={(e) => e.target.style.borderColor = '#055A68'}

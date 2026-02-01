@@ -4373,7 +4373,7 @@ placeholder="キーワード・#タグで検索"
               groupItemsByDate()
             )}
 
-            {/* 全ての投稿を表示しました */}
+            全ての投稿を表示しました
 {!hasMore && filteredItems.length > 0 && !isLoadingMore && (
   <div style={{
     textAlign: 'center',
@@ -4401,7 +4401,6 @@ placeholder="キーワード・#タグで検索"
       color: '#066878',
       fontSize: '0.85rem'
     }}>
-      合計 {posts.length} 件の投稿
     </div>
   </div>
 )}
