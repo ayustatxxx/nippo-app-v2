@@ -79,15 +79,21 @@ const [uploadStatus, setUploadStatus] = useState('');
   
   // 🔒 セキュリティ強化: タグの処理関数
   const parseTags = useCallback((input: string): string[] => {
-    const sanitized = sanitizeInput(input);
-    return sanitized
-      .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => tag !== '')
-      .filter(tag => tag.length <= 50)
-      .slice(0, 10)
-      .map(tag => tag.startsWith('#') ? tag : `#${tag}`);
-  }, [sanitizeInput]);
+  const sanitized = sanitizeInput(input);
+  
+  // すべてをカンマ、半角スペース、全角スペースで分割
+  const allParts = sanitized
+    .split(/[,\s\u3000]+/)
+    .map(part => part.trim())
+    .filter(part => part !== '');
+  
+  // 各パートに#を付ける（既に#がある場合はそのまま）
+  return allParts
+    .map(part => part.startsWith('#') ? part : `#${part}`)
+    .filter(tag => tag !== '#')
+    .filter(tag => tag.length <= 51)
+    .slice(0, 10);
+}, [sanitizeInput]);
 
   // タグプレビューをメモ化
   const tagPreview = useMemo(() => parseTags(tagInput), [tagInput, parseTags]);
@@ -906,7 +912,7 @@ setTimeout(() => {
                 </svg>
 
 <img 
-  src="/src/assets/EXIT.png" 
+  src="/exit.png"
   alt="Exit" 
   style={{ 
     height: '41px',
@@ -1088,7 +1094,7 @@ setTimeout(() => {
                     color: "#ddd", 
                     fontSize: "0.8rem" 
                   }}>
-                    カンマ区切りで入力 ( 最大10個 )
+                    スペースやカンマ区切りで入力 ( 最大10個 )
                   </small>
                   
                   {/* タグプレビュー */}

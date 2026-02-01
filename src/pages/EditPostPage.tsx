@@ -234,13 +234,13 @@ const timeChanged = startTime !== originalStartTime || endTime !== originalEndTi
 }, [editedMessage, editedTags, newPhotoUrls, deletedPhotoUrls, post, startTime, endTime, workDate]);
   
   // 🔒 セキュリティ強化: 入力値サニタイゼーション
-  const sanitizeInput = (input: string): string => {
-    return input
-      .replace(/[<>]/g, '') // HTMLタグを除去
-      .replace(/javascript:/gi, '') // JavaScriptスキームを除去
-      .replace(/on\\w+=/gi, '') // イベントハンドラを除去
-      .trim();
-  };
+const sanitizeInput = (input: string): string => {
+  return input
+    .replace(/[<>]/g, '') // HTMLタグを除去
+    .replace(/javascript:/gi, '') // JavaScriptスキームを除去
+    .replace(/on\w+=/gi, ''); // イベントハンドラを除去
+  // .trim() を削除（改行・スペースを保持）
+};
 
   // 🆕 メッセージから時刻情報を削除する関数
 const removeTimeFromMessage = (message: string): string => {
@@ -319,18 +319,38 @@ const formatDateToJapanese = (dateStr: string): string => {
     }
   };
 
-  // 複数タグ追加処理（カンマ区切り対応）
-  const handleAddMultipleTags = (input: string) => {
-    const sanitized = sanitizeInput(input);
-    const tags = sanitized.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
-    
-    tags.forEach(tagText => {
-      const tag = tagText.startsWith('#') ? tagText : `#${tagText}`;
-      if (tag.length > 1 && tag.length <= 50 && !editedTags.includes(tag)) {
-        setEditedTags(prev => [...prev, tag]);
-      }
-    });
-  };
+// 複数タグ追加処理（カンマ区切り、スペース区切り、#付きスペース区切りに対応）
+const handleAddMultipleTags = (input: string) => {
+  console.log('🔍 handleAddMultipleTags 呼び出し');
+  console.log('  入力値:', input);
+  console.log('  入力値の長さ:', input.length);
+  console.log('  文字コード:', [...input].map(c => `${c}(${c.charCodeAt(0)})`));
+  
+  const sanitized = sanitizeInput(input);
+  console.log('  サニタイズ後:', sanitized);
+  
+  // すべてをカンマ、半角スペース、全角スペースで分割
+  const allParts = sanitized
+    .split(/[,\s\u3000]+/)
+    .map(part => part.trim())
+    .filter(part => part !== '');
+  
+  console.log('  分割結果:', allParts);
+  
+ 
+  // 各パートに#を付ける（既に#がある場合はそのまま）
+  const allTags = allParts
+    .map(part => part.startsWith('#') ? part : `#${part}`)
+    .filter(tag => tag !== '#')
+    .filter(tag => tag.length <= 51);
+  
+  // 重複を避けつつ追加（最大10個まで）
+  allTags.forEach(tag => {
+    if (tag.length > 1 && !editedTags.includes(tag) && editedTags.length < 10) {
+      setEditedTags(prev => [...prev, tag]);
+    }
+  });
+};
   
   // タグ削除
   const handleRemoveTag = (tagToRemove: string) => {
@@ -1154,7 +1174,7 @@ if (from === 'archive' && groupId) {
           {/* タグ追加入力 */}
           <input
             type="text"
-            placeholder="新しいタグを追加（Enterまたはカンマ区切りで追加）"
+            placeholder="スペースやカンマ区切りで入力"
             maxLength={200} // 🔒 入力長制限
             disabled={editedTags.length >= 10} // 🔒 タグ数制限
             style={{
