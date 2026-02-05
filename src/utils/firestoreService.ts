@@ -59,6 +59,7 @@ export const getGroups = async (userId: string, userRole: string): Promise<any[]
     const groupsRef = collection(db, 'groups');
 const q = query(
   groupsRef,
+  where('isDeleted', '==', false),  // ← この行を追加
   orderBy('createdAt', 'desc')
 );
 
