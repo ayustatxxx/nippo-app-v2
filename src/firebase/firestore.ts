@@ -83,7 +83,9 @@ export const getUser = async (userId: string): Promise<User | null> => {
     
     if (userSnap.exists()) {
       const userData = userSnap.data();
-      console.log('🔍 Firestoreから取得した生データ:', userData);
+      if (process.env.NODE_ENV === 'development') {
+  console.log('🔍 Firestoreから取得した生データ:', userData);
+}
       
       // ★ 安全なTimestamp変換 ★
       const convertTimestamp = (timestamp: any): number => {
