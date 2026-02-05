@@ -1303,7 +1303,7 @@ const [isCountingResults, setIsCountingResults] = useState(false);  // ← 追�
 const [selectedPostForDetail, setSelectedPostForDetail] = useState<Post | null>(null);
 const [displayLimit, setDisplayLimit] = useState(10);
 const [hasMore, setHasMore] = useState(true);         // まだデータがあるか
-let scrollTimeout: NodeJS.Timeout | null = null;
+const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 const [displayedPostsCount, setDisplayedPostsCount] = useState(5);
 const POSTS_PER_LOAD = 5;
 const displayedPostsCountRef = useRef(5);
@@ -2077,11 +2077,16 @@ isLoadingMoreRef.current = true;
     console.log(`✅ [無限スクロール] ${result.posts.length}件取得`);
     console.log(`📊 [無限スクロール] 続きあり: ${result.hasMore}`);
 
-    if (result.posts.length === 0) {
-      console.log('🏁 [無限スクロール] これ以上データなし');
-      setHasMore(false);
-    } else {
+    // result.hasMoreを信頼する
+setHasMore(result.hasMore);
+if (!result.hasMore) {
+  console.log('🏁 [無限スクロール] これ以上データなし');
+}
+   
+   // 取得した投稿が1件以上あれば処理を続ける
+   if (result.posts.length > 0) {
       console.log(`➕ [無限スクロール] ${result.posts.length}件を追加表示`);
+      console.log('🔍 [DEBUG] 取得した投稿:', result.posts.map(p => ({ id: p.id, timestamp: p.timestamp, date: new Date(p.timestamp).toLocaleString('ja-JP') })));
 
        // ⭐ グループ名マッピングを追加 ⭐
       const postsWithGroupName = result.posts.map(post => {
@@ -2129,8 +2134,8 @@ let actualNewPostsCount = 0;
       setLastVisibleDoc(result.lastVisible);
       
       // ⭐ 新規データがなければ終了 ⭐
-const hasNewData = actualNewPostsCount > 0;
-setHasMore(result.hasMore && hasNewData);
+// result.hasMoreだけを信頼する（重複は無視）
+setHasMore(result.hasMore);
       
       // ページ番号を更新
       setCurrentPage(nextPage);
@@ -3003,7 +3008,12 @@ useEffect(() => {
       // 検索中かどうかをチェック
       const isSearching = searchQuery.trim() !== '' || startDate !== '' || endDate !== '';
       
-     if (!isLoadingMore && hasMore && !loading && !isSearching) {
+      // まず最初にRefでガード（最優先）
+      if (isLoadingMoreRef.current) {
+        console.log('⏸️ 既にローディング中（Ref）のためスキップ');
+        return;
+      }
+  if (!isLoadingMore && hasMore && !loading && !isSearching) {
   console.log('🔄 スクロール検知: 次のデータを自動読み込み');
   
   // Phase A3: まずメモリ内のデータを表示（超高速！）
@@ -3027,9 +3037,9 @@ useEffect(() => {
   console.log('🔄 [Phase A4] Firestoreから追加取得開始');
   
   // デバウンス処理 - 既に pending のタイマーがあればキャンセル
-  if (scrollTimeout) {
-    clearTimeout(scrollTimeout);
-  }
+ if (scrollTimeoutRef.current) {
+  clearTimeout(scrollTimeoutRef.current);
+}
   
   // 既にローディング中なら何もしない
   if (isLoadingMoreRef.current) {
@@ -3037,9 +3047,9 @@ useEffect(() => {
     return;
   }
   
-  scrollTimeout = setTimeout(() => {
-    loadMorePosts();
-  }, 500);  // 200ms → 500ms に変更
+ scrollTimeoutRef.current = setTimeout(() => {
+  loadMorePosts();
+}, 500);
 } else {
         console.log('⏸️ 読み込みスキップ:', { isLoadingMore, hasMore, loading });
       }
@@ -4399,8 +4409,8 @@ placeholder="キーワード・#タグで検索"
             )}
 
 
-            全ての投稿を表示しました
-{!hasMore && !isLoadingMore && filteredItems.length > 0 && posts.length >= 20 && (
+          
+{!hasMore && !isLoadingMore && filteredItems.length > 0 && posts.length >= 20 && currentPage > 1 && (
   <div style={{
     textAlign: 'center',
     padding: '1.5rem',
