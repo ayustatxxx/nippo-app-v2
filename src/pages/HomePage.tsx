@@ -2086,8 +2086,7 @@ if (!result.hasMore) {
    // 取得した投稿が1件以上あれば処理を続ける
    if (result.posts.length > 0) {
       console.log(`➕ [無限スクロール] ${result.posts.length}件を追加表示`);
-      console.log('🔍 [DEBUG] 取得した投稿:', result.posts.map(p => ({ id: p.id, timestamp: p.timestamp, date: new Date(p.timestamp).toLocaleString('ja-JP') })));
-
+      
        // ⭐ グループ名マッピングを追加 ⭐
       const postsWithGroupName = result.posts.map(post => {
         const group = userGroups.find(g => g.id === post.groupId);
