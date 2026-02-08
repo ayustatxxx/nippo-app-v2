@@ -3049,12 +3049,9 @@ useEffect(() => {
  scrollTimeoutRef.current = setTimeout(() => {
   loadMorePosts();
 }, 500);
-} else {
-        console.log('⏸️ 読み込みスキップ:', { isLoadingMore, hasMore, loading });
-      }
+      }  
     }
-  };
-  
+};
   window.addEventListener('scroll', handleScroll);
   return () => window.removeEventListener('scroll', handleScroll);
 }, [isLoadingMore, hasMore, loading, loadMorePosts, posts, searchQuery, startDate, endDate]);
@@ -3490,9 +3487,7 @@ setFilteredItems(filtered);
 
 // ⭐ 検索・フィルター中はこれ以上データがない
 const isSearching = searchQuery.trim() !== '' || startDate !== '' || endDate !== '' || selectedGroup !== null;
-   console.log('🔍 [applyFilters] isSearching:', isSearching, '条件:', { searchQuery, startDate, endDate, selectedGroup });  // ← 追加
    if (isSearching) {
-     console.log('✅ [applyFilters] hasMoreをfalseに設定');  // ← 追加
      setHasMore(false);
    }
 
