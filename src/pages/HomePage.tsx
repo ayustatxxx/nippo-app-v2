@@ -3689,10 +3689,12 @@ console.log('✅ [applyFilters] 設定した件数:', filtered.length);
           }
           
           setFilteredItems(finalFiltered);
-          setSearchResultCount(finalFiltered.length);
-          setIsCountingResults(false);
-          console.log('📊 [HomePage検索結果・日付のみ] 総件数:', finalFiltered.length);
-          return;
+setSearchResultCount(finalFiltered.length);
+setDisplayLimit(finalFiltered.length);
+setDisplayedPostsCount(finalFiltered.length);  // ← 追加!
+setIsCountingResults(false);
+console.log('📊 [HomePage検索結果・日付のみ] 総件数:', finalFiltered.length);
+return;
         }
         
         // ⭐ テキスト検索を開始（ArchivePageと同じ）
@@ -3851,8 +3853,10 @@ const enrichedTextResults = await Promise.all(
         
         // ⭐ 検索結果を設定
         setFilteredItems(finalResults);
-        setSearchResultCount(finalResults.length);
-        setIsCountingResults(false);
+setSearchResultCount(finalResults.length);
+setDisplayLimit(finalResults.length);
+setDisplayedPostsCount(finalResults.length);  // ← 追加!
+setIsCountingResults(false);
         console.log('📊 [HomePage検索結果] 総件数:', finalResults.length);
         
       } catch (error) {
