@@ -3876,6 +3876,7 @@ setIsCountingResults(false);
     setDisplayLimit(999);
   } else {
     setDisplayLimit(10);
+    setHasMore(true);
   }
 })();  // ← 追加: async即時実行関数の終了
   }, [searchQuery, startDate, endDate, selectedGroup]);
@@ -3895,6 +3896,7 @@ const resetFilters = () => {
   
   // ⭐ 表示件数を初期値に戻す
   setDisplayLimit(10);
+  setHasMore(true);
   
   console.log('🔄 [HomePage] フィルターをクリア - 全投稿を表示:', posts.length);
 };
