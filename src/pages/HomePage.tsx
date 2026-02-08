@@ -3488,6 +3488,14 @@ console.log('🎯 [applyFilters] filteredの内容:', filtered.slice(0, 3).map(i
 
 setFilteredItems(filtered);
 
+// ⭐ 検索・フィルター中はこれ以上データがない
+const isSearching = searchQuery.trim() !== '' || startDate !== '' || endDate !== '' || selectedGroup !== null;
+   console.log('🔍 [applyFilters] isSearching:', isSearching, '条件:', { searchQuery, startDate, endDate, selectedGroup });  // ← 追加
+   if (isSearching) {
+     console.log('✅ [applyFilters] hasMoreをfalseに設定');  // ← 追加
+     setHasMore(false);
+   }
+
 console.log('✅ [applyFilters] 完了！ - ID:', executionId);
 console.log('✅ [applyFilters] 設定した件数:', filtered.length);
 }, [searchQuery, startDate, endDate, selectedDate, selectedGroup]);
@@ -3691,7 +3699,8 @@ console.log('✅ [applyFilters] 設定した件数:', filtered.length);
           setFilteredItems(finalFiltered);
 setSearchResultCount(finalFiltered.length);
 setDisplayLimit(finalFiltered.length);
-setDisplayedPostsCount(finalFiltered.length);  // ← 追加!
+setDisplayedPostsCount(finalFiltered.length);
+setHasMore(false);  // ← 追加!
 setIsCountingResults(false);
 console.log('📊 [HomePage検索結果・日付のみ] 総件数:', finalFiltered.length);
 return;
@@ -3855,7 +3864,8 @@ const enrichedTextResults = await Promise.all(
         setFilteredItems(finalResults);
 setSearchResultCount(finalResults.length);
 setDisplayLimit(finalResults.length);
-setDisplayedPostsCount(finalResults.length);  // ← 追加!
+setDisplayedPostsCount(finalResults.length);
+setHasMore(false);  // ← 追加!
 setIsCountingResults(false);
         console.log('📊 [HomePage検索結果] 総件数:', finalResults.length);
         
