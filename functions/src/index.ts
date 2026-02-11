@@ -180,3 +180,99 @@ export const listModels = onRequest(async (req, res) => {
     });
   }
 });
+
+/**
+ * メインエンドポイント: Google Meetの文字起こしを処理
+ * GASから呼び出される
+ * 
+ * Phase 1 Week 1 - Day 3-4
+ * URL: https://[region]-[project-id].cloudfunctions.net/processMeetTranscript
+ */
+export const processMeetTranscript = onRequest(
+  {
+    timeoutSeconds: 540, // 9分
+    memory: "1GiB",
+    secrets: [], // 後で設定
+  },
+  async (req, res) => {
+    logger.info("processMeetTranscript called", { method: req.method });
+
+    // CORS設定
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
+
+    // OPTIONSリクエスト対応（プリフライト）
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+
+    // POSTメソッドのみ許可
+    if (req.method !== "POST") {
+      logger.warn("Invalid method", { method: req.method });
+      res.status(405).json({
+        success: false,
+        error: "Method not allowed. Use POST.",
+      });
+      return;
+    }
+
+    try {
+      logger.info("Processing meet transcript...");
+
+
+      // Step 2: リクエストボディを取得
+      const { docId, docUrl: _docUrl, transcript, metadata, processedAt: _processedAt } = req.body;
+
+      // Step 3: バリデーション
+      if (!transcript || !metadata) {
+        logger.error("Missing required fields");
+        res.status(400).json({
+          success: false,
+          error: "Missing required fields: transcript, metadata",
+        });
+        return;
+      }
+
+      logger.info("Request validated", {
+        docId,
+        transcriptLength: transcript.length,
+        participants: metadata.participants?.length,
+      });
+
+      // Step 4: Gemini APIで会議内容を分析
+      // TODO: 次のステップで実装
+      logger.info("TODO: Analyze with Gemini API");
+
+      // Step 5: Firestoreに保存
+      // TODO: 後で実装
+      logger.info("TODO: Save to Firestore");
+
+      // 仮のレスポンス
+      res.status(200).json({
+        success: true,
+        message: "Meet transcript received successfully",
+        data: {
+          docId,
+          transcriptLength: transcript.length,
+          participants: metadata.participants,
+          meetingDate: metadata.meetingDate,
+        },
+        timestamp: new Date().toISOString(),
+      });
+
+    } catch (error: any) {
+      logger.error("processMeetTranscript failed", {
+        error: error.message,
+        stack: error.stack,
+      });
+
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+);
