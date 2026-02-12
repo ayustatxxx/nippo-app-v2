@@ -182,6 +182,149 @@ export const listModels = onRequest(async (req, res) => {
 });
 
 /**
+ * Gemini APIで会議内容を分析
+ * 
+ * @param transcript - 会議の文字起こしテキスト
+ * @param metadata - 会議のメタデータ
+ * @returns 分析結果（要約、キーポイント、決定事項、アクション）
+ */
+async function analyzeMeetingWithGemini(
+  transcript: string,
+  metadata: any
+): Promise<any> {
+  logger.info("analyzeMeetingWithGemini called", {
+    transcriptLength: transcript.length,
+    participants: metadata.participants?.length,
+  });
+
+  try {
+    // Geminiモデルを取得
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+    });
+
+    // プロンプトを生成
+    const prompt = generateMeetingAnalysisPrompt(transcript, metadata);
+
+    logger.info("Calling Gemini API for meeting analysis...");
+
+    // Gemini APIを呼び出し
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+
+    logger.info("Gemini API response received", {
+      responseLength: text.length,
+    });
+
+    // JSONをパース（```json ``` を除去）
+    const cleanedText = text.replace(/```json\n?|```\n?/g, "").trim();
+    const parsedResult = JSON.parse(cleanedText);
+
+    // IDを追加
+    parsedResult.id = `meeting_${Date.now()}`;
+
+    logger.info("Meeting analysis completed", {
+      meetingId: parsedResult.id,
+      actionsCount: parsedResult.actions?.length || 0,
+    });
+
+    return parsedResult;
+  } catch (error: any) {
+    logger.error("analyzeMeetingWithGemini failed", {
+      error: error.message,
+      stack: error.stack,
+    });
+    throw new Error(`Meeting analysis failed: ${error.message}`);
+  }
+}
+
+/**
+ * 会議分析用のプロンプトを生成
+ * 
+ * @param transcript - 会議の文字起こしテキスト
+ * @param metadata - 会議のメタデータ
+ * @returns Gemini API用のプロンプト
+ */
+function generateMeetingAnalysisPrompt(
+  transcript: string,
+  metadata: any
+): string {
+  return `
+あなたは会議アシスタント（書記官）です。
+以下の会議の文字起こしを分析し、簡潔で実用的な議事録を作成してください。
+
+━━━━━━━━━━━━━━━━━━━━━━
+【会議情報】
+━━━━━━━━━━━━━━━━━━━━━━
+
+会議名: ${metadata.meetingTitle}
+会議日: ${metadata.meetingDate}
+参加者: ${metadata.participants.join(", ")}
+会議時間: 約${metadata.duration}分
+
+━━━━━━━━━━━━━━━━━━━━━━
+【文字起こし】
+━━━━━━━━━━━━━━━━━━━━━━
+
+${transcript}
+
+━━━━━━━━━━━━━━━━━━━━━━
+【出力形式】
+━━━━━━━━━━━━━━━━━━━━━━
+
+以下のJSON形式で返してください。説明文は不要です。
+
+{
+  "summary": {
+    "title": "会議の種類を1文で（例：定例ミーティング、進捗確認会議）",
+    "overview": "会議全体の要約（200-300文字、誰が何を報告し、何が決まったか）",
+    "keyPoints": [
+      "重要ポイント1（具体的に、誰が何をいつまでに）",
+      "重要ポイント2",
+      "重要ポイント3"
+    ],
+    "decisions": [
+      "決定事項1（誰がいつまでに何をするか明確に）",
+      "決定事項2"
+    ]
+  },
+  
+  "actions": [
+    {
+      "assignee": "担当者名（文字起こしから正確に抽出）",
+      "task": "具体的なタスク内容（何をどうするか明確に）",
+      "deadline": "期限（ISO8601形式、YYYY-MM-DDTHH:MM:SSZ）",
+      "priority": "urgent|high|medium|low",
+      "exp": 経験値（10-100の整数）
+    }
+  ],
+  
+  "insight": {
+    "text": "インサイト内容（1文、100文字以内、具体的に）",
+    "category": "risk|opportunity|trend|suggestion",
+    "confidence": 0.85
+  }
+}
+
+━━━━━━━━━━━━━━━━━━━━━━
+【重要な指示】
+━━━━━━━━━━━━━━━━━━━━━━
+
+1. 業務の重要事項（安全、品質、進捗、予算など）を最優先
+2. 固有名詞（人名、場所、プロジェクト名、クライアント名）は正確に記載
+3. 期限が明示されていない場合も文脈から推測
+4. overviewは必ず200-300文字に収める
+5. keyPointsは3-5個に絞る
+6. actionsのdeadlineは会議日（${metadata.meetingDate}）を基準に推測
+7. EXPは緊急度・複雑度・影響範囲を考慮（10-100）
+8. 業種や業界を問わず、実務に即した内容を抽出
+
+JSONのみを返してください。
+`.trim();
+}
+
+/**
  * メインエンドポイント: Google Meetの文字起こしを処理
  * GASから呼び出される
  * 
@@ -242,27 +385,31 @@ export const processMeetTranscript = onRequest(
       });
 
       // Step 4: Gemini APIで会議内容を分析
-      // TODO: 次のステップで実装
-      logger.info("TODO: Analyze with Gemini API");
+logger.info("Analyzing meeting with Gemini API...");
+const analysisResult = await analyzeMeetingWithGemini(transcript, metadata);
+logger.info("Meeting analysis completed", {
+  meetingId: analysisResult.id,
+  actionsCount: analysisResult.actions?.length,
+});
 
-      // Step 5: Firestoreに保存
-      // TODO: 後で実装
-      logger.info("TODO: Save to Firestore");
+// Step 5: Firestoreに保存
+// TODO: 後で実装
+logger.info("TODO: Save to Firestore");
 
-      // 仮のレスポンス
-      res.status(200).json({
-        success: true,
-        message: "Meet transcript received successfully",
-        data: {
-          docId,
-          transcriptLength: transcript.length,
-          participants: metadata.participants,
-          meetingDate: metadata.meetingDate,
-        },
-        timestamp: new Date().toISOString(),
-      });
-
-    } catch (error: any) {
+// レスポンス（分析結果を含める）
+res.status(200).json({
+  success: true,
+  message: "Meet transcript processed successfully",
+  data: {
+    docId,
+    transcriptLength: transcript.length,
+    participants: metadata.participants,
+    meetingDate: metadata.meetingDate,
+    analysisResult: analysisResult, // 追加
+  },
+  timestamp: new Date().toISOString(),
+});
+} catch (error: any) {
       logger.error("processMeetTranscript failed", {
         error: error.message,
         stack: error.stack,
