@@ -297,14 +297,14 @@ ${transcript}
   },
   
   "actions": [
-    {
-      "assignee": "担当者名（文字起こしから正確に抽出）",
-      "task": "具体的なタスク内容（何をどうするか明確に）",
-      "deadline": "期限（ISO8601形式、YYYY-MM-DDTHH:MM:SSZ）",
-      "priority": "urgent|high|medium|low",
-      "exp": 経験値（10-100の整数）
-    }
-  ],
+  {
+    "assignee": "担当者名（文字起こしから正確に抽出。複数人の場合は「山田, 佐藤」のようにカンマ区切り）",
+    "task": "具体的なタスク内容（何をどうするか明確に）",
+    "deadline": "期限（ISO8601形式、YYYY-MM-DDTHH:MM:SSZ）",
+    "priority": "urgent|high|medium|low",
+    "exp": 経験値（10-100の整数）
+  }
+],
   
   "insight": {
     "text": "インサイト内容（1文、100文字以内、具体的に）",
@@ -325,6 +325,7 @@ ${transcript}
 6. actionsのdeadlineは会議日（${metadata.meetingDate}）を基準に推測
 7. EXPは緊急度・複雑度・影響範囲を考慮（10-100）
 8. 業種や業界を問わず、実務に即した内容を抽出
+9. 複数の担当者がいる場合は、1つのアクションにまとめ、assigneeに「山田, 佐藤」のようにカンマ区切りで記載
 
 JSONのみを返してください。
 `.trim();
