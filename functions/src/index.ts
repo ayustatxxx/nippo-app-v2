@@ -8,6 +8,8 @@ import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as dotenv from "dotenv";
+import { initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 
 // 環境変数を読み込む
 dotenv.config();
@@ -17,6 +19,10 @@ setGlobalOptions({
   region: "asia-northeast1", // 東京リージョン
   maxInstances: 10,
 });
+
+// Firestore初期化
+initializeApp();
+const db = getFirestore();
 
 // Gemini APIの初期化
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -340,6 +346,72 @@ export const processMeetTranscript = onRequest(
   async (req, res) => {
     logger.info("processMeetTranscript called", { method: req.method });
 
+    /**
+ * Firestoreに会議データを保存
+ * 
+ * @param docId - Google DocsのドキュメントID
+ * @param docUrl - Google DocsのURL
+ * @param transcript - 会議の文字起こし
+ * @param metadata - 会議のメタデータ
+ * @param analysisResult - Gemini APIの分析結果
+ * @returns 保存されたドキュメントID
+ */
+async function saveMeetingToFirestore(
+  docId: string,
+  docUrl: string,
+  transcript: string,
+  metadata: any,
+  analysisResult: any
+): Promise<string> {
+  logger.info("saveMeetingToFirestore called", {
+    docId,
+    meetingId: analysisResult.id,
+  });
+
+  try {
+    const meetingId = analysisResult.id;
+    const meetingRef = db.collection("meeting_summaries").doc(meetingId);
+
+    const meetingData = {
+      // 基本情報
+      docId: docId,
+      docUrl: docUrl,
+      meetingTitle: metadata.meetingTitle,
+      meetingDate: new Date(metadata.meetingDate),
+      participants: metadata.participants,
+      duration: metadata.duration,
+      
+      // 文字起こし
+      transcript: transcript,
+      transcriptLength: transcript.length,
+      
+      // 分析結果
+      summary: analysisResult.summary,
+      actions: analysisResult.actions,
+      insight: analysisResult.insight,
+      
+      // メタデータ
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    await meetingRef.set(meetingData);
+
+    logger.info("Meeting saved to Firestore", {
+      meetingId,
+      path: `meeting_summaries/${meetingId}`,
+    });
+
+    return meetingId;
+  } catch (error: any) {
+    logger.error("saveMeetingToFirestore failed", {
+      error: error.message,
+      stack: error.stack,
+    });
+    throw new Error(`Failed to save meeting: ${error.message}`);
+  }
+}
+
     // CORS設定
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -366,7 +438,7 @@ export const processMeetTranscript = onRequest(
 
 
       // Step 2: リクエストボディを取得
-      const { docId, docUrl: _docUrl, transcript, metadata, processedAt: _processedAt } = req.body;
+      const { docId, docUrl, transcript, metadata, processedAt: _processedAt } = req.body;
 
       // Step 3: バリデーション
       if (!transcript || !metadata) {
@@ -393,8 +465,15 @@ logger.info("Meeting analysis completed", {
 });
 
 // Step 5: Firestoreに保存
-// TODO: 後で実装
-logger.info("TODO: Save to Firestore");
+logger.info("Saving to Firestore...");
+const meetingId = await saveMeetingToFirestore(
+  docId,
+  docUrl,
+  transcript,
+  metadata,
+  analysisResult
+);
+logger.info("Saved to Firestore", { meetingId });
 
 // レスポンス（分析結果を含める）
 res.status(200).json({
