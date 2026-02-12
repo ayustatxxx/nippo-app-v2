@@ -412,6 +412,59 @@ async function saveMeetingToFirestore(
   }
 }
 
+/**
+ * Google Sheetsに生データを保存（信頼ベースのロックイン戦略）
+ * 
+ * クライアント側には生データのみを保存し、
+ * AI分析結果はFirestore（MYQUEST側）にのみ保存する
+ * 
+ * @param docId - Google DocsのドキュメントID
+ * @param docUrl - Google DocsのURL
+ * @param transcript - 会議の文字起こし（生データ）
+ * @param metadata - 会議のメタデータ
+ * @returns 成功/失敗
+ */
+async function saveMeetingToGoogleSheets(
+  docId: string,
+  docUrl: string,
+  transcript: string,
+  metadata: any
+): Promise<void> {
+  logger.info("saveMeetingToGoogleSheets called", {
+    docId,
+    spreadsheetId: process.env.SPREADSHEET_ID,
+  });
+
+  try {
+    // TODO: Google Sheets API実装（Phase 1 Week 2で実装予定）
+    // 現在は実装スキップ（ログのみ）
+    
+    logger.info("Google Sheets save skipped (not implemented yet)", {
+      docId,
+      note: "生データのみ保存予定: docId, meetingTitle, meetingDate, participants, transcript",
+    });
+
+    // 将来の実装内容:
+    // 1. Google Sheets APIで認証
+    // 2. スプレッドシートを開く
+    // 3. 新しい行を追加:
+    //    - A列: docId
+    //    - B列: meetingTitle
+    //    - C列: meetingDate
+    //    - D列: participants (カンマ区切り)
+    //    - E列: duration
+    //    - F列: transcript (全文)
+    //    - G列: createdAt
+    //    - H列: docUrl
+    
+  } catch (error: any) {
+    logger.error("saveMeetingToGoogleSheets failed", {
+      error: error.message,
+    });
+    // エラーでも処理は続行（Google Sheets保存は必須ではない）
+  }
+}
+
     // CORS設定
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -474,6 +527,11 @@ const meetingId = await saveMeetingToFirestore(
   analysisResult
 );
 logger.info("Saved to Firestore", { meetingId });
+
+// Step 6: Google Sheetsに生データを保存（信頼ベースの戦略）
+logger.info("Saving raw data to Google Sheets...");
+await saveMeetingToGoogleSheets(docId, docUrl, transcript, metadata);
+logger.info("Google Sheets save completed");
 
 // レスポンス（分析結果を含める）
 res.status(200).json({
