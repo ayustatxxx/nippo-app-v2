@@ -4,14 +4,20 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
+// 環境変数から設定を読み込み
 const firebaseConfig = {
-  apiKey: "AIzaSyBFFQ_bh1Mr-qVVnUJ9d9N8yD35wccQnqA",
-  authDomain: "nippo-4cb37.firebaseapp.com",
-  projectId: "nippo-4cb37",
-  storageBucket: "nippo-4cb37.firebasestorage.app",
-  messagingSenderId: "409179126653",
-  appId: "1:409179126653:web:7574eee39a0618487b6a14"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
+
+// 開発時に接続先を確認（デバッグ用）
+if (import.meta.env.DEV) {
+  console.log('🔥 Firebase接続先:', firebaseConfig.projectId);
+}
 
 // Firebaseを初期化
 const app = initializeApp(firebaseConfig);
@@ -20,5 +26,4 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-
 export default app;

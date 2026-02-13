@@ -12,6 +12,7 @@ import GroupTopPage from './group/GroupTopPage';
 import GroupMembersPage from './group/GroupMembersPage';
 import EditPostPage from './pages/EditPostPage'; 
 import InvitePage from './pages/InvitePage';
+import MeetingSummaryDraftPage from './group/MeetingSummaryDraftPage';
 
 
 function App() {
@@ -78,7 +79,11 @@ function App() {
         </AuthGuard>
       } />
       
-      
+      <Route path="/group/:groupId/meeting-summary-draft/:meetingId" element={
+        <AuthGuard>
+          <MeetingSummaryDraftPage />
+        </AuthGuard>
+      } />
     </Routes>
   );
 }
