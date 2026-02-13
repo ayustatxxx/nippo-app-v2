@@ -156,10 +156,37 @@ interface AlertInfo {
   deadline: string;
   timestamp: number;
   type: 'alert';
+}  
+
+// 議事録要約の型定義
+interface MeetingSummary {
+  id: string;
+  docId: string;
+  meetingTitle: string;
+  meetingDate: any;
+  status: 'draft' | 'published';
+  groupId: string;
+  groupName?: string;
+  participants: string[];
+  summary: {
+    title: string;
+    keyPoints: string[];
+    decisions: string[];
+  };
+  actions: Array<{
+    assignee: string;
+    task: string;
+    deadline: string;
+    priority: string;
+    exp: number;
+  }>;
+  createdAt: any;
+  type: 'meeting_summary';
 }
 
 // タイムライン項目の共通型（投稿またはアラート）
-type TimelineItem = Post | AlertInfo;
+type TimelineItem = Post | AlertInfo | MeetingSummary;  
+
 
 // カードコンポーネント用のプロパティ
 interface PostCardProps {
@@ -179,6 +206,29 @@ interface PostCardProps {
 interface AlertCardProps {
   alert: AlertInfo;
   onContact: (groupId: string) => void;
+  navigate: (path: string) => void;
+}
+
+// 議事録要約カード用のプロパティ
+interface MeetingSummaryCardProps {
+  summary: {
+    id: string;
+    docId: string;
+    meetingTitle: string;
+    meetingDate: any;
+    status: 'draft' | 'published';
+    groupId: string;
+    groupName?: string;
+    participants: string[];
+    summary: {
+      keyPoints: string[];
+    };
+    actions: Array<{
+      assignee: string;
+      task: string;
+    }>;
+  };
+  onViewDetails: (summaryId: string) => void;
   navigate: (path: string) => void;
 }
 
@@ -1058,6 +1108,177 @@ const AlertCard: React.FC<AlertCardProps> = ({ alert, onContact, navigate }) => 
   );
 };
 
+// 議事録要約カード
+const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({ 
+  summary, 
+  onViewDetails, 
+  navigate 
+}) => {
+  // 会議日時をフォーマット
+  const formatMeetingDate = (date: any) => {
+    if (!date) return '';
+    const d = date.toDate ? date.toDate() : new Date(date);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${year}/${month}/${day} ${hours}:${minutes}`;
+  };
+
+  return (
+    <div
+      style={{
+        backgroundColor: summary.status === 'draft' ? '#FFF8DC' : '#E6EDED',
+        color: 'rgb(0, 102, 114)',
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+        boxShadow: '0 4px 6px rgba(0, 102, 114, 0.1), 0 1px 3px rgba(0, 102, 114, 0.08)',
+        border: summary.status === 'draft' ? '2px solid #F0DB4F' : '1px solid rgba(0, 102, 114, 0.1)',
+        cursor: 'pointer',
+      }}
+      onClick={() => onViewDetails(summary.id)}
+    >
+      {/* ヘッダー部分 */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
+        marginBottom: '0.8rem' 
+      }}>
+        {/* 左側：アイコンとタイトル */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center',
+          flex: 1
+        }}>
+          <div style={{ 
+            width: '32px', 
+            height: '32px', 
+            borderRadius: '50%', 
+            backgroundColor: 'rgba(0, 102, 114, 0.1)',
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            marginRight: '0.5rem' 
+          }}>
+            📋
+          </div>
+          
+          <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>
+            {summary.meetingTitle}
+          </div>
+        </div>
+        
+        {/* 右側：グループ名と時間 */}
+        <div style={{ 
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: '0.2rem'
+        }}>
+          <div 
+            style={{ 
+              fontSize: '0.85rem', 
+              color: '#055A68',
+              cursor: 'pointer',
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/group/${summary.groupId}`);
+            }}
+          >
+            {summary.groupName || 'グループ名なし'}
+          </div>
+          
+          <div style={{
+            fontWeight: '500',
+            fontSize: '0.85rem',
+            color: '#055A68',
+          }}>
+            {formatMeetingDate(summary.meetingDate)}
+          </div>
+        </div>
+      </div>
+      
+      {/* 区切り線 */}
+      <div 
+        style={{
+          height: '1px',
+          backgroundColor: 'rgba(0, 102, 114, 0.3)',
+          marginBottom: '0.8rem',
+        }}
+      />
+
+      {/* ステータスバッジ */}
+      {summary.status === 'draft' && (
+        <div style={{
+          display: 'inline-block',
+          backgroundColor: '#F0DB4F',
+          color: '#000',
+          padding: '0.25rem 0.7rem',
+          borderRadius: '999px',
+          fontSize: '0.75rem',
+          fontWeight: 'bold',
+          marginBottom: '0.8rem',
+        }}>
+          下書き
+        </div>
+      )}
+
+      {/* 参加者 */}
+      {summary.participants && summary.participants.length > 0 && (
+        <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+          <span style={{ color: '#055A68', fontWeight: '500' }}>参加者：</span>
+          <span style={{ color: '#066878' }}>
+            {summary.participants.slice(0, 3).join(', ')}
+            {summary.participants.length > 3 && ` +${summary.participants.length - 3}名`}
+          </span>
+        </div>
+      )}
+
+      {/* 重要ポイント（最初の1つのみ表示） */}
+      {summary.summary?.keyPoints && summary.summary.keyPoints.length > 0 && (
+        <div style={{ 
+          marginBottom: '0.5rem',
+          fontSize: '0.85rem',
+          color: '#055A68',
+          lineHeight: '1.5'
+        }}>
+          <div style={{ fontWeight: '500', marginBottom: '0.3rem' }}>📌 重要ポイント</div>
+          <div style={{ paddingLeft: '0.5rem' }}>
+            • {summary.summary.keyPoints[0]}
+            {summary.summary.keyPoints.length > 1 && (
+              <span style={{ color: '#066878', fontSize: '0.8rem' }}>
+                {' '}他{summary.summary.keyPoints.length - 1}件
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* タスク数 */}
+      {summary.actions && summary.actions.length > 0 && (
+        <div style={{
+          marginTop: '0.8rem',
+          padding: '0.5rem',
+          backgroundColor: 'rgba(0, 102, 114, 0.05)',
+          borderRadius: '8px',
+          fontSize: '0.85rem',
+          color: '#055A68',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <span>✓</span>
+          <span>{summary.actions.length}件のタスク</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // 時間部分のみを抽出する関数
 const extractTime = (dateTimeStr: string | undefined): string => {
   // dateTimeStrが無い場合は空文字を返す
@@ -1270,6 +1491,7 @@ const HomePage: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [alerts, setAlerts] = useState<AlertInfo[]>([]);
+  const [meetingSummaries, setMeetingSummaries] = useState<MeetingSummary[]>([]);
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
   const [filteredItems, setFilteredItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2597,12 +2819,80 @@ setPosts(postsWithTimestamp);
       }
   }
 
+  // 🔥 議事録要約データを取得
+console.log('📋 [Home] 議事録要約データ取得開始');
+let allSummaries: MeetingSummary[] = [];
+try {
+  const { collection, query, where, getDocs, orderBy, limit } = await import('firebase/firestore');
+  const { getFirestore } = await import('firebase/firestore');
+  const db = getFirestore();
+  
+  // ユーザーが参加しているグループの議事録要約を取得
+  const groupIds = userGroups.map(g => g.id);
+  
+  // グループごとに議事録要約を取得（最新10件）
+  for (const groupId of groupIds) {
+    const summariesRef = collection(db, 'meeting_summaries');
+    const q = query(
+      summariesRef,
+      where('groupId', '==', groupId),
+      orderBy('createdAt', 'desc'),
+      limit(10)
+    );
+    
+    const snapshot = await getDocs(q);
+    const summaries = snapshot.docs.map(doc => {
+      const data = doc.data();
+      const group = userGroups.find(g => g.id === groupId);
+      
+      return {
+        id: doc.id,
+        docId: data.docId || '',
+        meetingTitle: data.meetingTitle || '無題の会議',
+        meetingDate: data.meetingDate,
+        status: data.status || 'draft',
+        groupId: groupId,
+        groupName: group?.name || 'グループ名なし',
+        participants: data.participants || [],
+        summary: data.summary || { title: '', keyPoints: [], decisions: [] },
+        actions: data.actions || [],
+        createdAt: data.createdAt,
+        type: 'meeting_summary' as const
+      } as MeetingSummary;
+    });
+    
+    allSummaries = [...allSummaries, ...summaries];
+  }
+  
+  console.log('✅ [Home] 議事録要約取得完了:', allSummaries.length, '件');
+  
+  if (isMounted) {
+    setMeetingSummaries(allSummaries);
+  }
+} catch (error) {
+  console.error('❌ [Home] 議事録要約取得エラー:', error);
+}
 
-  setGroups(allGroups);
-  setTimelineItems(enrichedPosts);
+
+ setGroups(allGroups);
+
+// 🔥 投稿と議事録要約を統合してタイムラインに設定
+const combinedTimeline = [...enrichedPosts, ...allSummaries].sort((a, b) => {
+  // 投稿の場合は timestamp、議事録要約の場合は createdAt を使用
+  const timeA = ('timestamp' in a ? a.timestamp : a.createdAt) || 0;
+  const timeB = ('timestamp' in b ? b.timestamp : b.createdAt) || 0;
+  return timeB - timeA; // 降順（新しい順）
+});
+
+console.log('📊 [Home] タイムライン統合:', {
+  投稿: enrichedPosts.length,
+  議事録要約: allSummaries.length,
+  合計: combinedTimeline.length
+});
+setTimelineItems(combinedTimeline);
   
   // ✅ 取得したデータでフィルター適用
-  applyFilters(enrichedPosts);
+  applyFilters(combinedTimeline);
   
   initializationRef.current = true;
 }
@@ -4625,7 +4915,7 @@ function groupItemsByDate() {
   // 🌟 ここで全体の表示件数を制限（重要！）
   const limitedItems = filteredItems.slice(0, displayedPostsCount);
   console.log(`📊 表示制限適用: ${displayedPostsCount}件 / 全${filteredItems.length}件`);
-  console.log(`🔍 [デバッグ] displayLimitの値: ${displayLimit}`);  // ← この行を追加
+
   // 日付ごとにグループ化
   const groupedByDate: Record<string, TimelineItem[]> = {};
   limitedItems.forEach(item => { // ← filteredItems から limitedItems に変更
@@ -4680,31 +4970,41 @@ if ('type' in item && item.type === 'alert') {
           </h4>
           
           {/* その日のタイムラインアイテムを表示 */}
-          {itemsForDate.map(item => (  // ← .slice(0, displayLimit) を削除
-            'type' in item && item.type === 'alert' ? (
-              // アラートカード
-              <AlertCard
-                key={item.id}
-                alert={item as AlertInfo}
-                onContact={handleContact}
-                navigate={navigate}
-              />
-            ) : (
-              // 投稿カード - 画像クリックハンドラーを追加
-              <PostCard
-                key={item.id}
-                post={item as Post}
-                onViewDetails={handleViewPostDetails}
-                onImageClick={handleImageClick}
-                navigate={navigate}
-                onStatusUpdate={handleStatusUpdate}
-                getContainerStatusStyle={getContainerStatusStyle}
-                userRole={userRole}  
-                onMemoClick={handleMemoClick} 
-                onPlusButtonClick={(post) => setSelectedPostForDetail(post)}
-              />
-            )
-          ))}
+         {itemsForDate.map(item => (
+  'type' in item && item.type === 'alert' ? (
+    // アラートカード
+    <AlertCard
+      key={item.id}
+      alert={item as AlertInfo}
+      onContact={handleContact}
+      navigate={navigate}
+    />
+  ) : 'type' in item && item.type === 'meeting_summary' ? (
+    // 議事録要約カード
+    <MeetingSummaryCard
+      key={item.id}
+      summary={item as MeetingSummary}
+      onViewDetails={(summaryId) => {
+        navigate(`/group/${(item as MeetingSummary).groupId}/meeting-summary/${summaryId}`);
+      }}
+      navigate={navigate}
+    />
+  ) : (
+    // 投稿カード
+    <PostCard
+      key={item.id}
+      post={item as Post}
+      onViewDetails={handleViewPostDetails}
+      onImageClick={handleImageClick}
+      navigate={navigate}
+      onStatusUpdate={handleStatusUpdate}
+      getContainerStatusStyle={getContainerStatusStyle}
+      userRole={userRole}  
+      onMemoClick={handleMemoClick} 
+      onPlusButtonClick={(post) => setSelectedPostForDetail(post)}
+    />
+  )
+))}
         </div>
       ));
   }
