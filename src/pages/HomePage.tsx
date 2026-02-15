@@ -1123,7 +1123,7 @@ const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({
     const day = d.getDate();
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
-    return `${year}/${month}/${day} ${hours}:${minutes}`;
+    return `${hours}:${minutes}`;
   };
 
   return (
@@ -1135,7 +1135,7 @@ const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({
         padding: '1rem',
         marginBottom: '1rem',
         boxShadow: '0 4px 6px rgba(0, 102, 114, 0.1), 0 1px 3px rgba(0, 102, 114, 0.08)',
-        border: summary.status === 'draft' ? '2px solid #F0DB4F' : '1px solid rgba(0, 102, 114, 0.1)',
+        border: summary.status === 'draft' ? '1px solid #F0DB4F' : '1px solid rgba(0, 102, 114, 0.1)',
         cursor: 'pointer',
       }}
       onClick={() => onViewDetails(summary.id)}
@@ -1147,11 +1147,11 @@ const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({
         alignItems: 'flex-start',
         marginBottom: '0.8rem' 
       }}>
-        {/* 左側：アイコンとタイトル */}
+        
+        {/* 左側：アイコンと名前（エージェント） */}
         <div style={{ 
           display: 'flex', 
-          alignItems: 'center',
-          flex: 1
+          alignItems: 'center'
         }}>
           <div style={{ 
             width: '32px', 
@@ -1163,11 +1163,20 @@ const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({
             alignItems: 'center', 
             marginRight: '0.5rem' 
           }}>
-            📋
+            {/* 人型アイコン（SVG） */}
+            <svg 
+              width="18" 
+              height="18" 
+              viewBox="0 0 24 24" 
+              fill="rgb(0, 102, 114)" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" />
+            </svg>
           </div>
           
           <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>
-            {summary.meetingTitle}
+            エージェント（AI）
           </div>
         </div>
         
@@ -1192,13 +1201,7 @@ const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({
             {summary.groupName || 'グループ名なし'}
           </div>
           
-          <div style={{
-            fontWeight: '500',
-            fontSize: '0.85rem',
-            color: '#055A68',
-          }}>
-            {formatMeetingDate(summary.meetingDate)}
-          </div>
+        
         </div>
       </div>
       
@@ -1210,6 +1213,52 @@ const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({
           marginBottom: '0.8rem',
         }}
       />
+
+      {/* サマリー形式の本文 */}
+      <div style={{
+        marginBottom: '0.8rem',
+        lineHeight: '1.8',
+        fontSize: '0.9rem',
+        color: '#055A68',
+      }}>
+        
+        {/* 説明文 */}
+<div style={{ 
+  marginTop: '1.2rem', 
+  marginBottom: '0.8rem',
+  color: '#055A68',
+  fontSize: '1rem',
+  fontWeight: 'bold'
+}}>
+  Google Meet / 議事録の要約です。
+</div>
+
+{/* タイトル */}
+<div style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+  タイトル：{summary.meetingTitle}
+</div>
+        
+        {/* 重要ポイントの件数 */}
+        {summary.summary?.keyPoints && (
+          <div style={{ marginBottom: '0.3rem' }}>
+            ・重要ポイント：{summary.summary.keyPoints.length}
+          </div>
+        )}
+        
+        {/* 決定事項の件数 */}
+        {(summary.summary as any)?.decisions && (
+          <div style={{ marginBottom: '0.3rem' }}>
+            ・決定事項：{(summary.summary as any).decisions.length}
+          </div>
+        )}
+        
+        {/* タスクの件数 */}
+        {summary.actions && summary.actions.length > 0 && (
+          <div style={{ marginBottom: '0.3rem' }}>
+            ・タスク：{summary.actions.length}
+          </div>
+        )}
+      </div>
 
       {/* ステータスバッジ */}
       {summary.status === 'draft' && (
@@ -1226,55 +1275,33 @@ const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({
           下書き
         </div>
       )}
-
-      {/* 参加者 */}
-      {summary.participants && summary.participants.length > 0 && (
-        <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>
-          <span style={{ color: '#055A68', fontWeight: '500' }}>参加者：</span>
-          <span style={{ color: '#066878' }}>
-            {summary.participants.slice(0, 3).join(', ')}
-            {summary.participants.length > 3 && ` +${summary.participants.length - 3}名`}
-          </span>
-        </div>
-      )}
-
-      {/* 重要ポイント（最初の1つのみ表示） */}
-      {summary.summary?.keyPoints && summary.summary.keyPoints.length > 0 && (
-        <div style={{ 
-          marginBottom: '0.5rem',
-          fontSize: '0.85rem',
-          color: '#055A68',
-          lineHeight: '1.5'
-        }}>
-          <div style={{ fontWeight: '500', marginBottom: '0.3rem' }}>📌 重要ポイント</div>
-          <div style={{ paddingLeft: '0.5rem' }}>
-            • {summary.summary.keyPoints[0]}
-            {summary.summary.keyPoints.length > 1 && (
-              <span style={{ color: '#066878', fontSize: '0.8rem' }}>
-                {' '}他{summary.summary.keyPoints.length - 1}件
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* タスク数 */}
-      {summary.actions && summary.actions.length > 0 && (
-        <div style={{
-          marginTop: '0.8rem',
-          padding: '0.5rem',
-          backgroundColor: 'rgba(0, 102, 114, 0.05)',
-          borderRadius: '8px',
-          fontSize: '0.85rem',
-          color: '#055A68',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem'
-        }}>
-          <span>✓</span>
-          <span>{summary.actions.length}件のタスク</span>
-        </div>
-      )}
+     {/* 詳細ボタン */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        marginTop: '0.8rem',
+      }}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewDetails(summary.id);
+          }}
+          style={{
+            padding: '0.4rem 1rem',
+            backgroundColor: 'rgb(0, 102, 114)',
+            color: '#F0DB4F',
+            border: 'none',
+            borderRadius: '20px',
+            fontSize: '0.75rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.3rem',
+          }}
+        >
+          詳細
+        </button>
+      </div>
     </div>
   );
 };
@@ -1480,6 +1507,8 @@ const calculateSearchScoreForHome = (item: TimelineItem, keywords: string[]): nu
     return 0;
   }
 };
+
+
 
 // 5. メインのHomePageコンポーネント
 const HomePage: React.FC = () => {
@@ -1688,6 +1717,8 @@ const PostDetailModal: React.FC<{
                 {displayPost.position || '役職なし'} • {displayPost.company || '会社名なし'}
               </div>
             </div>
+
+            
             
             {/* 日時表示 */}
             <div style={{ 
@@ -1705,7 +1736,7 @@ const PostDetailModal: React.FC<{
             </div>
           </div>
           
-          {/* グループ情報 */}
+         
           {/* グループ情報 */}
 <div 
   style={{
@@ -2188,11 +2219,57 @@ if (!targetPost) {
       return;
     }
     console.log('✅ [HomePage] Firestoreから投稿を取得しました:', targetPost.id);
+    // ⭐ グループ名を補完（groupNameがない場合のみ）⭐
+  // ⭐ グループ名を補完（groupNameがない場合のみ）⭐
+  if (targetPost && targetPost.groupId && !targetPost.groupName) {
+    // まず、groups配列から探す
+    let group = groups.find(g => g.id === targetPost.groupId);
+    
+    // 見つからなければFirestoreから直接取得
+    if (!group) {
+      console.log('📥 [HomePage] groupsに見つからないため、Firestoreから取得:', targetPost.groupId);
+      try {
+        const { doc, getDoc, getFirestore } = await import('firebase/firestore');
+        const db = getFirestore();
+        const groupDoc = await getDoc(doc(db, 'groups', targetPost.groupId));
+        if (groupDoc.exists()) {
+          group = { id: groupDoc.id, ...groupDoc.data() } as any;
+          console.log('✅ [HomePage] Firestoreからグループ取得:', group.name);
+        }
+      } catch (error) {
+        console.error('❌ [HomePage] グループ取得エラー:', error);
+      }
+    }
+    
+    // グループ名を設定
+    if (group) {
+      targetPost = {
+        ...targetPost,
+        groupName: group.name || 'グループ名なし'
+      };
+      console.log('✅ [HomePage] グループ名を補完:', group.name);
+    } else {
+      console.warn('⚠️ [HomePage] グループが見つかりません:', targetPost.groupId);
+      targetPost = {
+        ...targetPost,
+        groupName: 'グループ名なし'
+      };
+    }
+  }
   } catch (error) {
     console.error('❌ [HomePage] Firestore取得エラー:', error);
     return;
   }
 }
+
+// ⭐ ユーザー名も補完（userName → username）⭐
+  if (targetPost && targetPost.userName && !targetPost.username) {
+    targetPost = {
+      ...targetPost,
+      username: targetPost.userName
+    };
+    console.log('✅ [HomePage] ユーザー名を補完:', targetPost.userName);
+  }
   
   // 🌟 メモをまだ取得していない、または空の場合のみ取得
   const needsFetchMemos = !targetPost.memos || targetPost.memos.length === 0;
@@ -2520,7 +2597,6 @@ if (postsCache && postsCache.length > 0 && Date.now() - postsCacheTime < CACHE_D
   console.log(`⏰ [キャッシュ有効期限] あと${Math.round((CACHE_DURATION - (Date.now() - postsCacheTime)) / 1000)}秒`);
 
   if (isMounted) {
-  setPosts(postsCache);
   setTimelineItems(postsCache);
   
   // ✅ キャッシュデータでフィルター適用
@@ -3400,10 +3476,9 @@ useEffect(() => {
 // キャッシュ管理用のuseEffect（新規追加）
 useEffect(() => {
   if (posts.length > 0 && !loading) {
-    postsCache = posts;
+    postsCache = timelineItems;
     postsCacheTime = Date.now();
-    console.log('💾 投稿キャッシュを更新:', posts.length, '件');
-    console.log('💾 投稿キャッシュを更新:', posts.length, '件');
+    console.log('💾 タイムラインキャッシュを更新:', timelineItems.length, '件');
 console.log('🔍 [デバッグ] この時点のfilteredItems.length:', filteredItems.length);
   }
 }, [posts, loading]);
@@ -3934,14 +4009,7 @@ console.log('✅ [applyFilters] 設定した件数:', filtered.length);
             filtered.map(async (post) => {
               try {
                 // ユーザー名を取得
-                let username = post.username || 'ユーザー';
-                if (post.authorId || post.userId || post.userID) {
-                  const userId = post.authorId || post.userId || post.userID;
-                  const displayName = await getDisplayNameSafe(userId);
-                  if (displayName && displayName !== 'ユーザー') {
-                    username = displayName;
-                  }
-                }
+               const username = DisplayNameResolver.resolve(post);
                 
                 // グループ名を取得
                 let groupName = post.groupName || '';
@@ -4098,14 +4166,7 @@ const enrichedTextResults = await Promise.all(
   results.map(async (post) => {
     try {
       // ユーザー名を取得
-      let username = post.username || 'ユーザー';
-      if (post.authorId || post.userId || post.userID) {
-        const userId = post.authorId || post.userId || post.userID;
-        const displayName = await getDisplayNameSafe(userId);
-        if (displayName && displayName !== 'ユーザー') {
-          username = displayName;
-        }
-      }
+      const username = DisplayNameResolver.resolve(post);
       
       // グループ名を取得
       let groupName = post.groupName || '';
@@ -5023,7 +5084,7 @@ if ('type' in item && item.type === 'alert') {
 
 // ★ 修正: 削除されていたエクスポート関数を復活 ★
 // キャッシュ管理関数（他のコンポーネントから使用される）
-let postsCache: Post[] | null = null;
+let postsCache: TimelineItem[] | null = null;
 let postsCacheTime = 0;
 let groupsCache: Group[] | null = null;
 let groupsCacheTime = 0;

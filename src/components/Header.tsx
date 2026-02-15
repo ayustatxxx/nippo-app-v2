@@ -3,6 +3,7 @@ import React from 'react';
 
 interface HeaderProps {
   title: string;
+  subtitle?: string;  // ← この行を追加
   showBackButton?: boolean;
   onBackClick?: () => void;
   onSearchClick?: () => void;
@@ -12,11 +13,12 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({
   title,
+  subtitle,  // ← この行を追加
   showBackButton = false,
   onBackClick,
   onSearchClick,
   showSearchIcon = false,
-  isSearchActive = false, // この行を追加（デフォルト値はfalse）
+  isSearchActive = false,
 }) => {
   return (
     <div
@@ -78,6 +80,9 @@ const Header: React.FC<HeaderProps> = ({
     margin: 0,
     fontWeight: 'bold',
     letterSpacing: '0.05em',
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: '0.3rem'
   }}
 >
   {title === "NIPPO" || title === "MYQUEST" ? (
@@ -90,7 +95,14 @@ const Header: React.FC<HeaderProps> = ({
       }}
     />
   ) : (
-    title
+    <>
+      <span>{title}</span>
+      {subtitle && (
+        <span style={{ fontSize: '1.2rem', fontWeight: 'normal' }}>
+          {subtitle}
+        </span>
+      )}
+    </>
   )}
 </h1>
         </div>
