@@ -390,6 +390,11 @@ async function saveMeetingToFirestore(
       summary: analysisResult.summary,
       actions: analysisResult.actions,
       insight: analysisResult.insight,
+
+      // グループ紐付け
+      status: 'draft',
+      groupId: null,
+      publishedAt: null,
       
       // メタデータ
       createdAt: new Date(),
