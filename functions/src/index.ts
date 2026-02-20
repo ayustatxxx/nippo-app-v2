@@ -395,6 +395,9 @@ async function saveMeetingToFirestore(
       status: 'draft',
       groupId: null,
       publishedAt: null,
+      visibleTo: null,
+      publishedBy: null,
+      publishedByName: null,
       
       // メタデータ
       createdAt: new Date(),
