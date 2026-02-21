@@ -37,6 +37,25 @@ export default function MeetingSummaryDetailPage() {
   const [loading, setLoading] = useState(true);
   const [meetingData, setMeetingData] = useState<MeetingData | null>(null);
 
+  // ユーザー情報
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [currentUserName, setCurrentUserName] = useState('');
+
+  // ユーザー情報を取得
+  useEffect(() => {
+    const uid = localStorage.getItem("daily-report-user-id") || '';
+    setCurrentUserId(uid);
+    if (uid) {
+      getDoc(doc(db, 'users', uid)).then((snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setCurrentUserName(data.displayName || data.username || '');
+        }
+      });
+    }
+  }, []);
+
+
   // データ取得
   useEffect(() => {
     const fetchMeeting = async () => {
@@ -425,69 +444,76 @@ export default function MeetingSummaryDetailPage() {
           </div>
       </div>
 
-      {/* 編集・共有ボタン（下書きの場合のみ） */}
+ {/* 編集・共有ボタン（下書きの場合のみ） */}
       {meetingData.status === 'draft' && (
-        <div style={{
+      <div style={{
           position: 'fixed',
           bottom: '0',
           left: '0',
           right: '0',
           backgroundColor: 'white',
-          padding: '16px',
+          padding: '16px 16px 48px 16px',
           borderTop: '1px solid #e0e0e0',
           boxShadow: '0 -2px 10px rgba(0,0,0,0.05)',
           maxWidth: '480px',
-          margin: '0 auto'
+          margin: '0 auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
         }}>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => navigate(`/group/${groupId}/meeting-summary-draft/${meetingId}`)}
-              style={{
-                flex: 1,
-                backgroundColor: '#E0E0E0',
-                color: '#333',
-                padding: '14px',
-                borderRadius: '8px',
-                border: 'none',
-                fontSize: '16px',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-            >
-              編集
-            </button>
-            <button
-              onClick={async () => {
-                if (window.confirm('この内容でグループに共有しますか？')) {
-                  try {
-                    const docRef = doc(db, 'meeting_summaries', meetingId!);
-                    await updateDoc(docRef, {
-                      status: 'published',
-                      publishedAt: serverTimestamp(),
-                    });
-                    alert('共有しました！');
-                    navigate(-1);
-                  } catch (error) {
-                    console.error('Error publishing:', error);
-                    alert('共有に失敗しました');
-                  }
+          <button
+            onClick={async () => {
+              if (window.confirm('この内容でグループに共有しますか？')) {
+                try {
+                  const docRef = doc(db, 'meeting_summaries', meetingId!);
+                  await updateDoc(docRef, {
+                    status: 'published',
+                    publishedAt: serverTimestamp(),
+                    publishedBy: currentUserId,
+                    publishedByName: currentUserName,
+                  });
+                  alert('共有しました！');
+                  navigate(-1);
+                } catch (error) {
+                  console.error('Error publishing:', error);
+                  alert('共有に失敗しました');
                 }
-              }}
-              style={{
-                flex: 1,
-                backgroundColor: '#055A68',
-                color: 'white',
-                padding: '14px',
-                borderRadius: '8px',
-                border: 'none',
-                fontSize: '16px',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-            >
-              共有する
-            </button>
-          </div>
+              }
+            }}
+            style={{
+              width: '60%',
+              backgroundColor: '#055A68',
+              color: 'white',
+              padding: '14px',
+              borderRadius: '8px',
+              border: 'none',
+              fontSize: '16px',
+              fontWeight: '600',
+              marginTop: '15px',
+              cursor: 'pointer'
+              
+            }}
+          >
+            共有する
+          </button>
+          <button
+            onClick={() => navigate(`/group/${groupId}/meeting-summary-draft/${meetingId}`)}
+            style={{
+              position: 'absolute',
+              right: '16px',
+              backgroundColor: 'rgb(0, 102, 114)',
+              color: '#F0DB4F',
+              padding: '0.5rem 1.2rem',
+              borderRadius: '20px',
+              border: 'none',
+              fontSize: '0.9rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            編集
+          </button>
         </div>
       )}
       </div>

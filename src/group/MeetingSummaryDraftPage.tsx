@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firestore';
 import Header from '../components/Header';
 
@@ -43,7 +43,38 @@ export default function MeetingSummaryDraftPage() {
   const [editedTitle, setEditedTitle] = useState('');
   const [editedSummary, setEditedSummary] = useState('');
 
+  // ユーザー情報
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [currentUserName, setCurrentUserName] = useState('');
+  
+  // グループ選択（groupIdがnullの場合）
+  const [groups, setGroups] = useState<{id: string; name: string}[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [meetingGroupId, setMeetingGroupId] = useState<string | null>(null);
+
   // データ取得
+  // ユーザー情報とグループ一覧を取得
+  useEffect(() => {
+    const uid = localStorage.getItem("daily-report-user-id") || '';
+    setCurrentUserId(uid);
+    
+    // ユーザー名をFirestoreから取得
+    if (uid) {
+      getDoc(doc(db, 'users', uid)).then((snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setCurrentUserName(data.displayName || data.username || '');
+        }
+      });
+    }
+
+    // グループ一覧を取得
+    getDocs(collection(db, 'groups')).then((snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, name: d.data().name || d.data().groupName || '' }));
+      setGroups(list);
+    });
+  }, []);
+
   useEffect(() => {
     const fetchMeeting = async () => {
       if (!meetingId) return;
@@ -55,6 +86,7 @@ export default function MeetingSummaryDraftPage() {
         if (docSnap.exists()) {
           const data = docSnap.data() as any;
           setMeetingData(data);
+          setMeetingGroupId(data.groupId || null);
           
           // 編集用データを初期化
           setEditedTitle(data.meetingTitle || '');
@@ -140,11 +172,14 @@ const handleSave = async () => {
     setSaving(true);
     try {
       const docRef = doc(db, 'meeting_summaries', meetingId);
-      await updateDoc(docRef, {
+     await updateDoc(docRef, {
         meetingTitle: editedTitle,
         editedSummaryText: editedSummary,
         status: 'published',
         publishedAt: serverTimestamp(),
+        publishedBy: currentUserId,
+        publishedByName: currentUserName,
+        groupId: selectedGroupId || meetingGroupId || null,
       });
       
       alert('共有しました！');
@@ -244,6 +279,40 @@ const handleSave = async () => {
           )}
         </div>
 
+        {/* グループ選択（groupIdが未設定の場合のみ表示） */}
+        {!meetingGroupId && (
+          <div style={{
+            backgroundColor: '#FFF8E1',
+            borderRadius: '12px',
+            padding: '16px',
+            marginBottom: '16px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+            border: '1px solid #FFE082'
+          }}>
+            <div style={{ fontSize: '13px', color: '#F57F17', marginBottom: '8px', fontWeight: '600' }}>
+              ⚠️ グループを選択してください
+            </div>
+            <select
+              value={selectedGroupId}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              style={{
+                width: '100%',
+                border: '1px solid #ddd',
+                borderRadius: '8px',
+                padding: '12px',
+                fontSize: '15px',
+                boxSizing: 'border-box' as const,
+                backgroundColor: 'white'
+              }}
+            >
+              <option value="">グループを選択...</option>
+              {groups.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* 会議タイトル（編集可能） */}
         <div style={{
           backgroundColor: 'white',
@@ -317,7 +386,7 @@ const handleSave = async () => {
         left: '0',
         right: '0',
         backgroundColor: 'white',
-        padding: '16px',
+        padding: '30px 16px 48px 16px',
         borderTop: '1px solid #e0e0e0',
         boxShadow: '0 -2px 10px rgba(0,0,0,0.05)',
         maxWidth: '480px',
