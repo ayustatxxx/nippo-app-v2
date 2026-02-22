@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, updateDoc, serverTimestamp, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, collection, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../firebase/firestore';
 import Header from '../components/Header';
 
@@ -42,6 +42,10 @@ export default function MeetingSummaryDraftPage() {
   // 編集中のデータ
   const [editedTitle, setEditedTitle] = useState('');
   const [editedSummary, setEditedSummary] = useState('');
+
+  // 修正前の元データ（フィードバック学習用）
+const [originalTitle, setOriginalTitle] = useState('');
+const [originalSummary, setOriginalSummary] = useState('');
 
   // ユーザー情報
   const [currentUserId, setCurrentUserId] = useState('');
@@ -90,6 +94,7 @@ export default function MeetingSummaryDraftPage() {
           
           // 編集用データを初期化
           setEditedTitle(data.meetingTitle || '');
+          setOriginalTitle(data.meetingTitle || '');
           
           // 要約テキストを生成
           let summaryText = '';
@@ -124,6 +129,7 @@ export default function MeetingSummaryDraftPage() {
           }
           
           setEditedSummary(summaryText);
+          setOriginalSummary(summaryText);
         }
       } catch (error) {
         console.error('Error fetching meeting:', error);
@@ -137,12 +143,35 @@ export default function MeetingSummaryDraftPage() {
   }, [meetingId]);
 
   // 下書き保存
-  // 下書き保存
 const handleSave = async () => {
   if (!meetingId) return;
   
   setSaving(true);
   try {
+    // 修正差分をFirestoreに記録（フィードバック学習用）
+const effectiveGroupId = meetingGroupId || selectedGroupId;
+if (effectiveGroupId) {
+  const corrections: {field: string; before: string; after: string}[] = [];
+  
+  if (originalTitle !== editedTitle) {
+    corrections.push({ field: 'title', before: originalTitle, after: editedTitle });
+  }
+  if (originalSummary !== editedSummary) {
+    corrections.push({ field: 'summary', before: originalSummary, after: editedSummary });
+  }
+  
+  if (corrections.length > 0) {
+    const logsRef = collection(db, 'correction_logs', effectiveGroupId, 'logs');
+    for (const correction of corrections) {
+      await addDoc(logsRef, {
+        ...correction,
+        meetingId,
+        correctedBy: currentUserId,
+        correctedAt: new Date(),
+      });
+    }
+  }
+}
     const docRef = doc(db, 'meeting_summaries', meetingId);
     await updateDoc(docRef, {
       meetingTitle: editedTitle,
