@@ -188,6 +188,101 @@ export const listModels = onRequest(async (req, res) => {
 });
 
 /**
+ * Firestoreから全グループのメンバー名を取得
+ */
+async function getAllMemberNames(): Promise<string[]> {
+  try {
+    const groupsSnapshot = await db.collection("groups").get();
+    const names = new Set<string>();
+
+    groupsSnapshot.forEach((doc) => {
+      const data = doc.data();
+      const members = data.members || [];
+      members.forEach((member: any) => {
+        if (member.username) names.add(member.username);
+      });
+    });
+
+    const nameList = Array.from(names);
+    logger.info("Member names fetched", { count: nameList.length, names: nameList });
+    return nameList;
+  } catch (error: any) {
+    logger.error("getAllMemberNames failed", { error: error.message });
+    return [];
+  }
+}
+
+/**
+ * グループの管理者IDリストを取得（adminId + adminIds）
+ */
+async function getGroupAdminIds(groupId: string): Promise<string[]> {
+  try {
+    const groupDoc = await db.collection("groups").doc(groupId).get();
+    if (!groupDoc.exists) return [];
+
+    const data = groupDoc.data()!;
+    const adminIds = new Set<string>();
+
+    if (data.adminId) adminIds.add(data.adminId);
+    if (data.adminIds) data.adminIds.forEach((id: string) => adminIds.add(id));
+
+    return Array.from(adminIds);
+  } catch (error: any) {
+    logger.error("getGroupAdminIds failed", { error: error.message });
+    return [];
+  }
+}
+
+/**
+ * カレンダータイトル / groupNameHint からグループIDを特定
+ */
+async function identifyGroupId(
+  meetingTitle: string,
+  groupNameHint?: string
+): Promise<string | null> {
+  logger.info("identifyGroupId called", { meetingTitle, groupNameHint });
+
+  try {
+    const groupsSnapshot = await db.collection("groups").get();
+    if (groupsSnapshot.empty) {
+      logger.warn("No groups found in Firestore");
+      return null;
+    }
+
+    const hints = [
+      groupNameHint?.trim(),
+      meetingTitle?.trim(),
+    ].filter(Boolean) as string[];
+
+    for (const hint of hints) {
+      for (const doc of groupsSnapshot.docs) {
+        const data = doc.data();
+        const groupName: string = data.name || data.groupName || "";
+        if (!groupName) continue;
+
+        const hintNormalized = hint.toLowerCase();
+        const nameNormalized = groupName.toLowerCase();
+
+        if (
+          hintNormalized === nameNormalized ||
+          hintNormalized.includes(nameNormalized) ||
+          nameNormalized.includes(hintNormalized)
+        ) {
+          logger.info("Group identified!", { groupId: doc.id, groupName });
+          return doc.id;
+        }
+      }
+    }
+
+    logger.info("No matching group found", { meetingTitle, groupNameHint });
+    return null;
+  } catch (error: any) {
+    logger.error("identifyGroupId failed", { error: error.message });
+    return null;
+  }
+}
+
+/**
  * Gemini APIで会議内容を分析
  * 
  * @param transcript - 会議の文字起こしテキスト
@@ -210,7 +305,8 @@ async function analyzeMeetingWithGemini(
     });
 
     // プロンプトを生成
-    const prompt = generateMeetingAnalysisPrompt(transcript, metadata);
+    const memberNames = await getAllMemberNames();
+const prompt = generateMeetingAnalysisPrompt(transcript, metadata, memberNames);
 
     logger.info("Calling Gemini API for meeting analysis...");
 
@@ -254,7 +350,8 @@ async function analyzeMeetingWithGemini(
  */
 function generateMeetingAnalysisPrompt(
   transcript: string,
-  metadata: any
+  metadata: any,
+  memberNames: string[]
 ): string {
   return `
 あなたは会議アシスタント（書記官）です。
@@ -268,6 +365,7 @@ function generateMeetingAnalysisPrompt(
 会議日: ${metadata.meetingDate}
 参加者: ${metadata.participants.join(", ")}
 会議時間: 約${metadata.duration}分
+登録メンバー: ${memberNames.length > 0 ? memberNames.join(", ") : "なし"}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 【文字起こし】
@@ -316,16 +414,17 @@ ${transcript}
 ━━━━━━━━━━━━━━━━━━━━━━
 【重要な指示】
 ━━━━━━━━━━━━━━━━━━━━━━
-
-1. 業務の重要事項（安全、品質、進捗、予算など）を最優先
-2. 固有名詞（人名、場所、プロジェクト名、クライアント名）は正確に記載
-3. 期限が明示されていない場合も文脈から推測
-4. overviewは必ず200-300文字に収める
-5. keyPointsは3-5個に絞る
-6. actionsのdeadlineは会議日（${metadata.meetingDate}）を基準に推測
-7. EXPは緊急度・複雑度・影響範囲を考慮（10-100）
-8. 業種や業界を問わず、実務に即した内容を抽出
-9. 複数の担当者がいる場合は、1つのアクションにまとめ、assigneeに「山田, 佐藤」のようにカンマ区切りで記載
+0. 【最重要】participants（参加者リスト）に「電気工事坂本」「大工織田」のように役職名＋人名が混在している場合は、人名部分のみを抽出すること（例：「電気工事坂本」→「坂本」、「大工織田」→「織田」）。また役職名のみで人名がない場合は参加者リストから除外すること。
+0.5. 【最重要】上記「登録メンバー」リストを参照し、文字起こし中の人名の誤認識を補正すること（例：「最後」→「西郷隆盛」、「小田」→「織田信長」）。参加者・担当者名は必ずこのリストの名前から選ぶこと。
+1. 【最重要】人名は文字起こしに記載されている話者ラベルをそのまま使用すること。「西郷」は「西郷」のまま、「織田」は「織田」のまま。絶対に変換・補正・漢字変換しないこと。
+2. 【最重要】titleは会議コード（例：cjq-jjcp-hrh）を使わず、会議の内容から意味のある日本語タイトルを自動生成すること（例：「◯◯現場 工程調整・安全確認ミーティング」）。
+3. 業務の重要事項（安全、品質、進捗、予算など）を最優先
+4. 期限が明示されていない場合も文脈から推測
+5. overviewは必ず200-300文字に収める
+6. keyPointsは3-5個に絞る
+7. actionsのdeadlineは会議日（${metadata.meetingDate}）を基準に推測
+8. EXPは緊急度・複雑度・影響範囲を考慮（10-100）
+9. 複数の担当者がいる場合は、assigneeに「山田, 佐藤」のようにカンマ区切りで記載
 
 JSONのみを返してください。
 `.trim();
@@ -362,7 +461,8 @@ async function saveMeetingToFirestore(
   docUrl: string,
   transcript: string,
   metadata: any,
-  analysisResult: any
+  analysisResult: any,
+  resolvedGroupId: string | null  // ← 追加
 ): Promise<string> {
   logger.info("saveMeetingToFirestore called", {
     docId,
@@ -393,9 +493,9 @@ async function saveMeetingToFirestore(
 
       // グループ紐付け
       status: 'draft',
-      groupId: null,
+      groupId: resolvedGroupId,
       publishedAt: null,
-      visibleTo: null,
+      visibleTo: resolvedGroupId ? await getGroupAdminIds(resolvedGroupId) : null,
       publishedBy: null,
       publishedByName: null,
       
@@ -526,6 +626,16 @@ logger.info("Meeting analysis completed", {
   actionsCount: analysisResult.actions?.length,
 });
 
+
+
+// Step 4.5: グループIDを特定
+logger.info("Identifying group ID...");
+const resolvedGroupId = await identifyGroupId(
+  metadata.meetingTitle || "",
+  metadata.groupNameHint
+);
+logger.info("Group ID resolved", { groupId: resolvedGroupId });
+
 // Step 5: Firestoreに保存
 logger.info("Saving to Firestore...");
 const meetingId = await saveMeetingToFirestore(
@@ -533,7 +643,8 @@ const meetingId = await saveMeetingToFirestore(
   docUrl,
   transcript,
   metadata,
-  analysisResult
+  analysisResult,
+  resolvedGroupId
 );
 logger.info("Saved to Firestore", { meetingId });
 
