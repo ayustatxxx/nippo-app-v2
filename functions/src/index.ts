@@ -213,6 +213,33 @@ async function getAllMemberNames(): Promise<string[]> {
 }
 
 /**
+ * グループの過去の修正例を取得（Geminiプロンプト用）
+ */
+async function getCorrectionLogs(groupId: string): Promise<string> {
+  try {
+    const logsSnapshot = await db
+      .collection("correction_logs")
+      .doc(groupId)
+      .collection("logs")
+      .orderBy("correctedAt", "desc")
+      .limit(10)
+      .get();
+
+    if (logsSnapshot.empty) return "";
+
+    const examples = logsSnapshot.docs.map((doc) => {
+      const data = doc.data();
+      return `・${data.field}：「${data.before}」→「${data.after}」`;
+    });
+
+    return examples.join("\n");
+  } catch (error: any) {
+    logger.error("getCorrectionLogs failed", { error: error.message });
+    return "";
+  }
+}
+
+/**
  * グループの管理者IDリストを取得（adminId + adminIds）
  */
 async function getGroupAdminIds(groupId: string): Promise<string[]> {
@@ -305,8 +332,9 @@ async function analyzeMeetingWithGemini(
     });
 
     // プロンプトを生成
-    const memberNames = await getAllMemberNames();
-const prompt = generateMeetingAnalysisPrompt(transcript, metadata, memberNames);
+   const memberNames = await getAllMemberNames();
+const correctionLogs = await getCorrectionLogs(metadata.groupId || '');
+const prompt = generateMeetingAnalysisPrompt(transcript, metadata, memberNames, correctionLogs);
 
     logger.info("Calling Gemini API for meeting analysis...");
 
@@ -351,7 +379,8 @@ const prompt = generateMeetingAnalysisPrompt(transcript, metadata, memberNames);
 function generateMeetingAnalysisPrompt(
   transcript: string,
   metadata: any,
-  memberNames: string[]
+  memberNames: string[],
+  correctionLogs: string
 ): string {
   return `
 あなたは会議アシスタント（書記官）です。
