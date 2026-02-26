@@ -181,6 +181,7 @@ interface MeetingSummary {
     exp: number;
   }>;
   createdAt: any;
+  visibleTo: string[] | null;
   type: 'meeting_summary';
 }
 
@@ -2930,6 +2931,7 @@ try {
       summary: data.summary || { title: '', keyPoints: [], decisions: [] },
       actions: data.actions || [],
       createdAt: data.createdAt,
+      visibleTo: data.visibleTo || null,
       type: 'meeting_summary' as const
     } as MeetingSummary;
   });
@@ -2962,6 +2964,7 @@ try {
         summary: data.summary || { title: '', keyPoints: [], decisions: [] },
         actions: data.actions || [],
         createdAt: data.createdAt,
+        visibleTo: data.visibleTo || null,
         type: 'meeting_summary' as const
       } as MeetingSummary;
     });
@@ -2971,9 +2974,16 @@ try {
   
   console.log('✅ [Home] 議事録要約取得完了:', allSummaries.length, '件');
   
-  if (isMounted) {
-    setMeetingSummaries(allSummaries);
-  }
+ // visibleToフィルタリング（draft=管理者のみ、published=全員）
+const filteredSummaries = allSummaries.filter(s => {
+  const data = s as any;
+  if (!data.visibleTo) return true; // publishedまたはvisibleTo未設定は全員に表示
+  return data.visibleTo.includes(localStorage.getItem("daily-report-user-id")); // draftは管理者のみ
+});
+
+if (isMounted) {
+  setMeetingSummaries(filteredSummaries);
+}
 } catch (error) {
   console.error('❌ [Home] 議事録要約取得エラー:', error);
 }

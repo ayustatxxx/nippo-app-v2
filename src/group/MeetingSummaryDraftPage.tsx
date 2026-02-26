@@ -211,6 +211,7 @@ if (effectiveGroupId) {
         meetingTitle: editedTitle,
         editedSummaryText: editedSummary,
         status: 'published',
+        visibleTo: null,
         publishedAt: serverTimestamp(),
         publishedBy: currentUserId,
         publishedByName: currentUserName,
@@ -218,7 +219,7 @@ if (effectiveGroupId) {
       });
       
       alert('共有しました！');
-      navigate(`/group/${groupId}`);
+      window.location.href = '/';
     } catch (error) {
       console.error('Error publishing:', error);
       alert('共有に失敗しました');
