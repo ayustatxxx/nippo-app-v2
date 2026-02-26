@@ -28,6 +28,7 @@ interface MeetingData {
   summary: MeetingSummary;
   actions: MeetingAction[];
   status: 'draft' | 'published';
+  editedSummaryText?: string;
 }
 
 export default function MeetingSummaryDetailPage() {
@@ -40,6 +41,7 @@ export default function MeetingSummaryDetailPage() {
   // ユーザー情報
   const [currentUserId, setCurrentUserId] = useState('');
   const [currentUserName, setCurrentUserName] = useState('');
+  const [groupName, setGroupName] = useState('');
 
   // ユーザー情報を取得
   useEffect(() => {
@@ -68,6 +70,14 @@ export default function MeetingSummaryDetailPage() {
         if (docSnap.exists()) {
           const data = docSnap.data() as any;
           setMeetingData(data);
+
+          // グループ名を取得
+if (data.groupId) {
+  const groupSnap = await getDoc(doc(db, 'groups', data.groupId));
+  if (groupSnap.exists()) {
+    setGroupName(groupSnap.data().name || '');
+  }
+}
         }
       } catch (error) {
         console.error('Error fetching meeting:', error);
@@ -237,7 +247,8 @@ export default function MeetingSummaryDetailPage() {
       </div>
       
      {/* グループ情報の帯 */}
-<div 
+<div
+  onClick={() => groupId && navigate(`/group/${groupId}?from=meeting-summary`)}
   style={{
     padding: '0.6rem 1rem',
     backgroundColor: 'rgba(5, 90, 104, 0.05)',
@@ -247,10 +258,12 @@ export default function MeetingSummaryDetailPage() {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottom: '1px solid #f0f0f0'
+    borderBottom: '1px solid #f0f0f0',
+    cursor: groupId ? 'pointer' : 'default'
   }}
 >
-  MYQUEST
+
+  {groupName || 'グループ未設定'}
   <svg
     width="16"
     height="16"
@@ -348,6 +361,16 @@ export default function MeetingSummaryDetailPage() {
   タイトル：{meetingData.meetingTitle}
 </div>
 
+
+{/* 編集済みテキスト優先表示 */}
+          {meetingData.editedSummaryText ? (
+            <div style={{ marginBottom: '1.5rem', fontSize: '0.9rem', color: '#333', lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>
+              {meetingData.editedSummaryText}
+            </div>
+          ) : (
+            <>
+
+
           {/* 重要ポイント */}
           {meetingData.summary?.keyPoints && meetingData.summary.keyPoints.length > 0 && (
             <div style={{ marginBottom: '1.5rem' }}>
@@ -440,7 +463,8 @@ export default function MeetingSummaryDetailPage() {
               </div>
             </div>
           )}
-
+          </>
+          )}
           </div>
       </div>
 

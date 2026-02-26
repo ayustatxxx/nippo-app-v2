@@ -1194,9 +1194,9 @@ const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({
               cursor: 'pointer',
             }}
             onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/group/${summary.groupId}`);
-            }}
+  e.stopPropagation();
+  navigate(`/group/${summary.groupId}?from=meeting-summary`);
+}}
           >
             {summary.groupName || 'グループ名なし'}
           </div>
@@ -2905,6 +2905,35 @@ try {
   
   // ユーザーが参加しているグループの議事録要約を取得
   const groupIds = userGroups.map(g => g.id);
+
+  // groupId=nullの下書き議事録も取得（管理者用）
+  const draftRef = collection(db, 'meeting_summaries');
+  const draftQ = query(
+    draftRef,
+    where('groupId', '==', null),
+    where('status', '==', 'draft'),
+    orderBy('createdAt', 'desc'),
+    limit(10)
+  );
+  const draftSnapshot = await getDocs(draftQ);
+  const draftSummaries = draftSnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      docId: data.docId || '',
+      meetingTitle: data.meetingTitle || '無題の会議',
+      meetingDate: data.meetingDate,
+      status: data.status || 'draft',
+      groupId: null,
+      groupName: 'グループ未設定',
+      participants: data.participants || [],
+      summary: data.summary || { title: '', keyPoints: [], decisions: [] },
+      actions: data.actions || [],
+      createdAt: data.createdAt,
+      type: 'meeting_summary' as const
+    } as MeetingSummary;
+  });
+  allSummaries = [...allSummaries, ...draftSummaries];
   
   // グループごとに議事録要約を取得（最新10件）
   for (const groupId of groupIds) {
@@ -2955,8 +2984,8 @@ try {
 // 🔥 投稿と議事録要約を統合してタイムラインに設定
 const combinedTimeline = [...enrichedPosts, ...allSummaries].sort((a, b) => {
   // 投稿の場合は timestamp、議事録要約の場合は createdAt を使用
-  const timeA = ('timestamp' in a ? a.timestamp : a.createdAt) || 0;
-  const timeB = ('timestamp' in b ? b.timestamp : b.createdAt) || 0;
+  const timeA = ('timestamp' in a ? a.timestamp : (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt)) || 0;
+  const timeB = ('timestamp' in b ? b.timestamp : (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt)) || 0;
   return timeB - timeA; // 降順（新しい順）
 });
 
@@ -4766,7 +4795,7 @@ placeholder="キーワード・#タグで検索"
                 {timelineItems.length === 0 ? '投稿はまだありません' : '検索条件に一致する投稿はありません'}
               </div>
             ) : (
-              groupItemsByDate()
+              groupItemsByDate(filteredItems, displayedPostsCount)
             )}
 
 
@@ -4983,10 +5012,11 @@ placeholder="キーワード・#タグで検索"
   );
 
   // タイムラインアイテムを日付ごとにグループ化して表示するヘルパー関数
-function groupItemsByDate() {
+function groupItemsByDate(filteredItems: any[], displayedPostsCount: number) {
   // 🌟 ここで全体の表示件数を制限（重要！）
   const limitedItems = filteredItems.slice(0, displayedPostsCount);
   console.log(`📊 表示制限適用: ${displayedPostsCount}件 / 全${filteredItems.length}件`);
+  console.log('📋 表示中のアイテム種別:', limitedItems.map(i => ('type' in i ? i.type : 'post') + ':' + ('timestamp' in i ? new Date(i.timestamp).toLocaleDateString() : '')));
 
   // 日付ごとにグループ化
   const groupedByDate: Record<string, TimelineItem[]> = {};
@@ -4999,17 +5029,26 @@ if ('type' in item && item.type === 'alert') {
   date = formatDate(new Date());
 } else {
   // 投稿の場合は投稿日時から日付を取得
-  const post = item as Post;
-  if (post.time && typeof post.time === 'string') {
-    date = post.time.split('　')[0];
-  } else {
-    // timeフィールドがない場合はcreatedAtから生成
-    const postDate = post.createdAt 
-      ? (typeof post.createdAt === 'number' 
-          ? new Date(post.createdAt) 
-          : (post.createdAt as any).toDate?.() || new Date())
+  if ('type' in item && item.type === 'meeting_summary') {
+    const summary = item as MeetingSummary;
+    const summaryDate = summary.createdAt
+      ? ((summary.createdAt as any).seconds
+          ? new Date((summary.createdAt as any).seconds * 1000)
+          : new Date(summary.createdAt as any))
       : new Date();
-    date = formatDate(postDate);
+    date = formatDate(summaryDate);
+  } else {
+    const post = item as Post;
+    if (post.time && typeof post.time === 'string') {
+      date = post.time.split('　')[0];
+    } else {
+      const postDate = post.createdAt 
+        ? (typeof post.createdAt === 'number' 
+            ? new Date(post.createdAt) 
+            : (post.createdAt as any).toDate?.() || new Date())
+        : new Date();
+      date = formatDate(postDate);
+    }
   }
 }
       
@@ -5018,6 +5057,7 @@ if ('type' in item && item.type === 'alert') {
       }
       groupedByDate[date].push(item);
     });
+    console.log('📅 グループ化後の日付キー:', Object.keys(groupedByDate));
     
     // 日付ごとに表示
     return Object.entries(groupedByDate)
@@ -5057,7 +5097,8 @@ if ('type' in item && item.type === 'alert') {
       key={item.id}
       summary={item as MeetingSummary}
       onViewDetails={(summaryId) => {
-        navigate(`/group/${(item as MeetingSummary).groupId}/meeting-summary/${summaryId}`);
+        const gId = (item as MeetingSummary).groupId || 'admin';
+navigate(`/group/${gId}/meeting-summary/${summaryId}`);
       }}
       navigate={navigate}
     />

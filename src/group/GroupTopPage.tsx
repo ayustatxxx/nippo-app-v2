@@ -470,6 +470,11 @@ const handleBack = () => {
   console.log('=== handleBack実行 ===');
   console.log('from:', from);
   console.log('postId:', postId);
+
+  if (from === 'meeting-summary') {
+  console.log('議事録詳細ページに戻る');
+  navigate(-1);
+} else 
   
   if (from === 'home-detail' && postId) {
     // Home詳細ページから来た場合は、sessionStorageに保存してHomeに戻る

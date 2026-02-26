@@ -96,10 +96,19 @@ const [originalSummary, setOriginalSummary] = useState('');
           setEditedTitle(data.meetingTitle || '');
           setOriginalTitle(data.meetingTitle || '');
           
+          // 編集済みテキストがあればそちらを優先
+          if (data.editedSummaryText) {
+            setEditedSummary(data.editedSummaryText);
+            setOriginalSummary(data.editedSummaryText);
+            return;
+          }
+          
           // 要約テキストを生成
           let summaryText = '';
-          
           if (data.summary.keyPoints && data.summary.keyPoints.length > 0) {
+
+
+
             summaryText += '■ 重要ポイント\n';
             data.summary.keyPoints.forEach((point: string) => {
               summaryText += `・${point}\n`;
@@ -153,9 +162,6 @@ const effectiveGroupId = meetingGroupId || selectedGroupId;
 if (effectiveGroupId) {
   const corrections: {field: string; before: string; after: string}[] = [];
   
-  if (originalTitle !== editedTitle) {
-    corrections.push({ field: 'title', before: originalTitle, after: editedTitle });
-  }
   if (originalSummary !== editedSummary) {
     corrections.push({ field: 'summary', before: originalSummary, after: editedSummary });
   }
