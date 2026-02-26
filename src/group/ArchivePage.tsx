@@ -18,6 +18,33 @@ import { deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { linkifyText } from '../utils/urlUtils';
 
+// 議事録の型定義
+interface MeetingSummary {
+  id: string;
+  meetingTitle: string;
+  meetingDate: any;
+  status: 'draft' | 'published';
+  groupId: string;
+  participants: string[];
+  summary: {
+    title: string;
+    keyPoints: string[];
+    decisions: string[];
+  };
+
+  actions: Array<{
+    assignee: string;
+    task: string;
+    deadline: string;
+    priority: string;
+    exp: number;
+  }>;
+
+  createdAt: any;
+  publishedAt: any;
+  type: 'meeting_summary';
+}
+
 // 🔸 新着バナー用：「最後に見た時刻」を保存・読み込みするためのキー
 const LAST_VIEWED_KEY_PREFIX = 'archive-last-viewed-';
 
@@ -119,6 +146,60 @@ const getTimestampFromId = (id: string): number => {
   // IDは "タイムスタンプ + ランダム文字列" の形式
   const timestampStr = id.split(/[a-z]/)[0]; // 最初の英字の前までを取得
   return parseInt(timestampStr) || 0; // 数値に変換、失敗したら0を返す
+};
+
+// 議事録カードコンポーネント
+const MeetingSummaryCard: React.FC<{
+  summary: MeetingSummary;
+  navigate: (path: string) => void;
+}> = ({ summary, navigate }) => {
+  return (
+    <div
+      style={{
+        backgroundColor: '#ffffff22',
+        backdropFilter: 'blur(4px)',
+        color: '#fff',
+        borderRadius: '12px',
+        padding: '1rem',
+        marginBottom: '1rem',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+        cursor: 'pointer',
+      }}
+      onClick={() => navigate(`/meeting-summary/${summary.id}?from=archive&groupId=${summary.groupId}`)}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#F0DB4F22', display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: '0.5rem' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="rgb(0, 102, 114)">
+              <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" />
+            </svg>
+          </div>
+          <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>エージェント（AI）</div>
+        </div>
+      </div>
+      <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.3)', marginBottom: '0.8rem' }} />
+      <div style={{ marginBottom: '0.8rem', fontSize: '1rem', fontWeight: 'bold', color: '#fff' }}>
+        Google Meet / 議事録の要約です。
+      </div>
+      <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', color: '#fff' }}>
+        タイトル：{summary.meetingTitle}
+      </div>
+      {summary.summary?.keyPoints && (
+        <div style={{ fontSize: '0.9rem', color: '#fff', marginBottom: '0.3rem' }}>・重要ポイント：{summary.summary.keyPoints.length}件</div>
+      )}
+      {summary.actions && summary.actions.length > 0 && (
+        <div style={{ fontSize: '0.9rem', color: '#fff', marginBottom: '0.3rem' }}>・タスク：{summary.actions.length}件</div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.8rem' }}>
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/meeting-summary/${summary.id}?from=archive&groupId=${summary.groupId}`); }}
+          style={{ padding: '0.4rem 1rem', backgroundColor: 'rgb(0, 102, 114)', color: '#fff', border: 'none', borderRadius: '20px', fontSize: '0.75rem', cursor: 'pointer' }}
+        >
+          詳細
+        </button>
+      </div>
+    </div>
+  );
 };
 
 // 作業時間投稿用のカードコンポーネント
@@ -954,6 +1035,10 @@ const POSTS_PER_LOAD = 10; // スクロール時に読み込む件数（初回�
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
 
+  // 議事録
+const [meetingSummaries, setMeetingSummaries] = useState<MeetingSummary[]>([]);
+const [isLoadingMeetings, setIsLoadingMeetings] = useState(false);
+
   // 🆕 検索結果の総件数
 const [searchResultCount, setSearchResultCount] = useState<number | null>(null);
 const [isCountingResults, setIsCountingResults] = useState(false);
@@ -1451,7 +1536,39 @@ const handleEditPost = (postId: string) => {
   handleViewPostDetails(postId);  // ⭐ 新しい関数を呼ぶだけ！
 };
 
-
+// 議事録データを取得
+useEffect(() => {
+  if (!groupId) return;
+  const fetchMeetingSummaries = async () => {
+    setIsLoadingMeetings(true);
+    try {
+      const { collection, query, where, getDocs, orderBy, limit } = await import('firebase/firestore');
+      const { getFirestore } = await import('firebase/firestore');
+      const db = getFirestore();
+      const summariesRef = collection(db, 'meeting_summaries');
+      const q = query(
+        summariesRef,
+        where('groupId', '==', groupId),
+        where('status', '==', 'published'),
+        orderBy('createdAt', 'desc'),
+        limit(5)
+      );
+      const snapshot = await getDocs(q);
+      const summaries = snapshot.docs.map(doc => ({
+        id: doc.id,
+        type: 'meeting_summary' as const,
+        ...doc.data()
+      })) as MeetingSummary[];
+      setMeetingSummaries(summaries);
+      console.log('✅ [Archive] 議事録取得完了:', summaries.length, '件');
+    } catch (error) {
+      console.error('❌ [Archive] 議事録取得エラー:', error);
+    } finally {
+      setIsLoadingMeetings(false);
+    }
+  };
+  fetchMeetingSummaries();
+}, [groupId]);
 
 useEffect(() => {
   const fetchPosts = async () => {
@@ -4536,6 +4653,16 @@ if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'objec
           </h3>
       </div>
     )}
+
+    {/* 議事録カードセクション */}
+{meetingSummaries.length > 0 && meetingSummaries.map((summary) => (
+  <div key={summary.id} style={{ maxWidth: '480px', width: '100%', margin: '0 auto' }}>
+    <MeetingSummaryCard
+      summary={summary}
+      navigate={navigate}
+    />
+  </div>
+))}
 
     {Object.entries(groupedPosts).map(([date, postsForDate]) => (
       <div
