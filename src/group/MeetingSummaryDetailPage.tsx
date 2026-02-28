@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/firestore';
 import Header from '../components/Header';
+import MemoModal, { MemoDisplay } from '../components/MemoModal';
 
 /**
  * 議事録詳細ページ（閲覧専用）
@@ -29,11 +30,14 @@ interface MeetingData {
   actions: MeetingAction[];
   status: 'draft' | 'published';
   editedSummaryText?: string;
+  publishedBy?: string;
 }
 
 export default function MeetingSummaryDetailPage() {
   const { meetingId, groupId } = useParams<{ meetingId: string; groupId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromArchive = searchParams.get('from') === 'archive';
   
   const [loading, setLoading] = useState(true);
   const [meetingData, setMeetingData] = useState<MeetingData | null>(null);
@@ -42,6 +46,8 @@ export default function MeetingSummaryDetailPage() {
   const [currentUserId, setCurrentUserId] = useState('');
   const [currentUserName, setCurrentUserName] = useState('');
   const [groupName, setGroupName] = useState('');
+  const [memoModalOpen, setMemoModalOpen] = useState(false);
+  const [memos, setMemos] = useState<any[]>([]);
 
   // ユーザー情報を取得
   useEffect(() => {
@@ -70,6 +76,7 @@ export default function MeetingSummaryDetailPage() {
         if (docSnap.exists()) {
           const data = docSnap.data() as any;
           setMeetingData(data);
+        setMemos(docSnap.data().memos || []);
 
           // グループ名を取得
 if (data.groupId) {
@@ -170,7 +177,7 @@ if (data.groupId) {
   title="議事録"
   subtitle={meetingData.status === 'draft' ? '（下書き）' : undefined}
   showBackButton={true}
-  onBackClick={() => navigate('/')}
+  onBackClick={() => fromArchive ? navigate(`/group/${groupId}/archive`) : navigate('/')}
 />
 
       {/* コンテンツエリア - 投稿詳細と同じレイアウト */}
@@ -185,7 +192,7 @@ if (data.groupId) {
 <div style={{
   backgroundColor: 'white',
   borderRadius: '12px',
-  marginBottom: '5rem',
+  marginBottom: '1rem',
   boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
   overflow: 'hidden'
 }}>
@@ -247,7 +254,7 @@ if (data.groupId) {
       </div>
       
      {/* グループ情報の帯 */}
-<div
+{!fromArchive && <div
   onClick={() => groupId && navigate(`/group/${groupId}?from=meeting-summary`)}
   style={{
     padding: '0.6rem 1rem',
@@ -276,7 +283,7 @@ if (data.groupId) {
   >
     <polyline points="9,18 15,12 9,6"></polyline>
   </svg>
-</div>
+</div>}
       
       {/* 投稿内容 */}
       <div style={{ padding: '1.2rem' }}>
@@ -443,8 +450,8 @@ if (data.groupId) {
               <div style={{ paddingLeft: '1rem' }}>
                 {meetingData.actions.map((action, index) => (
                   <div key={index} style={{ 
-                    marginBottom: '1rem',
-                    paddingBottom: '1rem',
+                    marginBottom: index < meetingData.actions.length - 1 ? '1rem' : '0',
+                    paddingBottom: index < meetingData.actions.length - 1 ? '1rem' : '0',
                     borderBottom: index < meetingData.actions.length - 1 ? '1px solid rgba(0, 102, 114, 0.1)' : 'none'
                   }}>
                     <div style={{ fontSize: '0.9rem', color: '#333', marginBottom: '0.3rem' }}>
@@ -466,6 +473,60 @@ if (data.groupId) {
           </>
           )}
           </div>
+     {/* メモ・編集・削除ボタン（Archive経由 & published時のみ） */}
+{fromArchive && meetingData.status === 'published' && (
+  <>
+  {memos.filter(m => m.createdBy === currentUserId).length > 0 && (
+    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #f0f0f0', paddingLeft: '1.2rem', paddingRight: '1.2rem' }}>
+      <div style={{ fontSize: '0.9rem', color: '#055A68', marginBottom: '0.8rem', fontWeight: 'bold' }}>
+        メモ ({memos.filter(m => m.createdBy === currentUserId).length}件)
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+        {[...memos].filter(m => m.createdBy === currentUserId).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).map((memo) => (
+          <MemoDisplay key={memo.id} memo={memo} />
+        ))}
+      </div>
+    </div>
+  )}
+  <div style={{ marginTop: '0.3rem', paddingTop: '0.5rem', paddingBottom: '1rem', paddingLeft: '1.2rem', paddingRight: '1.2rem', borderTop: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div>
+      <button onClick={() => setMemoModalOpen(true)} style={{ padding: '0.5rem 1.2rem', backgroundColor: 'rgb(0, 102, 114)', color: '#F0DB4F', border: 'none', borderRadius: '20px', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold' }}>メモ</button>
+    </div>
+    {meetingData.publishedBy === currentUserId && (
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button onClick={() => navigate(`/group/${groupId}/meeting-summary-draft/${meetingId}${fromArchive ? '?from=archive' : ''}`)} style={{ padding: '0.5rem 1.2rem', backgroundColor: 'rgb(0, 102, 114)', color: '#F0DB4F', border: 'none', borderRadius: '20px', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
+        <button onClick={async () => { if (window.confirm('この議事録を削除しますか？')) { try { await deleteDoc(doc(db, 'meeting_summaries', meetingId!)); alert('削除しました'); navigate(`/group/${groupId}/archive`); } catch (e) { alert('削除に失敗しました'); } } }} style={{ padding: '0.5rem 1.2rem', backgroundColor: 'rgb(0, 102, 114)', color: '#F0DB4F', border: 'none', borderRadius: '20px', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold' }}>削除</button>
+      </div>
+    )}
+  </div>
+  </>
+)}
+{fromArchive && (
+  <MemoModal isOpen={memoModalOpen} onClose={() => setMemoModalOpen(false)} onSave={async (memoData) => {
+  try {
+    const currentUserId = localStorage.getItem('daily-report-user-id') || '';
+    const newMemo = {
+      ...memoData,
+      id: `memo_${Date.now()}`,
+      postId: meetingId || '',
+      createdAt: Date.now(),
+      createdBy: currentUserId,
+      createdByName: currentUserName,
+    };
+    const docRef = doc(db, 'meeting_summaries', meetingId!);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const existing = snap.data().memos || [];
+      await updateDoc(docRef, { memos: [...existing, newMemo] });
+    }
+    alert('メモを保存しました');
+    setMemos(prev => [newMemo, ...prev]);
+  } catch (e) {
+    alert('メモの保存に失敗しました');
+  }
+  setMemoModalOpen(false);
+}} postId={meetingId || ''} />
+)}
       </div>
 
  {/* 編集・共有ボタン（下書きの場合のみ） */}

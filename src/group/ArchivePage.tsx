@@ -149,6 +149,9 @@ const getTimestampFromId = (id: string): number => {
 };
 
 // 議事録カードコンポーネント
+// 議事録メモリキャッシュ（ページ遷移しても保持）
+const meetingSummaryCache: Record<string, any[]> = {};
+
 const MeetingSummaryCard: React.FC<{
   summary: MeetingSummary;
   navigate: (path: string) => void;
@@ -163,9 +166,7 @@ const MeetingSummaryCard: React.FC<{
         padding: '1rem',
         marginBottom: '1rem',
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-        cursor: 'pointer',
       }}
-      onClick={() => navigate(`/meeting-summary/${summary.id}?from=archive&groupId=${summary.groupId}`)}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -175,6 +176,16 @@ const MeetingSummaryCard: React.FC<{
             </svg>
           </div>
           <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>エージェント（AI）</div>
+        </div>
+        <div style={{ fontSize: '0.85rem', color: '#ddd' }}>
+          {summary.createdAt
+            ? (() => {
+                const d = (summary.createdAt as any).seconds
+                  ? new Date((summary.createdAt as any).seconds * 1000)
+                  : new Date(summary.createdAt as any);
+                return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+              })()
+            : ''}
         </div>
       </div>
       <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.3)', marginBottom: '0.8rem' }} />
@@ -192,8 +203,8 @@ const MeetingSummaryCard: React.FC<{
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.8rem' }}>
         <button
-          onClick={(e) => { e.stopPropagation(); navigate(`/meeting-summary/${summary.id}?from=archive&groupId=${summary.groupId}`); }}
-          style={{ padding: '0.4rem 1rem', backgroundColor: 'rgb(0, 102, 114)', color: '#fff', border: 'none', borderRadius: '20px', fontSize: '0.75rem', cursor: 'pointer' }}
+          onClick={(e) => { e.stopPropagation(); navigate(`/group/${summary.groupId}/meeting-summary/${summary.id}?from=archive`); }}
+          style={{ padding: '0.4rem 1rem', backgroundColor: 'rgb(0, 102, 114)', color: '#F0DB4F', border: 'none', borderRadius: '20px', fontSize: '0.75rem', cursor: 'pointer' }}
         >
           詳細
         </button>
@@ -1540,6 +1551,12 @@ const handleEditPost = (postId: string) => {
 useEffect(() => {
   if (!groupId) return;
   const fetchMeetingSummaries = async () => {
+    // メモリキャッシュから即時表示
+    const cacheKey = `meeting_summaries_${groupId}`;
+    if (meetingSummaryCache[cacheKey]) {
+      setMeetingSummaries(meetingSummaryCache[cacheKey]);
+      return; // キャッシュがあればFirestoreを叩かない
+    }
     setIsLoadingMeetings(true);
     try {
       const { collection, query, where, getDocs, orderBy, limit } = await import('firebase/firestore');
@@ -1560,6 +1577,7 @@ useEffect(() => {
         ...doc.data()
       })) as MeetingSummary[];
       setMeetingSummaries(summaries);
+      meetingSummaryCache[`meeting_summaries_${groupId}`] = summaries;
       console.log('✅ [Archive] 議事録取得完了:', summaries.length, '件');
     } catch (error) {
       console.error('❌ [Archive] 議事録取得エラー:', error);
@@ -2596,8 +2614,22 @@ if (searchQuery || startDate || endDate) {
   const groupedPosts = React.useMemo(() => {
   // ⭐ Phase A3: 表示件数制限を適用
   const displayedFilteredPosts = filteredPosts.slice(0, displayedPostsCount);
+
+  // 議事録を通常投稿と同じ形式に変換して追加
+  const summaryPosts = meetingSummaries.map(summary => {
+    const summaryDate = summary.createdAt
+      ? ((summary.createdAt as any).seconds
+          ? new Date((summary.createdAt as any).seconds * 1000)
+          : new Date(summary.createdAt as any))
+      : new Date();
+    const dateStr = `${summaryDate.getFullYear()} / ${summaryDate.getMonth()+1} / ${summaryDate.getDate()} (${['日','月','火','水','木','金','土'][summaryDate.getDay()]})`;
+    const timeStr = `${String(summaryDate.getHours()).padStart(2,'0')}:${String(summaryDate.getMinutes()).padStart(2,'0')}`;
+    return { ...summary, time: `${dateStr}　${timeStr}`, isMeetingSummary: true } as any;
+  });
+
+  const allPosts = [...displayedFilteredPosts, ...summaryPosts];
   
-  const groups = displayedFilteredPosts.reduce((acc: Record<string, Post[]>, post) => {
+  const groups = allPosts.reduce((acc: Record<string, Post[]>, post) => {
   // timeフィールドが存在しない場合の安全な処理
   if (!post.time) {
     console.warn('⚠️ [ArchivePage] timeフィールドがありません:', post.id);
@@ -4654,15 +4686,7 @@ if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'objec
       </div>
     )}
 
-    {/* 議事録カードセクション */}
-{meetingSummaries.length > 0 && meetingSummaries.map((summary) => (
-  <div key={summary.id} style={{ maxWidth: '480px', width: '100%', margin: '0 auto' }}>
-    <MeetingSummaryCard
-      summary={summary}
-      navigate={navigate}
-    />
-  </div>
-))}
+
 
     {Object.entries(groupedPosts).map(([date, postsForDate]) => (
       <div
@@ -4690,6 +4714,15 @@ if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'objec
         </h3>
 
         {postsForDate.map((post) => {
+  // 議事録カードの場合
+  if ((post as any).isMeetingSummary) {
+    const summary = post as any;
+    return (
+      <div key={summary.id} style={{ maxWidth: '480px', width: '100%', margin: '0 auto' }}>
+        <MeetingSummaryCard summary={summary} navigate={navigate} />
+      </div>
+    );
+  }
   const currentUserId = localStorage.getItem("daily-report-user-id") || "";  // 🆕 追加
   // デバッグ: isWorkTimePostの値を確認
   if (post.tags?.includes('#出退勤時間')) {

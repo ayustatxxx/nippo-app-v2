@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { doc, getDoc, updateDoc, serverTimestamp, collection, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../firebase/firestore';
 import Header from '../components/Header';
@@ -34,6 +34,8 @@ interface MeetingData {
 export default function MeetingSummaryDraftPage() {
   const { meetingId, groupId } = useParams<{ meetingId: string; groupId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromArchive = searchParams.get('from') === 'archive';
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -188,7 +190,7 @@ if (effectiveGroupId) {
     
     alert('下書きを保存しました');
     // 詳細ページに遷移
-    navigate(`/group/${groupId}/meeting-summary/${meetingId}`);
+    navigate(`/group/${groupId}/meeting-summary/${meetingId}${fromArchive ? '?from=archive' : ''}`);
   } catch (error) {
     console.error('Error saving:', error);
     alert('保存に失敗しました');
@@ -430,7 +432,7 @@ if (effectiveGroupId) {
       }}>
         <div style={{ display: 'flex', gap: '12px' }}>
           <button
-            onClick={() => navigate(`/group/${groupId}/meeting-summary/${meetingId}`)}
+            onClick={() => navigate(`/group/${groupId}/meeting-summary/${meetingId}${fromArchive ? '?from=archive' : ''}`)}
             style={{
               flex: 1,
               backgroundColor: '#E0E0E0',

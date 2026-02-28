@@ -1137,9 +1137,7 @@ const MeetingSummaryCard: React.FC<MeetingSummaryCardProps> = ({
         marginBottom: '1rem',
         boxShadow: '0 4px 6px rgba(0, 102, 114, 0.1), 0 1px 3px rgba(0, 102, 114, 0.08)',
         border: summary.status === 'draft' ? '1px solid #F0DB4F' : '1px solid rgba(0, 102, 114, 0.1)',
-        cursor: 'pointer',
       }}
-      onClick={() => onViewDetails(summary.id)}
     >
       {/* ヘッダー部分 */}
       <div style={{ 
