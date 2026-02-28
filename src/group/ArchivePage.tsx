@@ -1047,7 +1047,7 @@ const POSTS_PER_LOAD = 10; // スクロール時に読み込む件数（初回�
   const [endDate, setEndDate] = useState<Date | null>(null);
 
   // 議事録
-const [meetingSummaries, setMeetingSummaries] = useState<MeetingSummary[]>([]);
+const [meetingSummaries, setMeetingSummaries] = useState<MeetingSummary[]>(() => meetingSummaryCache[`meeting_summaries_${groupId || ''}`] || []);
 const [isLoadingMeetings, setIsLoadingMeetings] = useState(false);
 
   // 🆕 検索結果の総件数
@@ -1613,6 +1613,11 @@ if (cacheData && cacheData.length > 0 && Date.now() - cacheTime < CACHE_DURATION
   setPosts(cacheData);
   setFilteredPosts(cacheData);
   setLoading(false);
+  // 議事録キャッシュも同時にセット
+  const cachedMeetings = meetingSummaryCache[`meeting_summaries_${groupId}`];
+  if (cachedMeetings) {
+    setMeetingSummaries(cachedMeetings);
+  }
 
 // ⭐ 修正: lastVisibleDocの復元を先に完了させる
       const savedDocId = localStorage.getItem(`lastVisibleDocId_${groupId}`);
@@ -2629,7 +2634,7 @@ if (searchQuery || startDate || endDate) {
 
   const allPosts = [...displayedFilteredPosts, ...summaryPosts];
   
-  const groups = allPosts.reduce((acc: Record<string, Post[]>, post) => {
+  const groups: Record<string, any[]> = allPosts.reduce((acc: Record<string, any[]>, post) => {
   // timeフィールドが存在しない場合の安全な処理
   if (!post.time) {
     console.warn('⚠️ [ArchivePage] timeフィールドがありません:', post.id);
