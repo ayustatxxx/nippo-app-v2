@@ -149,190 +149,6 @@ const getTimestampFromId = (id: string): number => {
 };
 
 
-// 議事録詳細モーダル
-const MeetingSummaryDetailModal: React.FC<{
-  meetingId: string;
-  groupId: string;
-  onClose: () => void;
-  currentUserId: string;
-  currentUserName: string;
-}> = ({ meetingId, groupId, onClose, currentUserId, currentUserName }) => {
-  const navigate = useNavigate();
-  const [loading, setLoading] = React.useState(true);
-  const [meetingData, setMeetingData] = React.useState<any>(null);
-  const [memos, setMemos] = React.useState<any[]>([]);
-  const [memoModalOpen, setMemoModalOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    const fetchMeeting = async () => {
-      try {
-        const docRef = doc(db, 'meeting_summaries', meetingId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setMeetingData(docSnap.data());
-          setMemos(docSnap.data().memos || []);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchMeeting();
-  }, [meetingId]);
-
-  if (loading) return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: '#fff', fontSize: '18px' }}>読み込み中...</div>
-    </div>
-  );
-
-  if (!meetingData) return null;
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: '#F5F5F5', zIndex: 9999, overflowY: 'auto' }}>
-      {/* ヘッダー */}
-      <Header
-        title="議事録"
-        subtitle={meetingData.status === 'draft' ? '（下書き）' : undefined}
-        showBackButton={true}
-        onBackClick={onClose}
-      />
-      <div style={{ maxWidth: '480px', margin: '0 auto', padding: '1rem', paddingTop: '70px' }}>
-        {/* メインカード */}
-        <div style={{ backgroundColor: 'white', borderRadius: '12px', marginBottom: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-          {/* アバター・タイトル行 */}
-          <div style={{ padding: '1rem', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-            <div style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: 'rgba(5,90,104,0.1)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="#055A68"><path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" /></svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 'bold', color: '#055A68', fontSize: '1.1rem' }}>エージェント（AI）</div>
-            </div>
-            {meetingData.meetingDate && (
-              <div style={{ fontSize: '0.85rem', color: '#055A68', fontWeight: '500' }}>
-                {new Date(meetingData.meetingDate.seconds * 1000).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            )}
-          </div>
-
-          {/* 内容 */}
-          <div style={{ padding: '1.2rem' }}>
-            <div style={{ marginBottom: '0.5rem', color: '#666', fontSize: '0.9rem', lineHeight: '1.5' }}>
-              AIエージェントです。「{meetingData.meetingTitle}」の打ち合わせ内容をまとめました。
-            </div>
-            <div style={{ marginTop: '1.2rem', marginBottom: '1rem', color: '#055A68', fontSize: '1rem', fontWeight: 'bold' }}>
-              Google Meet / 議事録の要約です。
-            </div>
-
-            {/* 参加者 */}
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontSize: '0.9rem', color: '#055A68', fontWeight: 'bold', marginBottom: '0.5rem' }}>■ 参加者</div>
-              <div style={{ fontSize: '0.9rem', color: '#333', paddingLeft: '1rem' }}>{(meetingData.participants || []).join('、')}</div>
-            </div>
-
-            {/* 会議日時 */}
-            {meetingData.meetingDate && (
-              <div style={{ marginBottom: '1rem' }}>
-                <div style={{ fontSize: '0.9rem', color: '#055A68', fontWeight: 'bold', marginBottom: '0.5rem' }}>■ 会議日時</div>
-                <div style={{ fontSize: '0.9rem', color: '#333', paddingLeft: '1rem' }}>
-                  {new Date(meetingData.meetingDate.seconds * 1000).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
-            )}
-
-            <div style={{ height: '1px', backgroundColor: 'rgba(0,102,114,0.3)', margin: '1rem 0' }} />
-
-            <div style={{ marginBottom: '1.5rem', fontSize: '0.9rem', color: '#333' }}>タイトル：{meetingData.meetingTitle}</div>
-
-            {/* 要約テキスト */}
-            {meetingData.editedSummaryText ? (
-              <div style={{ marginBottom: '1.5rem', fontSize: '0.9rem', color: '#333', lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>{meetingData.editedSummaryText}</div>
-            ) : (
-              <>
-                {meetingData.summary?.keyPoints?.length > 0 && (
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <div style={{ fontSize: '0.9rem', color: '#055A68', fontWeight: 'bold', marginBottom: '0.5rem' }}>■ 重要ポイント</div>
-                    <div style={{ paddingLeft: '1rem' }}>
-                      {meetingData.summary.keyPoints.map((point: string, i: number) => (
-                        <div key={i} style={{ fontSize: '0.9rem', color: '#333', marginBottom: '0.3rem', lineHeight: '1.6' }}>・{point}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {meetingData.summary?.decisions?.length > 0 && (
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <div style={{ fontSize: '0.9rem', color: '#055A68', fontWeight: 'bold', marginBottom: '0.5rem' }}>■ 決定事項</div>
-                    <div style={{ paddingLeft: '1rem' }}>
-                      {meetingData.summary.decisions.map((d: string, i: number) => (
-                        <div key={i} style={{ fontSize: '0.9rem', color: '#333', marginBottom: '0.3rem', lineHeight: '1.6' }}>・{d}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {meetingData.actions?.length > 0 && (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <div style={{ fontSize: '0.9rem', color: '#055A68', fontWeight: 'bold', marginBottom: '0.5rem' }}>■ タスク</div>
-                    <div style={{ paddingLeft: '1rem' }}>
-                      {meetingData.actions.map((action: any, i: number) => (
-                        <div key={i} style={{ marginBottom: i < meetingData.actions.length - 1 ? '1rem' : '0', paddingBottom: i < meetingData.actions.length - 1 ? '1rem' : '0', borderBottom: i < meetingData.actions.length - 1 ? '1px solid rgba(0,102,114,0.1)' : 'none' }}>
-                          <div style={{ fontSize: '0.9rem', color: '#333', marginBottom: '0.3rem' }}>・<span style={{ fontWeight: '500' }}>{action.assignee}</span>さん</div>
-                          <div style={{ fontSize: '0.85rem', color: '#555', paddingLeft: '1rem', marginBottom: '0.2rem' }}>{action.task}</div>
-                          {action.deadline && <div style={{ fontSize: '0.8rem', color: '#666', paddingLeft: '1rem' }}>期限: {new Date(action.deadline).toLocaleDateString('ja-JP')}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* メモ・編集・削除ボタン */}
-          {meetingData.status === 'published' && (
-            <>
-              {memos.filter((m: any) => m.createdBy === currentUserId).length > 0 && (
-                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #f0f0f0', paddingLeft: '1.2rem', paddingRight: '1.2rem' }}>
-                  <div style={{ fontSize: '0.9rem', color: '#055A68', marginBottom: '0.8rem', fontWeight: 'bold' }}>
-                    メモ ({memos.filter((m: any) => m.createdBy === currentUserId).length}件)
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                    {[...memos].filter((m: any) => m.createdBy === currentUserId).sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)).map((memo: any) => (
-                      <MemoDisplay key={memo.id} memo={memo} />
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div style={{ marginTop: '0.3rem', paddingTop: '0.5rem', paddingBottom: '1rem', paddingLeft: '1.2rem', paddingRight: '1.2rem', borderTop: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <button onClick={() => setMemoModalOpen(true)} style={{ padding: '0.5rem 1.2rem', backgroundColor: 'rgb(0,102,114)', color: '#F0DB4F', border: 'none', borderRadius: '20px', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold' }}>メモ</button>
-                {meetingData.publishedBy === currentUserId && (
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button onClick={() => navigate(`/group/${groupId}/meeting-summary-draft/${meetingId}?from=archive`)} style={{ padding: '0.5rem 1.2rem', backgroundColor: 'rgb(0,102,114)', color: '#F0DB4F', border: 'none', borderRadius: '20px', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
-                    <button onClick={async () => { if (window.confirm('この議事録を削除しますか？')) { try { await deleteDoc(doc(db, 'meeting_summaries', meetingId)); alert('削除しました'); onClose(); } catch (e) { alert('削除に失敗しました'); } } }} style={{ padding: '0.5rem 1.2rem', backgroundColor: 'rgb(0,102,114)', color: '#F0DB4F', border: 'none', borderRadius: '20px', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold' }}>削除</button>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      <MemoModal isOpen={memoModalOpen} onClose={() => setMemoModalOpen(false)} onSave={async (memoData) => {
-        try {
-          const newMemo = { ...memoData, id: `memo_${Date.now()}`, postId: meetingId, createdAt: Date.now(), createdBy: currentUserId, createdByName: currentUserName };
-          const docRef = doc(db, 'meeting_summaries', meetingId);
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-            await updateDoc(docRef, { memos: [...(snap.data().memos || []), newMemo] });
-          }
-          alert('メモを保存しました');
-          setMemos(prev => [newMemo, ...prev]);
-        } catch (e) { alert('メモの保存に失敗しました'); }
-        setMemoModalOpen(false);
-      }} postId={meetingId} />
-    </div>
-  );
-};
 
 // 議事録カードコンポーネント
 // 議事録メモリキャッシュ（ページ遷移しても保持）
@@ -341,8 +157,7 @@ const meetingSummaryCache: Record<string, any[]> = {};
 const MeetingSummaryCard: React.FC<{
   summary: MeetingSummary;
   navigate: (path: string) => void;
-  onDetailClick: (id: string) => void;
-}> = ({ summary, navigate, onDetailClick }) => {
+}> = ({ summary, navigate }) => {
   return (
     <div
       style={{
@@ -390,7 +205,7 @@ const MeetingSummaryCard: React.FC<{
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.8rem' }}>
         <button
-          onClick={(e) => { e.stopPropagation(); onDetailClick(summary.id); }}
+          onClick={(e) => { e.stopPropagation(); navigate(`/group/${summary.groupId}/meeting-summary/${summary.id}?from=archive`); }}
           style={{ padding: '0.4rem 1rem', backgroundColor: 'rgb(0, 102, 114)', color: '#F0DB4F', border: 'none', borderRadius: '20px', fontSize: '0.75rem', cursor: 'pointer' }}
         >
           詳細
@@ -1235,7 +1050,6 @@ const POSTS_PER_LOAD = 10; // スクロール時に読み込む件数（初回�
 
   // 議事録
 const [meetingSummaries, setMeetingSummaries] = useState<MeetingSummary[]>(() => meetingSummaryCache[`meeting_summaries_${groupId || ''}`] || []);
-  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
 const [isLoadingMeetings, setIsLoadingMeetings] = useState(false);
 
   // 🆕 検索結果の総件数
@@ -1266,7 +1080,6 @@ const [searchInput, setSearchInput] = useState('');
 
   // 現在のユーザー情報を取得するための状態を追加
 const [currentUserId, setCurrentUserId] = useState<string>('');
-  const [currentUserName, setCurrentUserName] = useState<string>('');
 
   // エクスポート用の状態管理を追加
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -1626,8 +1439,6 @@ useEffect(() => {
   // ユーザー情報を取得
   const userId = localStorage.getItem('daily-report-user-id') || 'admin_user';
   setCurrentUserId(userId);
-  const userName = localStorage.getItem('daily-report-user-name') || '';
-  setCurrentUserName(userName);
   
 }, []);
 
@@ -4915,7 +4726,7 @@ if (createdAt !== null && createdAt !== undefined && typeof createdAt === 'objec
     const summary = post as any;
     return (
       <div key={summary.id} style={{ maxWidth: '480px', width: '100%', margin: '0 auto' }}>
-        <MeetingSummaryCard summary={summary} navigate={navigate} onDetailClick={(id) => setSelectedMeetingId(id)} />
+        <MeetingSummaryCard summary={summary} navigate={navigate} />
       </div>
     );
   }
@@ -6086,15 +5897,6 @@ if (readStatus.isAuthor) {
     from="archive" 
   />
 )}
-      {selectedMeetingId && (
-        <MeetingSummaryDetailModal
-          meetingId={selectedMeetingId}
-          groupId={groupId || ''}
-          onClose={() => setSelectedMeetingId(null)}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-        />
-      )}
       {/* グループフッターナビゲーション */}
       <GroupFooterNav activeTab="history" />
     </div>

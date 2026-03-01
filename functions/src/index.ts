@@ -709,3 +709,319 @@ res.status(200).json({
     }
   }
 );
+
+
+/**
+ * Step 3: 音声ファイルを処理してGeminiで文字起こし＋解析
+ * GASから呼び出される
+ * URL: https://asia-northeast1-nippo-4cb37.cloudfunctions.net/processAudioFile
+ */
+export const processAudioFile = onRequest(
+  {
+    timeoutSeconds: 540,
+    memory: "2GiB",
+  },
+  async (req, res) => {
+    logger.info("processAudioFile called", { method: req.method });
+
+    // CORS設定
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+
+    if (req.method !== "POST") {
+      res.status(405).json({ success: false, error: "Method not allowed" });
+      return;
+    }
+
+    try {
+      const { fileId, fileName, mimeType } = req.body;
+
+      if (!fileId || !fileName) {
+        res.status(400).json({ success: false, error: "Missing fileId or fileName" });
+        return;
+      }
+
+      logger.info("Processing audio file", { fileId, fileName, mimeType });
+
+      // Step 1: Google DriveからファイルをダウンロードしてGemini File APIにアップロード
+      const transcriptAndAnalysis = await processAudioWithGemini(fileId, fileName, mimeType);
+
+      // Step 2: 文字起こし原文をクライアントのDriveに保存
+      const transcriptDocUrl = await saveTranscriptToDrive(
+        fileName,
+        transcriptAndAnalysis.transcript
+      );
+
+      // Step 3: 解析結果をFirestoreに保存（文字起こし原文は除外）
+      const meetingId = await saveAudioMeetingToFirestore(
+        fileId,
+        fileName,
+        transcriptDocUrl,
+        transcriptAndAnalysis
+      );
+
+      logger.info("Audio file processed successfully", { meetingId });
+
+      res.status(200).json({
+        success: true,
+        message: "Audio file processed successfully",
+        data: {
+          meetingId,
+          transcriptDocUrl,
+          actionsCount: transcriptAndAnalysis.actions?.length || 0,
+        },
+        timestamp: new Date().toISOString(),
+      });
+
+    } catch (error: any) {
+      logger.error("processAudioFile failed", { error: error.message, stack: error.stack });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+/**
+ * Google DriveからダウンロードしてGeminiで文字起こし＋解析
+ */
+async function processAudioWithGemini(
+  fileId: string,
+  fileName: string,
+  mimeType: string
+): Promise<any> {
+  logger.info("processAudioWithGemini called", { fileId, fileName });
+
+  // Google Drive APIでファイルをダウンロード
+  const { google } = await import("googleapis");
+  const auth = new google.auth.GoogleAuth({
+    keyFile: "./firebase-admin-key.json",
+    scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+  });
+
+  const drive = google.drive({ version: "v3", auth });
+
+  logger.info("Downloading audio file from Drive...");
+  const response = await drive.files.get(
+    { fileId, alt: "media" },
+    { responseType: "arraybuffer" }
+  );
+
+  const audioBuffer = Buffer.from(response.data as ArrayBuffer);
+  logger.info("Audio file downloaded", { sizeBytes: audioBuffer.length });
+
+  // Gemini File APIにアップロード
+  const { GoogleAIFileManager } = await import("@google/generative-ai/server");
+  const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY || "");
+
+  logger.info("Uploading to Gemini File API...");
+  const uploadResult = await fileManager.uploadFile(
+    `${fileName}`,
+    {
+      mimeType: mimeType || "audio/x-m4a",
+      displayName: fileName,
+    }
+  );
+
+  // アップロード完了を待機
+  let geminiFile = await fileManager.getFile(uploadResult.file.name);
+  let waitCount = 0;
+  while (geminiFile.state === "PROCESSING" && waitCount < 30) {
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    geminiFile = await fileManager.getFile(uploadResult.file.name);
+    waitCount++;
+    logger.info("Waiting for Gemini processing...", { state: geminiFile.state, waitCount });
+  }
+
+  if (geminiFile.state !== "ACTIVE") {
+    throw new Error(`Gemini file processing failed: ${geminiFile.state}`);
+  }
+
+  logger.info("Gemini file ready", { uri: geminiFile.uri });
+
+  // Geminiで文字起こし＋解析を1回のAPIコールで実行
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+  const memberNames = await getAllMemberNames();
+
+  const prompt = `
+あなたは会議アシスタントです。この音声ファイルを文字起こしし、議事録を作成してください。
+
+【登録メンバー】
+${memberNames.length > 0 ? memberNames.join(", ") : "なし"}
+
+【出力形式】JSONのみ返してください。
+
+{
+  "transcript": "音声の全文文字起こし（話者名: 発言内容 の形式）",
+  "meetingTitle": "会議内容から自動生成した日本語タイトル",
+  "meetingDate": "ISO8601形式の推定日時（不明な場合は現在時刻）",
+  "participants": ["参加者1", "参加者2"],
+  "duration": 推定会議時間（分・整数）,
+  "summary": {
+    "title": "会議タイトル（1文）",
+    "overview": "会議全体の要約（200-300文字）",
+    "keyPoints": ["重要ポイント1", "重要ポイント2", "重要ポイント3"],
+    "decisions": ["決定事項1", "決定事項2"]
+  },
+  "actions": [
+    {
+      "assignee": "担当者名",
+      "task": "タスク内容",
+      "deadline": "ISO8601形式",
+      "priority": "urgent|high|medium|low",
+      "exp": 10から100の整数
+    }
+  ],
+  "insight": {
+    "text": "インサイト（1文・100文字以内）",
+    "category": "risk|opportunity|trend|suggestion",
+    "confidence": 0.85
+  }
+}
+
+【重要な指示】
+1. 登録メンバーリストを参照して人名の誤認識を補正すること
+2. 話者が特定できる場合は「話者名: 発言」の形式で文字起こしすること
+3. JSONのみ返すこと（説明文不要）
+`.trim();
+
+  const result = await model.generateContent([
+    {
+      fileData: {
+        mimeType: geminiFile.mimeType,
+        fileUri: geminiFile.uri,
+      },
+    },
+    { text: prompt },
+  ]);
+
+  const text = result.response.text();
+  const cleanedText = text.replace(/```json\n?|```\n?/g, "").trim();
+  const parsed = JSON.parse(cleanedText);
+
+  // Gemini File APIからファイルを削除（コスト節約）
+  await fileManager.deleteFile(uploadResult.file.name);
+  logger.info("Gemini file deleted after processing");
+
+  return parsed;
+}
+
+/**
+ * 文字起こし原文をクライアントのGoogle Driveに保存
+ * → 「録音ファイル_文字起こし」フォルダにGoogleドキュメントとして保存
+ */
+async function saveTranscriptToDrive(
+  fileName: string,
+  transcript: string
+): Promise<string> {
+  logger.info("saveTranscriptToDrive called", { fileName });
+
+  const TRANSCRIPT_FOLDER_ID = process.env.TRANSCRIPT_FOLDER_ID || "";
+
+  if (!TRANSCRIPT_FOLDER_ID) {
+    logger.warn("TRANSCRIPT_FOLDER_ID not set. Skipping Drive save.");
+    return "";
+  }
+
+  const { google } = await import("googleapis");
+  const auth = new google.auth.GoogleAuth({
+    keyFile: "./firebase-admin-key.json",
+    scopes: ["https://www.googleapis.com/auth/drive.file"],
+  });
+
+  const drive = google.drive({ version: "v3", auth });
+
+  // ファイル名から拡張子を除いたタイトル
+  const docTitle = fileName.replace(/\.[^.]+$/, "") + "_文字起こし";
+
+  // Googleドキュメントとして保存
+  const fileMetadata = {
+    name: docTitle,
+    mimeType: "application/vnd.google-apps.document",
+    parents: [TRANSCRIPT_FOLDER_ID],
+  };
+
+  const media = {
+    mimeType: "text/plain",
+    body: transcript,
+  };
+
+  const created = await drive.files.create({
+    requestBody: fileMetadata,
+    media: media,
+    fields: "id, webViewLink",
+  });
+
+  const docUrl = created.data.webViewLink || "";
+  logger.info("Transcript saved to Drive", { docUrl });
+
+  return docUrl;
+}
+
+/**
+ * 音声ファイル由来の議事録をFirestoreに保存
+ * ※ 文字起こし原文は保存しない（DriveリンクのみNG）
+ */
+async function saveAudioMeetingToFirestore(
+  fileId: string,
+  fileName: string,
+  transcriptDocUrl: string,
+  analysisResult: any
+): Promise<string> {
+  logger.info("saveAudioMeetingToFirestore called", { fileId });
+
+  const meetingId = `audio_${Date.now()}`;
+  const meetingRef = db.collection("meeting_summaries").doc(meetingId);
+
+  // グループID特定
+  const resolvedGroupId = await identifyGroupId(
+    analysisResult.meetingTitle || fileName,
+    undefined
+  );
+
+  const adminIds = resolvedGroupId ? await getGroupAdminIds(resolvedGroupId) : [];
+
+  const meetingData = {
+    // 音声ファイル情報
+    source: "audio_upload",
+    audioFileId: fileId,
+    audioFileName: fileName,
+
+    // 文字起こしはDriveリンクのみ（原文はFirestoreに保存しない）
+    transcriptDocUrl: transcriptDocUrl,
+    transcriptLength: analysisResult.transcript?.length || 0,
+
+    // 会議情報
+    meetingTitle: analysisResult.meetingTitle || fileName,
+    meetingDate: new Date(analysisResult.meetingDate || Date.now()),
+    participants: analysisResult.participants || [],
+    duration: analysisResult.duration || 0,
+
+    // 解析結果
+    summary: analysisResult.summary,
+    actions: analysisResult.actions,
+    insight: analysisResult.insight,
+
+    // グループ紐付け
+    status: "draft",
+    groupId: resolvedGroupId,
+    visibleTo: adminIds.length > 0 ? adminIds : null,
+    publishedAt: null,
+    publishedBy: null,
+    publishedByName: null,
+
+    // メタデータ
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  await meetingRef.set(meetingData);
+  logger.info("Audio meeting saved to Firestore", { meetingId });
+
+  return meetingId;
+}
