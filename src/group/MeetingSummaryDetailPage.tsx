@@ -177,7 +177,7 @@ if (data.groupId) {
   title="議事録"
   subtitle={meetingData.status === 'draft' ? '（下書き）' : undefined}
   showBackButton={true}
-  onBackClick={() => fromArchive ? navigate(`/group/${groupId}/archive`) : navigate('/')}
+  onBackClick={() => navigate(-1)}
 />
 
       {/* コンテンツエリア - 投稿詳細と同じレイアウト */}
