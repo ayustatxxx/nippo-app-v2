@@ -799,9 +799,8 @@ async function processAudioWithGemini(
   // Google Drive APIでファイルをダウンロード
   const { google } = await import("googleapis");
   const auth = new google.auth.GoogleAuth({
-    keyFile: "./firebase-admin-key.json",
-    scopes: ["https://www.googleapis.com/auth/drive.readonly"],
-  });
+  scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+});
 
   const drive = google.drive({ version: "v3", auth });
 
@@ -930,9 +929,8 @@ async function saveTranscriptToDrive(
 
   const { google } = await import("googleapis");
   const auth = new google.auth.GoogleAuth({
-    keyFile: "./firebase-admin-key.json",
-    scopes: ["https://www.googleapis.com/auth/drive.file"],
-  });
+  scopes: ["https://www.googleapis.com/auth/drive.file"],
+});
 
   const drive = google.drive({ version: "v3", auth });
 
