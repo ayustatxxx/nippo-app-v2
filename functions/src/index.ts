@@ -720,6 +720,7 @@ export const processAudioFile = onRequest(
   {
     timeoutSeconds: 540,
     memory: "2GiB",
+    secrets: ["GEMINI_API_KEY", "TRANSCRIPT_FOLDER_ID"],
   },
   async (req, res) => {
     logger.info("processAudioFile called", { method: req.method });
