@@ -819,13 +819,15 @@ async function processAudioWithGemini(
   const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY || "");
 
   logger.info("Uploading to Gemini File API...");
-  const uploadResult = await fileManager.uploadFile(
-    `${fileName}`,
-    {
-      mimeType: mimeType || "audio/x-m4a",
-      displayName: fileName,
-    }
-  );
+  
+  // BufferをGemini File APIに直接アップロード
+const uploadResult = await fileManager.uploadFile(
+  { buffer: audioBuffer, name: fileName } as any,
+  {
+    mimeType: mimeType || "audio/x-m4a",
+    displayName: fileName,
+  }
+);
 
   // アップロード完了を待機
   let geminiFile = await fileManager.getFile(uploadResult.file.name);
